@@ -1,6 +1,7 @@
 import { ApiError } from '../../common/errors/ApiError';
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { DoctorModel } from '../doctor/doctor.repository';
+
 import { ReviewModel, IReviewDocument } from './review.repository';
 
 interface ReviewListResult {
@@ -38,14 +39,14 @@ export class ReviewService {
       patientId: appointment.patientId,
       appointmentId: appointment._id,
       rating,
-      comment,
+      comment: comment.trim(),
       isHidden: false
     });
 
     const doctor = await DoctorModel.findById(appointment.doctorId);
     if (doctor) {
       const totalReviews = doctor.reviewCount + 1;
-      const averageRating = (doctor.averageRating * doctor.reviewCount + rating) / totalReviews;
+      const averageRating = ((doctor.averageRating * doctor.reviewCount) + rating) / totalReviews;
       doctor.reviewCount = totalReviews;
       doctor.averageRating = Number(averageRating.toFixed(2));
       await doctor.save();

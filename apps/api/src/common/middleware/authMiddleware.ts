@@ -1,7 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+
 import { ApiError } from '../errors/ApiError';
 import { config } from '../config';
+
+const getBearerToken = (headerValue?: string): string | null => {
+  if (!headerValue || !headerValue.startsWith('Bearer ')) {
+    return null;
+  }
+  return headerValue.replace('Bearer ', '').trim();
+};
 
 export interface AuthPayload {
   sub: string;
@@ -15,18 +23,17 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export const authenticate = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const token = getBearerToken(req.headers.authorization);
+  if (!token) {
     next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
     return;
   }
 
-  const token = authHeader.split(' ')[1];
   try {
     const payload = jwt.verify(token, config.jwtAccessSecret) as AuthPayload;
     req.user = payload;
     next();
-  } catch (error) {
+  } catch {
     next(new ApiError('Invalid or expired token', 401, 'INVALID_TOKEN'));
   }
 };

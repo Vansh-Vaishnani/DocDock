@@ -2,6 +2,7 @@ import { ApiError } from '../../common/errors/ApiError';
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { DoctorModel } from '../doctor/doctor.repository';
 import { UserModel } from '../auth/auth.repository';
+
 import { PrescriptionModel, IPrescriptionDocument, IMedication } from './prescription.repository';
 
 interface PrescriptionListResult {

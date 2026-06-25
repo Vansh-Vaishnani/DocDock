@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 
 export const sendSuccess = (res: Response, data: unknown = {}, message = 'Success', meta?: unknown): Response => {
   const payload: Record<string, unknown> = {

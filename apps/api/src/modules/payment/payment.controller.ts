@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { PaymentService } from './payment.service';
+
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { sendCreated, sendSuccess } from '../../common/utils/http';
+
+import { PaymentService } from './payment.service';
 
 const service = new PaymentService();
 
@@ -27,10 +29,33 @@ export class PaymentController {
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
       const valid = await service.verifySignature(JSON.stringify(req.body), razorpaySignature);
       if (!valid) {
-        throw new Error('Invalid payment signature');
+        throw new ApiError('Invalid payment signature', 400, 'INVALID_PAYMENT_SIGNATURE');
       }
       const payment = await service.markPaid(razorpayOrderId, razorpayPaymentId);
       sendSuccess(res, payment, 'Payment verified successfully.');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async handleWebhook(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      const signature = req.headers['x-razorpay-signature'];
+      const valid = await service.verifySignature(rawBody, typeof signature === 'string' ? signature : '');
+      if (!valid) {
+        throw new ApiError('Invalid webhook signature', 400, 'INVALID_WEBHOOK_SIGNATURE');
+      }
+
+      const event = JSON.parse(rawBody);
+      if (event?.event === 'payment.captured') {
+        const payment = event.payload?.payment?.entity;
+        if (payment?.order_id && payment?.id) {
+          await service.markPaid(payment.order_id, payment.id);
+        }
+      }
+
+      sendSuccess(res, { received: true }, 'Webhook processed.');
     } catch (error) {
       next(error);
     }

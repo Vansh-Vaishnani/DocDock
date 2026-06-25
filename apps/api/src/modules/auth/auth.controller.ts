@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthService } from './auth.service';
+
 import { sendCreated, sendSuccess } from '../../common/utils/http';
+
+import { AuthService } from './auth.service';
 
 const authService = new AuthService();
 

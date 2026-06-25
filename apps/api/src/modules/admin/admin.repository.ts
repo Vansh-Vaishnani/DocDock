@@ -1,5 +1,4 @@
 import mongoose, { Schema, model } from 'mongoose';
-import { IUserDocument } from '../auth/auth.repository';
 
 export interface IAdminProfileDocument extends mongoose.Document {
   userId: mongoose.Types.ObjectId;

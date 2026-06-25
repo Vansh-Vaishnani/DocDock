@@ -1,8 +1,11 @@
 import express from 'express';
-import { AppointmentController } from './appointment.controller';
+
 import { validateRequest } from '../../common/middleware/validateRequest';
-import { createAppointmentSchema, updateAppointmentStatusSchema } from './appointment.validation';
 import { requireRole } from '../../common/middleware/authMiddleware';
+
+import { AppointmentController } from './appointment.controller';
+import { createAppointmentSchema, updateAppointmentStatusSchema } from './appointment.validation';
+
 
 const router = express.Router();
 const controller = new AppointmentController();

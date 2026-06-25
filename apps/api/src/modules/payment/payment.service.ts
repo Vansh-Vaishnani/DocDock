@@ -1,8 +1,10 @@
 import Razorpay from 'razorpay';
-import { IPaymentDocument, PaymentModel } from './payment.repository';
+
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { config } from '../../common/config';
 import { ApiError } from '../../common/errors/ApiError';
+
+import { IPaymentDocument, PaymentModel } from './payment.repository';
 
 interface RazorpayOrder {
   id: string;
@@ -14,13 +16,14 @@ export class PaymentService {
   private razorpay = new Razorpay({ key_id: config.razorpayKeyId, key_secret: config.razorpayKeySecret });
 
   async createOrder(amount: number, currency = 'INR', receipt?: string): Promise<RazorpayOrder> {
+    const amountInPaise = Math.round(amount * 100);
     const order = await this.razorpay.orders.create({
-      amount,
+      amount: amountInPaise,
       currency,
       receipt,
       payment_capture: true
     });
-    return order as RazorpayOrder;
+    return { ...order, amount: amountInPaise } as RazorpayOrder;
   }
 
   async verifySignature(body: string, signature: string): Promise<boolean> {

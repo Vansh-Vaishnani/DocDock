@@ -1,6 +1,8 @@
 import express from 'express';
+
 import { authenticate, requireRole } from '../../common/middleware/authMiddleware';
 import { validateRequest } from '../../common/middleware/validateRequest';
+
 import { PrescriptionController } from './prescription.controller';
 import { createPrescriptionSchema, getPatientPrescriptionsSchema, getPrescriptionSchema } from './prescription.validation';
 

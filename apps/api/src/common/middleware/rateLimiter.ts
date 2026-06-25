@@ -1,16 +1,21 @@
 import rateLimit from 'express-rate-limit';
 import { Request } from 'express';
-import { redisClient } from '../config';
 import RedisStore from 'rate-limit-redis';
+
+import { redisClient } from '../config';
+
+const store = redisClient.isOpen
+  ? new RedisStore({
+      sendCommand: (...args: string[]) => redisClient.sendCommand(args)
+    })
+  : undefined;
 
 export const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new RedisStore({
-    sendCommand: (...args: string[]) => redisClient.sendCommand(args)
-  }),
+  store,
   keyGenerator: (req: Request) => {
     return req.ip ?? 'unknown';
   },

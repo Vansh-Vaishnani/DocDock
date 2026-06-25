@@ -1,6 +1,8 @@
 import './globals.css';
 import type { Metadata } from 'next';
 
+import Providers from './providers';
+
 export const metadata: Metadata = {
   title: 'DocDock',
   description: 'Doctor-on-demand home consultation platform'
@@ -9,7 +11,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

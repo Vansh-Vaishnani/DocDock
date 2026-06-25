@@ -1,17 +1,38 @@
 node_modules/
 **/node_modules/
-.DS_Store
+
+# Environment files
 .env
+.env.*
+!.env.example
+!.env.sample
 .env.local
 .env.*.local
+
+# Build and output artifacts
 dist/
 build/
+.next/
+out/
 .coverage
 coverage/
+.early.coverage
+.turbo/
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Databases and local artifacts
 *.sqlite
+*.sqlite3
+*.db
+
+# OS/editor files
+.DS_Store
 .idea/
 .vscode/
-*.env
-
-.early.coverage
+*.swp
+*.swo

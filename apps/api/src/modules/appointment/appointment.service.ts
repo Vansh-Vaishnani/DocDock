@@ -1,7 +1,10 @@
-import { AppointmentModel, AppointmentStatus, IAppointmentDocument } from './appointment.repository';
+import mongoose from 'mongoose';
+
 import { DoctorModel } from '../doctor/doctor.repository';
 import { ApiError } from '../../common/errors/ApiError';
-import mongoose from 'mongoose';
+
+import { AppointmentModel, AppointmentStatus, IAppointmentDocument } from './appointment.repository';
+
 
 const validTransitions: Record<string, string[]> = {
   pending: ['accepted', 'rejected', 'auto_rejected', 'cancelled_by_patient'],
@@ -23,6 +26,9 @@ export class AppointmentService {
     address: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
     notes?: string;
   }): Promise<IAppointmentDocument> {
+    if (!payload.address.label.trim()) {
+      throw new ApiError('Address label is required', 400, 'VALIDATION_ERROR');
+    }
     const doctor = await DoctorModel.findById(payload.doctorId);
     if (!doctor || doctor.verificationStatus !== 'approved') {
       throw new ApiError('Doctor not available for booking', 404, 'DOCTOR_NOT_AVAILABLE');

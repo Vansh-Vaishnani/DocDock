@@ -1,8 +1,10 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { UserModel, IUserDocument } from './auth.repository';
+
 import { config } from '../../common/config';
 import { ApiError } from '../../common/errors/ApiError';
+
+import { UserModel, IUserDocument } from './auth.repository';
 
 export interface AuthTokens {
   accessToken: string;
@@ -92,7 +94,7 @@ export class AuthService {
     let payload: { sub: string; role: 'patient' | 'doctor' | 'admin' };
     try {
       payload = jwt.verify(token, config.jwtRefreshSecret) as { sub: string; role: 'patient' | 'doctor' | 'admin' };
-    } catch (error) {
+    } catch {
       throw new ApiError('Invalid refresh token', 401, 'INVALID_REFRESH_TOKEN');
     }
     const user = await UserModel.findById(payload.sub);

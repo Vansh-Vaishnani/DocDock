@@ -1,7 +1,9 @@
 import { NextFunction, Response } from 'express';
+
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { sendCreated, sendSuccess } from '../../common/utils/http';
+
 import { PrescriptionService } from './prescription.service';
 
 const prescriptionService = new PrescriptionService();

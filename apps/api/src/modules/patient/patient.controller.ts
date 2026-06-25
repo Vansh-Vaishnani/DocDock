@@ -1,8 +1,10 @@
 import { Response, NextFunction } from 'express';
-import { PatientService } from './patient.service';
+
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { sendSuccess } from '../../common/utils/http';
+
+import { PatientService } from './patient.service';
 
 const service = new PatientService();
 

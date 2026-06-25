@@ -1,7 +1,18 @@
+import path from 'path';
 import dotenv from 'dotenv';
 import { createClient } from 'redis';
 
-dotenv.config({ path: process.env.NODE_ENV === 'test' ? '.env.test' : '.env' });
+const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
+const envCandidates = [
+  path.resolve(process.cwd(), envFile),
+  path.resolve(process.cwd(), '../../', envFile),
+  path.resolve(process.cwd(), '../../..', envFile),
+  path.resolve(__dirname, '../../../../../' + envFile)
+];
+
+for (const candidate of envCandidates) {
+  dotenv.config({ path: candidate });
+}
 
 const required = (key: string): string => {
   const value = process.env[key];
@@ -32,13 +43,31 @@ export const config = {
   smsProviderApiKey: process.env.TWILIO_AUTH_TOKEN || ''
 };
 
-export const redisClient = createClient({ url: config.redisUrl });
+export const redisClient = createClient({
+  url: config.redisUrl,
+  socket: {
+    reconnectStrategy: (retries: number) => Math.min(retries * 100, 3000)
+  }
+});
+
 redisClient.on('error', (error: Error) => {
   console.error('Redis error', error);
 });
 
+redisClient.on('connect', () => {
+  console.log('Redis connected');
+});
+
+redisClient.on('end', () => {
+  console.log('Redis connection closed');
+});
+
 export const connectRedis = async (): Promise<void> => {
   if (!redisClient.isOpen) {
-    await redisClient.connect();
+    try {
+      await redisClient.connect();
+    } catch (error) {
+      console.error('Unable to connect to Redis', error);
+    }
   }
 };

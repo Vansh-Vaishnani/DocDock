@@ -1,8 +1,10 @@
-import { Request, Response, NextFunction } from 'express';
-import { AppointmentService } from './appointment.service';
+import { Response, NextFunction } from 'express';
+
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { sendCreated, sendSuccess } from '../../common/utils/http';
+
+import { AppointmentService } from './appointment.service';
 
 const service = new AppointmentService();
 

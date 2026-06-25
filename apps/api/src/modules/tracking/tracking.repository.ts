@@ -1,0 +1,37 @@
+import { TrackingModel, ITrackingDocument } from './tracking.model';
+
+export class TrackingRepository {
+  async getOrCreateSession(appointmentId: string, doctorId: string, patientId: string): Promise<ITrackingDocument> {
+    const session = await TrackingModel.findOne({ appointmentId });
+    if (session) {
+      return session;
+    }
+    return TrackingModel.create({ appointmentId, doctorId, patientId, status: 'idle' });
+  }
+
+  async getByAppointmentId(appointmentId: string): Promise<ITrackingDocument | null> {
+    return TrackingModel.findOne({ appointmentId }).lean();
+  }
+
+  async updateLocation(appointmentId: string, coordinates: [number, number]): Promise<ITrackingDocument | null> {
+    return TrackingModel.findOneAndUpdate(
+      { appointmentId },
+      {
+        $set: {
+          status: 'active',
+          doctorCurrentLocation: { type: 'Point', coordinates, updatedAt: new Date() },
+          lastHeartbeatAt: new Date()
+        }
+      },
+      { new: true }
+    );
+  }
+
+  async updateHeartbeat(appointmentId: string): Promise<ITrackingDocument | null> {
+    return TrackingModel.findOneAndUpdate(
+      { appointmentId },
+      { $set: { lastHeartbeatAt: new Date() } },
+      { new: true }
+    );
+  }
+}
