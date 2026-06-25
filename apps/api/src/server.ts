@@ -12,6 +12,8 @@ import patientRoutes from './modules/patient/patient.routes';
 import appointmentRoutes from './modules/appointment/appointment.routes';
 import paymentRoutes from './modules/payment/payment.routes';
 import adminRoutes from './modules/admin/admin.routes';
+import reviewRoutes from './modules/review/review.routes';
+import prescriptionRoutes from './modules/prescription/prescription.routes';
 import { config, connectRedis } from './common/config';
 import { errorHandler } from './common/errors/errorHandler';
 import { authenticate } from './common/middleware/authMiddleware';
@@ -41,6 +43,8 @@ app.use('/api/v1/doctors', doctorRoutes);
 app.use('/api/v1/patients', authenticate, patientRoutes);
 app.use('/api/v1/appointments', authenticate, appointmentRoutes);
 app.use('/api/v1/payments', authenticate, paymentRoutes);
+app.use('/api/v1/reviews', reviewRoutes);
+app.use('/api/v1/prescriptions', authenticate, prescriptionRoutes);
 app.use('/api/v1/admin', authenticate, adminRoutes);
 
 app.use(errorHandler);

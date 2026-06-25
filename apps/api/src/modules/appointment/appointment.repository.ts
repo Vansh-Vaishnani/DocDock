@@ -19,6 +19,7 @@ export interface IAppointmentDocument extends mongoose.Document {
   status: AppointmentStatus;
   notes?: string;
   paymentId?: mongoose.Types.ObjectId;
+  prescriptionId?: mongoose.Types.ObjectId;
 }
 
 const appointmentSchema = new Schema<IAppointmentDocument>(
@@ -54,7 +55,8 @@ const appointmentSchema = new Schema<IAppointmentDocument>(
       default: 'pending'
     },
     notes: { type: String },
-    paymentId: { type: Schema.Types.ObjectId, ref: 'Payment' }
+    paymentId: { type: Schema.Types.ObjectId, ref: 'Payment' },
+    prescriptionId: { type: Schema.Types.ObjectId, ref: 'Prescription' }
   },
   { timestamps: true }
 );
