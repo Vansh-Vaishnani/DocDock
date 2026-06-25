@@ -1,0 +1,10 @@
+{
+  "name": "@docdock/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

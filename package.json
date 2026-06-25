@@ -1,0 +1,21 @@
+{
+  "name": "docdock",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace docdock-api\" \"npm run dev --workspace docdock-web\"",
+    "dev:api": "npm run dev --workspace docdock-api",
+    "dev:web": "npm run dev --workspace docdock-web",
+    "build": "npm run build --workspace @docdock/shared && npm run build --workspace docdock-api && npm run build --workspace docdock-web",
+    "lint": "npm run lint --workspace docdock-api && npm run lint --workspace docdock-web",
+    "test": "npm run test --workspace docdock-api"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

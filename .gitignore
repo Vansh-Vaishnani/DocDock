@@ -1,0 +1,17 @@
+node_modules/
+**/node_modules/
+.DS_Store
+.env
+.env.local
+.env.*.local
+dist/
+build/
+.coverage
+coverage/
+*.log
+*.sqlite
+.idea/
+.vscode/
+*.env
+
+.early.coverage
