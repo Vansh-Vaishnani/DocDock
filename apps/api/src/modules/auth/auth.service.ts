@@ -4,6 +4,9 @@ import jwt from 'jsonwebtoken';
 import { config } from '../../common/config';
 import { ApiError } from '../../common/errors/ApiError';
 
+import { DoctorModel } from '../doctor/doctor.repository';
+import { PatientModel } from '../patient/patient.repository';
+
 import { UserModel, IUserDocument } from './auth.repository';
 
 export interface AuthTokens {
@@ -34,6 +37,26 @@ export class AuthService {
       isDeleted: false,
       verificationStatus: payload.role === 'doctor' ? 'pending' : undefined
     });
+
+    if (payload.role === 'patient') {
+      await PatientModel.create({ userId: user._id });
+    } else if (payload.role === 'doctor') {
+      await DoctorModel.create({
+        userId: user._id,
+        licenseNumber: `TEMP-${user._id.toString()}`,
+        specialization: 'General',
+        qualifications: [],
+        experience: 0,
+        bio: '',
+        languages: [],
+        consultationFee: 0,
+        location: { type: 'Point', coordinates: [0, 0] },
+        availability: { isAvailable: false },
+        verificationStatus: 'pending',
+        averageRating: 0,
+        reviewCount: 0
+      });
+    }
 
     return {
       _id: user._id,
