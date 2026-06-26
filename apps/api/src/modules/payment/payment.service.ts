@@ -3,6 +3,7 @@ import Razorpay from 'razorpay';
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { config } from '../../common/config';
 import { ApiError } from '../../common/errors/ApiError';
+import { isRazorpayEnabled } from '../../common/config/providers';
 
 import { IPaymentDocument, PaymentModel } from './payment.repository';
 
@@ -13,11 +14,29 @@ interface RazorpayOrder {
 }
 
 export class PaymentService {
-  private razorpay = new Razorpay({ key_id: config.razorpayKeyId, key_secret: config.razorpayKeySecret });
+  private razorpayInstance: Razorpay | null = null;
+
+  private ensureRazorpayEnabled(): void {
+    if (!isRazorpayEnabled()) {
+      throw new ApiError('Razorpay integration is not configured.', 503, 'RAZORPAY_NOT_CONFIGURED');
+    }
+  }
+
+  private getRazorpay(): Razorpay {
+    if (!this.razorpayInstance) {
+      this.ensureRazorpayEnabled();
+      this.razorpayInstance = new Razorpay({
+        key_id: config.razorpayKeyId,
+        key_secret: config.razorpayKeySecret
+      });
+    }
+    return this.razorpayInstance;
+  }
 
   async createOrder(amount: number, currency = 'INR', receipt?: string): Promise<RazorpayOrder> {
+    const razorpay = this.getRazorpay();
     const amountInPaise = Math.round(amount * 100);
-    const order = await this.razorpay.orders.create({
+    const order = await razorpay.orders.create({
       amount: amountInPaise,
       currency,
       receipt,
@@ -27,6 +46,7 @@ export class PaymentService {
   }
 
   async verifySignature(body: string, signature: string): Promise<boolean> {
+    this.ensureRazorpayEnabled();
     const crypto = await import('crypto');
     const expected = crypto.createHmac('sha256', config.razorpayKeySecret).update(body).digest('hex');
     return expected === signature;

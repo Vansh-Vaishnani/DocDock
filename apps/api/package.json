@@ -10,7 +10,9 @@
     "test": "jest"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "@socket.io/redis-adapter": "^8.3.0",
+    "@types/passport-google-oauth20": "^2.0.17",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.34.2",
     "cloudinary": "^2.5.1",
@@ -25,6 +27,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^7.5.0",
     "morgan": "^1.10.0",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
     "rate-limit-redis": "^4.3.1",
     "razorpay": "^2.9.6",
     "redis": "^6.0.1",
@@ -44,6 +48,7 @@
     "@types/node": "^20.19.43",
     "@types/socket.io": "^3.0.2",
     "@types/supertest": "^6.0.3",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^8.57.0",

@@ -1,6 +1,9 @@
 import path from 'path';
 import dotenv from 'dotenv';
 import { createClient } from 'redis';
+import { validateEnv } from './envSchema';
+
+type RedisSocketOptions = NonNullable<Parameters<typeof createClient>[0]>['socket'];
 
 const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
 const envCandidates = [
@@ -14,60 +17,85 @@ for (const candidate of envCandidates) {
   dotenv.config({ path: candidate });
 }
 
-const required = (key: string): string => {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`Missing environment variable: ${key}`);
+// Validate environment variables
+const env = validateEnv();
+
+const redisUrl = env.REDIS_URL.trim();
+const redisUrlProtocol = (() => {
+  try {
+    return new URL(redisUrl).protocol;
+  } catch {
+    return 'redis:';
   }
-  return value;
-};
+})();
 
 export const config = {
-  port: Number(process.env.PORT || 4000),
-  nodeEnv: process.env.NODE_ENV || 'development',
-  mongoUri: required('MONGODB_URI'),
-  redisUrl: required('REDIS_URL'),
-  jwtAccessSecret: required('JWT_ACCESS_SECRET'),
-  jwtRefreshSecret: required('JWT_REFRESH_SECRET'),
-  accessTokenExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
-  refreshTokenExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
-  cookieSecret: required('COOKIE_SECRET'),
-  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
-  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || '',
-  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || '',
-  razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
-  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || '',
-  appUrl: process.env.APP_URL || 'http://localhost:3000',
-  apiUrl: process.env.BACKEND_URL || 'http://localhost:4000/api/v1',
-  emailProviderApiKey: process.env.SENDGRID_API_KEY || process.env.SMTP_PASSWORD || '',
-  smsProviderApiKey: process.env.TWILIO_AUTH_TOKEN || ''
+  port: env.PORT,
+  nodeEnv: env.NODE_ENV,
+  mongoUri: env.MONGODB_URI,
+  redisUrl,
+  jwtAccessSecret: env.JWT_ACCESS_SECRET,
+  jwtRefreshSecret: env.JWT_REFRESH_SECRET,
+  accessTokenExpiresIn: env.JWT_ACCESS_EXPIRES_IN,
+  refreshTokenExpiresIn: env.JWT_REFRESH_EXPIRES_IN,
+  cookieSecret: env.COOKIE_SECRET,
+  cloudinaryCloudName: env.CLOUDINARY_CLOUD_NAME || '',
+  cloudinaryApiKey: env.CLOUDINARY_API_KEY || '',
+  cloudinaryApiSecret: env.CLOUDINARY_API_SECRET || '',
+  razorpayKeyId: env.RAZORPAY_KEY_ID || '',
+  razorpayKeySecret: env.RAZORPAY_KEY_SECRET || '',
+  appUrl: env.APP_URL,
+  apiUrl: env.BACKEND_URL,
+  emailProviderApiKey: env.SENDGRID_API_KEY || '',
+  smsProviderApiKey: env.TWILIO_AUTH_TOKEN || '',
+  twilioAccountSid: env.TWILIO_ACCOUNT_SID || '',
+  twilioAuthToken: env.TWILIO_AUTH_TOKEN || ''
 };
+
+const redisIsTls = redisUrlProtocol === 'rediss:' || redisUrl.includes('.upstash.io');
+const redisSocketOptions: RedisSocketOptions = redisIsTls
+  ? { tls: true, reconnectStrategy: (retries: number) => Math.min(retries * 100, 3000) }
+  : { tls: false, reconnectStrategy: (retries: number) => Math.min(retries * 100, 3000) };
 
 export const redisClient = createClient({
   url: config.redisUrl,
-  socket: {
-    reconnectStrategy: (retries: number) => Math.min(retries * 100, 3000)
-  }
+  socket: redisSocketOptions,
 });
 
 redisClient.on('error', (error: Error) => {
-  console.error('Redis error', error);
+  console.error('🔴 Redis error:', error);
 });
 
 redisClient.on('connect', () => {
-  console.log('Redis connected');
+  console.log('🟢 Redis connected');
 });
 
 redisClient.on('end', () => {
-  console.log('Redis connection closed');
+  console.log('🔴 Redis connection closed');
 });
 
+let redisConnectPromise: Promise<void> | null = null;
+
 export const connectRedis = async (): Promise<void> => {
-  if (!redisClient.isOpen) {
+  if (redisClient.isOpen) {
+    return;
+  }
+
+  if (redisConnectPromise) {
+    return redisConnectPromise;
+  }
+
+  redisConnectPromise = (async () => {
     try {
       await redisClient.connect();
+      console.log('✅ Connected to Redis');
     } catch (error) {
-      console.error('Unable to connect to Redis', error);
+      console.error('❌ Unable to connect to Redis:', error);
+      throw error;
+    } finally {
+      redisConnectPromise = null;
     }
-  }
+  })();
+
+  return redisConnectPromise;
 };

@@ -15,11 +15,13 @@ import prescriptionRoutes from './modules/prescription/prescription.routes';
 import trackingRoutes from './modules/tracking/tracking.routes';
 import chatRoutes from './modules/chat/chat.routes';
 import notificationRoutes from './modules/notification/notification.routes';
-import { config, connectRedis } from './common/config';
+import { config } from './common/config';
 import { errorHandler } from './common/errors/errorHandler';
 import { authenticate } from './common/middleware/authMiddleware';
 import { registerGlobalMiddleware } from './common/middleware/globalMiddleware';
 import { initializeSocketServer } from './sockets/gateway';
+import { initializeServices } from './common/utils/initialization';
+import { getInitializationStatus } from './common/utils/initialization';
 import './jobs/workers';
 
 const app = express();
@@ -29,7 +31,21 @@ initializeSocketServer(server);
 registerGlobalMiddleware(app);
 
 app.get('/api/v1/health', (req, res) => {
-  res.json({ success: true, message: 'DocDock API is running' });
+  const status = getInitializationStatus();
+  const allHealthy = status.mongodb && status.redis;
+  
+  res.status(allHealthy ? 200 : 503).json({
+    success: allHealthy,
+    message: allHealthy ? 'DocDock API is running' : 'Service degraded',
+    status: {
+      api: 'running',
+      mongodb: status.mongodb,
+      redis: status.redis,
+      payment: status.payment,
+      email: status.email,
+      oauth: status.oauth
+    }
+  });
 });
 
 app.get('/api/v1/docs', (req, res) => {
@@ -53,17 +69,51 @@ app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/prescriptions', authenticate, prescriptionRoutes);
 app.use('/api/v1/admin', authenticate, adminRoutes);
 
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'DocDock API is running',
+    api: {
+      health: '/api/v1/health',
+      docs: '/api/v1/docs',
+    },
+  });
+});
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found',
+    error: {
+      code: 'NOT_FOUND',
+      details: [],
+    },
+  });
+});
+
 app.use(errorHandler);
 
 const start = async (): Promise<void> => {
-  await connectRedis();
-  await mongoose.connect(config.mongoUri, { autoIndex: true });
-  server.listen(config.port, () => {
-    console.log(`DocDock API listening on http://localhost:${config.port}`);
-  });
+  try {
+    // Initialize and validate all services
+    const initResult = await initializeServices();
+
+    if (!initResult.success) {
+      console.error('\n❌ Fatal: Cannot start server. Critical services failed to initialize.');
+      console.error('Errors:', initResult.errors);
+      process.exit(1);
+    }
+
+    // Start the server
+    server.listen(config.port, () => {
+      console.log(`\n🎉 DocDock API listening on http://localhost:${config.port}`);
+      console.log(`📚 API Documentation: http://localhost:${config.port}/api/v1/docs`);
+      console.log(`❤️  Health Check: http://localhost:${config.port}/api/v1/health\n`);
+    });
+  } catch (error) {
+    console.error('🚨 Failed to start server:', error);
+    process.exit(1);
+  }
 };
 
-start().catch((error) => {
-  console.error('Failed to start server', error);
-  process.exit(1);
-});
+start();
