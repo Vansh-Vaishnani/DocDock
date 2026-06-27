@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node -e \"const fs=require('fs'); const path=require('path'); const dir=path.join(process.cwd(), '.next'); fs.rmSync(dir, { recursive: true, force: true });\" && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

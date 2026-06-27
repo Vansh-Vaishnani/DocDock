@@ -9,9 +9,9 @@ import { DoctorService } from './doctor.service';
 const service = new DoctorService();
 
 export class DoctorController {
-  async createProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async createProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
@@ -64,9 +64,9 @@ export class DoctorController {
     }
   }
 
-  async updateAvailability(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async updateAvailability(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;

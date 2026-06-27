@@ -10,6 +10,8 @@ export interface IUserDocument extends mongoose.Document {
   isActive: boolean;
   isDeleted: boolean;
   verificationStatus?: 'pending' | 'approved' | 'rejected';
+  googleId?: string;
+  avatar?: string;
   refreshTokenHash?: string;
   lastLogin?: Date;
 }
@@ -25,6 +27,8 @@ const userSchema = new Schema<IUserDocument>(
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     verificationStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: undefined },
+    googleId: { type: String, sparse: true },
+    avatar: { type: String },
     refreshTokenHash: { type: String },
     lastLogin: { type: Date }
   },

@@ -18,12 +18,11 @@ export interface AuthPayload {
   exp: number;
 }
 
-export interface AuthenticatedRequest extends Request {
-  user?: AuthPayload;
-}
+export type AuthenticatedRequest = Request & { user?: AuthPayload };
 
-export const authenticate = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-  const token = getBearerToken(req.headers.authorization);
+export const authenticate = (req: Request, _res: Response, next: NextFunction): void => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  const token = getBearerToken(authenticatedReq.headers.authorization);
   if (!token) {
     next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
     return;
@@ -31,15 +30,16 @@ export const authenticate = (req: AuthenticatedRequest, res: Response, next: Nex
 
   try {
     const payload = jwt.verify(token, config.jwtAccessSecret) as AuthPayload;
-    req.user = payload;
+    authenticatedReq.user = payload;
     next();
   } catch {
     next(new ApiError('Invalid or expired token', 401, 'INVALID_TOKEN'));
   }
 };
 
-export const requireRole = (roles: Array<'patient' | 'doctor' | 'admin'>) => (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-  const user = req.user;
+export const requireRole = (roles: Array<'patient' | 'doctor' | 'admin'>) => (req: Request, _res: Response, next: NextFunction): void => {
+  const authenticatedReq = req as AuthenticatedRequest;
+  const user = authenticatedReq.user as AuthPayload | undefined;
   if (!user || !roles.includes(user.role)) {
     next(new ApiError('Forbidden', 403, 'FORBIDDEN'));
     return;

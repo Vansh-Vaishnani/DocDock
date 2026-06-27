@@ -8,9 +8,9 @@ import { TrackingService } from './tracking.service';
 const service = new TrackingService();
 
 export class TrackingController {
-  async getLocation(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getLocation(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.user?.sub;
+      const userId = (req as AuthenticatedRequest).user?.sub;
       if (!userId) {
         res.status(401).json({ success: false, message: 'Authentication required', error: { code: 'AUTH_REQUIRED', details: [] } });
         return;
@@ -22,9 +22,9 @@ export class TrackingController {
     }
   }
 
-  async updateLocation(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async updateLocation(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.user?.sub;
+      const userId = (req as AuthenticatedRequest).user?.sub;
       if (!userId) {
         res.status(401).json({ success: false, message: 'Authentication required', error: { code: 'AUTH_REQUIRED', details: [] } });
         return;

@@ -9,9 +9,9 @@ import { PrescriptionService } from './prescription.service';
 const prescriptionService = new PrescriptionService();
 
 export class PrescriptionController {
-  async createPrescription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async createPrescription(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
@@ -24,9 +24,9 @@ export class PrescriptionController {
     }
   }
 
-  async getPrescription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getPrescription(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
@@ -39,9 +39,9 @@ export class PrescriptionController {
     }
   }
 
-  async getPatientPrescriptions(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getPatientPrescriptions(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;

@@ -113,6 +113,53 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  async handleGoogleLogin(profile: { googleId: string; email: string; fullName: string; avatar?: string }): Promise<{ user: Partial<IUserDocument>; tokens: AuthTokens }> {
+    const email = profile.email.toLowerCase();
+    let user = await UserModel.findOne({ email, isDeleted: false });
+
+    if (!user) {
+      const passwordHash = await bcrypt.hash(`google-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, 12);
+      const phone = `google-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      user = await UserModel.create({
+        fullName: profile.fullName || email,
+        email,
+        phone,
+        passwordHash,
+        role: 'patient',
+        isVerified: true,
+        isActive: true,
+        isDeleted: false,
+        googleId: profile.googleId,
+        avatar: profile.avatar,
+        verificationStatus: undefined
+      });
+      await PatientModel.create({ userId: user._id });
+    } else {
+      user.googleId = user.googleId || profile.googleId;
+      user.avatar = user.avatar || profile.avatar;
+      user.fullName = user.fullName || profile.fullName || email;
+      user.isVerified = true;
+      await user.save();
+    }
+
+    const tokens = this.generateTokens(user._id.toString(), user.role);
+    const refreshTokenHash = await bcrypt.hash(tokens.refreshToken, 12);
+    user.refreshTokenHash = refreshTokenHash;
+    user.lastLogin = new Date();
+    await user.save();
+
+    return {
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        isVerified: user.isVerified
+      },
+      tokens
+    };
+  }
+
   async refreshToken(token: string): Promise<AuthTokens> {
     let payload: { sub: string; role: 'patient' | 'doctor' | 'admin' };
     try {

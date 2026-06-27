@@ -1,4 +1,4 @@
-import { NextFunction, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
@@ -9,9 +9,9 @@ import { ReviewService } from './review.service';
 const reviewService = new ReviewService();
 
 export class ReviewController {
-  async submitReview(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async submitReview(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
@@ -24,7 +24,7 @@ export class ReviewController {
     }
   }
 
-  async listDoctorReviews(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async listDoctorReviews(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const page = typeof req.query.page === 'string' ? Number(req.query.page) : undefined;
       const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
@@ -37,9 +37,9 @@ export class ReviewController {
     }
   }
 
-  async replyToReview(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async replyToReview(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
@@ -52,9 +52,9 @@ export class ReviewController {
     }
   }
 
-  async moderateReview(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async moderateReview(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const review = await reviewService.moderateReview(req.params.reviewId, req.body.isHidden);
+      const review = await reviewService.moderateReview(req.params.reviewId, (req as AuthenticatedRequest).body?.isHidden);
       sendSuccess(res, review, 'Review moderation updated.');
     } catch (error) {
       next(error);

@@ -8,9 +8,9 @@ import { NotificationService } from './notification.service';
 const service = new NotificationService();
 
 export class NotificationController {
-  async list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async list(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.user?.sub;
+      const userId = (req as AuthenticatedRequest).user?.sub;
       if (!userId) {
         res.status(401).json({ success: false, message: 'Authentication required', error: { code: 'AUTH_REQUIRED', details: [] } });
         return;
@@ -24,7 +24,7 @@ export class NotificationController {
     }
   }
 
-  async markAsRead(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async markAsRead(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
       const notification = await service.markAsRead(req.params.notificationId);
       sendSuccess(res, notification, 'Notification marked as read.');
@@ -33,9 +33,9 @@ export class NotificationController {
     }
   }
 
-  async markAllAsRead(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async markAllAsRead(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.user?.sub;
+      const userId = (req as AuthenticatedRequest).user?.sub;
       if (!userId) {
         res.status(401).json({ success: false, message: 'Authentication required', error: { code: 'AUTH_REQUIRED', details: [] } });
         return;

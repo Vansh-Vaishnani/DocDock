@@ -9,9 +9,9 @@ import { PaymentService } from './payment.service';
 const service = new PaymentService();
 
 export class PaymentController {
-  async createOrder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async createOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;

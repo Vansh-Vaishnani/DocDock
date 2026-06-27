@@ -9,9 +9,9 @@ import { AppointmentService } from './appointment.service';
 const service = new AppointmentService();
 
 export class AppointmentController {
-  async create(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async create(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
@@ -26,9 +26,9 @@ export class AppointmentController {
     }
   }
 
-  async updateStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async updateStatus(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user;
+      const user = (req as AuthenticatedRequest).user;
       if (!user) {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;

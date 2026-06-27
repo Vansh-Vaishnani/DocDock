@@ -8,9 +8,9 @@ import { ChatService } from './chat.service';
 const service = new ChatService();
 
 export class ChatController {
-  async getOrCreateRoom(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getOrCreateRoom(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.user?.sub;
+      const userId = (req as AuthenticatedRequest).user?.sub;
       if (!userId) {
         res.status(401).json({ success: false, message: 'Authentication required', error: { code: 'AUTH_REQUIRED', details: [] } });
         return;
@@ -22,7 +22,7 @@ export class ChatController {
     }
   }
 
-  async getMessages(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getMessages(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
       const page = Number(req.query.page ?? 1);
       const limit = Number(req.query.limit ?? 20);
@@ -33,9 +33,9 @@ export class ChatController {
     }
   }
 
-  async sendMessage(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async sendMessage(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = req.user?.sub;
+      const userId = (req as AuthenticatedRequest).user?.sub;
       if (!userId) {
         res.status(401).json({ success: false, message: 'Authentication required', error: { code: 'AUTH_REQUIRED', details: [] } });
         return;
@@ -44,7 +44,7 @@ export class ChatController {
         roomId: req.params.roomId,
         appointmentId: req.body.appointmentId,
         senderId: userId,
-        senderRole: req.user?.role === 'doctor' ? 'doctor' : 'patient',
+        senderRole: (req as AuthenticatedRequest).user?.role === 'doctor' ? 'doctor' : 'patient',
         ...req.body
       });
       sendCreated(res, message, 'Message sent.');
