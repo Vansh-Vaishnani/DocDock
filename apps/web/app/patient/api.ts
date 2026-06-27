@@ -151,3 +151,48 @@ export async function updateMedicalHistory(entries: Array<{ note: string; create
 export async function updateAllergies(allergies: string[]): Promise<PatientProfile> {
   return updatePatientProfile({ allergies });
 }
+
+export type PatientAppointment = {
+  _id: string;
+  scheduledAt: string;
+  status: string;
+  statusLabel: string;
+  address: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
+  notes?: string;
+  doctorId: string;
+  doctorName: string;
+  specialization: string;
+  consultationFee: number;
+};
+
+export type CreateAppointmentPayload = {
+  doctorId: string;
+  scheduledAt: string;
+  address: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
+  notes?: string;
+};
+
+export async function fetchPatientAppointments(filter: 'upcoming' | 'history' | 'all' = 'all'): Promise<PatientAppointment[]> {
+  const response = await request<ApiEnvelope<PatientAppointment[]>>(`/appointments?filter=${filter}`);
+  return response.data;
+}
+
+export async function fetchDoctorAvailableSlots(doctorId: string, date: string): Promise<string[]> {
+  const response = await request<ApiEnvelope<string[]>>(`/appointments/doctors/${doctorId}/available-slots?date=${date}`);
+  return response.data;
+}
+
+export async function createAppointment(payload: CreateAppointmentPayload): Promise<PatientAppointment> {
+  const response = await request<ApiEnvelope<PatientAppointment>>('/appointments', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+  return response.data;
+}
+
+export async function cancelPatientAppointment(appointmentId: string): Promise<void> {
+  await request<ApiEnvelope<unknown>>(`/appointments/${appointmentId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'cancelled_by_patient' })
+  });
+}

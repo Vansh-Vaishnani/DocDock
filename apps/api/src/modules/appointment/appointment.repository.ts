@@ -6,6 +6,7 @@ export type AppointmentStatus =
   | 'rejected'
   | 'auto_rejected'
   | 'doctor_on_way'
+  | 'arrived'
   | 'in_consultation'
   | 'completed'
   | 'cancelled_by_patient'
@@ -47,6 +48,7 @@ const appointmentSchema = new Schema<IAppointmentDocument>(
         'rejected',
         'auto_rejected',
         'doctor_on_way',
+        'arrived',
         'in_consultation',
         'completed',
         'cancelled_by_patient',

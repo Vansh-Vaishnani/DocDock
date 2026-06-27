@@ -25,7 +25,11 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
-  TWILIO_ACCOUNT_SID: z.string().optional()
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  DEV_AUTO_VERIFY_DOCTOR: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true')
 });
 
 export type Environment = z.infer<typeof envSchema>;

@@ -67,7 +67,9 @@ export default function PatientDashboardPage() {
             <p className="mt-3 text-lg text-slate-600">Keep your profile, address book, allergies, and medical history in one place.</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link href="/patient/profile" className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">View profile</Link>
+            <Link href="/find-doctors" className="rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700">Find doctors</Link>
+            <Link href="/patient/appointments" className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">My appointments</Link>
+            <Link href="/patient/profile" className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">View profile</Link>
             <Link href="/patient/addresses" className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Manage addresses</Link>
           </div>
         </div>

@@ -49,7 +49,8 @@ export const config = {
   emailProviderApiKey: env.SENDGRID_API_KEY || '',
   smsProviderApiKey: env.TWILIO_AUTH_TOKEN || '',
   twilioAccountSid: env.TWILIO_ACCOUNT_SID || '',
-  twilioAuthToken: env.TWILIO_AUTH_TOKEN || ''
+  twilioAuthToken: env.TWILIO_AUTH_TOKEN || '',
+  devAutoVerifyDoctor: env.DEV_AUTO_VERIFY_DOCTOR
 };
 
 const redisIsTls = redisUrlProtocol === 'rediss:' || redisUrl.includes('.upstash.io');

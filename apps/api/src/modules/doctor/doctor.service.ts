@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 
 import { ApiError } from '../../common/errors/ApiError';
+import { config } from '../../common/config';
 import { isCloudinaryEnabled, uploadBase64File } from '../../services/cloudinary.service';
 
 import { AuthService } from '../auth/auth.service';
@@ -189,10 +190,15 @@ export class DoctorService {
       medicalLicenseUrl,
       location: payload.location ?? { type: 'Point', coordinates: [77.5946, 12.9716] },
       availability: { ...defaultAvailability },
-      verificationStatus: 'pending',
+      verificationStatus: config.devAutoVerifyDoctor ? 'approved' : 'pending',
       averageRating: 0,
       reviewCount: 0
     });
+
+    if (config.devAutoVerifyDoctor) {
+      user.verificationStatus = 'approved';
+      user.isVerified = true;
+    }
 
     const tokens = authService.generateTokens(user._id.toString(), 'doctor');
     user.refreshTokenHash = await bcrypt.hash(tokens.refreshToken, 12);
@@ -205,8 +211,8 @@ export class DoctorService {
         fullName: user.fullName,
         email: user.email,
         role: user.role,
-        isVerified: false,
-        verificationStatus: 'pending'
+        isVerified: config.devAutoVerifyDoctor,
+        verificationStatus: config.devAutoVerifyDoctor ? 'approved' : 'pending'
       },
       tokens,
       profile: formatProfile(doctor, user)
@@ -320,7 +326,7 @@ export class DoctorService {
       AppointmentModel.countDocuments({
         doctorId: doctorObjectId,
         scheduledAt: { $gt: endOfToday },
-        status: { $in: ['pending', 'accepted', 'doctor_on_way', 'in_consultation'] }
+        status: { $in: ['pending', 'accepted', 'doctor_on_way', 'arrived', 'in_consultation'] }
       }),
       AppointmentModel.find({ doctorId: doctorObjectId, status: 'completed' }).select('patientId').lean(),
       PaymentModel.aggregate([

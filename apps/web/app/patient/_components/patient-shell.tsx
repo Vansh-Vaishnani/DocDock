@@ -8,6 +8,7 @@ import { useAuth } from '../../auth/auth-context';
 
 const navItems = [
   { href: '/patient', label: 'Dashboard' },
+  { href: '/patient/appointments', label: 'Appointments' },
   { href: '/patient/profile', label: 'Profile' },
   { href: '/patient/addresses', label: 'Addresses' },
   { href: '/patient/medical-history', label: 'Medical history' },
