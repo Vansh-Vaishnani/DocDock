@@ -33,7 +33,7 @@ export class AppointmentController {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
       }
-      const appointment = await service.updateStatus(req.params.appointmentId, req.body.status, user.sub);
+      const appointment = await service.updateStatus(req.params.appointmentId, req.body.status, user.sub, user.role);
       sendSuccess(res, appointment, 'Appointment status updated.');
     } catch (error) {
       next(error);

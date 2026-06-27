@@ -5,12 +5,16 @@ import { usePathname } from 'next/navigation';
 import { type ReactNode, useMemo } from 'react';
 
 import { useAuth } from '../../auth/auth-context';
+import { VerificationBanner } from './verification-banner';
 
 const navItems = [
   { href: '/doctor/dashboard', label: 'Dashboard' },
   { href: '/doctor/profile', label: 'Profile' },
   { href: '/doctor/availability', label: 'Availability' },
-  { href: '/doctor/appointments', label: 'Appointments' }
+  { href: '/doctor/appointments', label: 'Appointments' },
+  { href: '/doctor/prescriptions', label: 'Prescriptions' },
+  { href: '/doctor/earnings', label: 'Earnings' },
+  { href: '/doctor/settings', label: 'Settings' }
 ];
 
 export function DoctorShell({ children }: { children: ReactNode }) {
@@ -39,9 +43,7 @@ export function DoctorShell({ children }: { children: ReactNode }) {
                   key={item.href}
                   href={item.href}
                   className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                    isActive
-                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-                      : 'text-slate-700 hover:bg-slate-100'
+                    isActive ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   <span>{item.label}</span>
@@ -57,15 +59,11 @@ export function DoctorShell({ children }: { children: ReactNode }) {
             <p className="break-words text-xs text-slate-500">{user?.email}</p>
           </div>
 
-          <div className="mt-auto pt-6 space-y-3">
+          <div className="mt-auto space-y-3 pt-6">
             <Link href="/find-doctors" className="block rounded-2xl border border-slate-300 px-4 py-3 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
               Find doctors
             </Link>
-            <button
-              type="button"
-              onClick={logout}
-              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
+            <button type="button" onClick={logout} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
               Log out
             </button>
           </div>
@@ -84,6 +82,7 @@ export function DoctorShell({ children }: { children: ReactNode }) {
             </div>
           </header>
 
+          <VerificationBanner />
           <main className="flex-1">{children}</main>
         </div>
       </div>

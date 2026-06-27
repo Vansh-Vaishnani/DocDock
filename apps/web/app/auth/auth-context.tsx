@@ -16,6 +16,7 @@ export interface AuthUser {
   email: string;
   role: AuthRole;
   isVerified?: boolean;
+  verificationStatus?: 'pending' | 'approved' | 'rejected';
 }
 
 export function getRoleHomePath(user: Pick<AuthUser, 'role' | 'isVerified'> | null | undefined) {
@@ -28,7 +29,7 @@ export function getRoleHomePath(user: Pick<AuthUser, 'role' | 'isVerified'> | nu
   }
 
   if (user.role === 'doctor') {
-    return user.isVerified ? '/doctor/dashboard' : '/doctor/pending-verification';
+    return '/doctor/dashboard';
   }
 
   return '/admin/dashboard';

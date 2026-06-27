@@ -1,20 +1,58 @@
 import mongoose, { Schema, model } from 'mongoose';
 
+export interface ITimeSlot {
+  start: string;
+  end: string;
+}
+
+export interface IDoctorAvailability {
+  isAvailable: boolean;
+  lastSeenAt?: Date;
+  workingDays: string[];
+  morningSlot: ITimeSlot;
+  eveningSlot: ITimeSlot;
+  breakTime: ITimeSlot;
+  vacationMode: boolean;
+  maxAppointmentsPerDay: number;
+}
+
 export interface IDoctorDocument extends mongoose.Document {
   userId: mongoose.Types.ObjectId;
   licenseNumber: string;
   specialization: string;
   qualifications: string[];
+  medicalDegree?: string;
   experience: number;
   bio: string;
   languages: string[];
   consultationFee: number;
+  gender?: 'male' | 'female' | 'other';
+  dateOfBirth?: Date;
+  clinicName?: string;
+  profilePhotoUrl?: string;
+  governmentIdUrl?: string;
+  medicalLicenseUrl?: string;
   location: { type: 'Point'; coordinates: [number, number] };
-  availability: { isAvailable: boolean; lastSeenAt?: Date };
+  availability: IDoctorAvailability;
   verificationStatus: 'pending' | 'approved' | 'rejected';
   averageRating: number;
   reviewCount: number;
 }
+
+const timeSlotSchema = {
+  start: { type: String, default: '09:00' },
+  end: { type: String, default: '12:00' }
+};
+
+const defaultAvailability: IDoctorAvailability = {
+  isAvailable: false,
+  workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+  morningSlot: { start: '09:00', end: '12:00' },
+  eveningSlot: { start: '17:00', end: '20:00' },
+  breakTime: { start: '13:00', end: '14:00' },
+  vacationMode: false,
+  maxAppointmentsPerDay: 10
+};
 
 const doctorSchema = new Schema<IDoctorDocument>(
   {
@@ -22,10 +60,17 @@ const doctorSchema = new Schema<IDoctorDocument>(
     licenseNumber: { type: String, required: true, unique: true },
     specialization: { type: String, required: true },
     qualifications: [{ type: String, required: true }],
+    medicalDegree: { type: String },
     experience: { type: Number, required: true, min: 0 },
     bio: { type: String, default: '' },
     languages: [{ type: String, default: [] }],
     consultationFee: { type: Number, required: true },
+    gender: { type: String, enum: ['male', 'female', 'other'] },
+    dateOfBirth: { type: Date },
+    clinicName: { type: String },
+    profilePhotoUrl: { type: String },
+    governmentIdUrl: { type: String },
+    medicalLicenseUrl: { type: String },
     location: {
       type: {
         type: String,
@@ -37,7 +82,13 @@ const doctorSchema = new Schema<IDoctorDocument>(
     },
     availability: {
       isAvailable: { type: Boolean, default: false },
-      lastSeenAt: { type: Date }
+      lastSeenAt: { type: Date },
+      workingDays: { type: [String], default: defaultAvailability.workingDays },
+      morningSlot: { type: timeSlotSchema, default: () => defaultAvailability.morningSlot },
+      eveningSlot: { type: timeSlotSchema, default: () => defaultAvailability.eveningSlot },
+      breakTime: { type: timeSlotSchema, default: () => defaultAvailability.breakTime },
+      vacationMode: { type: Boolean, default: false },
+      maxAppointmentsPerDay: { type: Number, default: 10, min: 1 }
     },
     verificationStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
     averageRating: { type: Number, default: 0 },
@@ -47,7 +98,7 @@ const doctorSchema = new Schema<IDoctorDocument>(
 );
 
 doctorSchema.index({ location: '2dsphere' });
-
 doctorSchema.index({ verificationStatus: 1, 'availability.isAvailable': 1 });
 
+export { defaultAvailability };
 export const DoctorModel = model<IDoctorDocument>('Doctor', doctorSchema);

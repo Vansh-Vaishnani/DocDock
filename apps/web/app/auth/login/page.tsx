@@ -96,7 +96,10 @@ function LoginPageContent() {
                   <input type="checkbox" checked={rememberSession} onChange={(event) => setRememberSession(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
                   Remember me
                 </label>
-                <a href="/auth/register" className="font-semibold text-emerald-600">Create account</a>
+                <Link href="/auth/forgot-password" className="font-semibold text-emerald-600">Forgot password?</Link>
+              </div>
+              <div className="text-center text-sm text-slate-600">
+                <Link href="/auth/register" className="font-semibold text-emerald-600">Create account</Link>
               </div>
               {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
               <button type="submit" disabled={isSubmitting} className="w-full rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-70">

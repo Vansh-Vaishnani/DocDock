@@ -4,8 +4,13 @@ export interface IPatientDocument extends mongoose.Document {
   userId: mongoose.Types.ObjectId;
   bloodGroup?: string;
   allergies: string[];
-  medicalHistory: Array<{ note: string; createdAt: Date }>;
-  addresses: Array<{ label: string; location: { type: 'Point'; coordinates: [number, number] }; isDefault: boolean }>;
+  medicalHistory: Array<{ _id?: mongoose.Types.ObjectId; note: string; createdAt: Date }>;
+  addresses: Array<{
+    _id?: mongoose.Types.ObjectId;
+    label: string;
+    location: { type: 'Point'; coordinates: [number, number] };
+    isDefault: boolean;
+  }>;
 }
 
 const patientSchema = new Schema<IPatientDocument>(

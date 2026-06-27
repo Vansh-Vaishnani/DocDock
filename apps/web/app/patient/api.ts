@@ -24,7 +24,9 @@ const getStoredAccessToken = (): string | null => {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
-  headers.set('Content-Type', 'application/json');
+  if (init.body) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   const token = getStoredAccessToken();
   if (token) {
@@ -50,17 +52,27 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export type PatientAddress = {
+  _id?: string;
   label: string;
   location: { type: 'Point'; coordinates: [number, number] };
   isDefault: boolean;
 };
 
+export type MedicalHistoryEntry = {
+  _id?: string;
+  note: string;
+  createdAt: string;
+};
+
 export type PatientProfile = {
   _id: string;
   userId: string;
+  fullName: string;
+  email: string;
+  phone: string;
   bloodGroup?: string;
   allergies: string[];
-  medicalHistory: Array<{ note: string; createdAt: string }>;
+  medicalHistory: MedicalHistoryEntry[];
   addresses: PatientAddress[];
 };
 
@@ -70,45 +82,72 @@ export type ApiEnvelope<T> = {
   data: T;
 };
 
-export async function addAddress(payload: PatientAddress) {
+export type UpdatePatientProfilePayload = {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  bloodGroup?: string;
+  allergies?: string[];
+  medicalHistory?: Array<{ note: string; createdAt?: string }>;
+};
+
+export type UpdateAddressPayload = {
+  label?: string;
+  location?: { type: 'Point'; coordinates: [number, number] };
+  isDefault?: boolean;
+};
+
+export async function fetchPatientProfile(): Promise<PatientProfile> {
+  const response = await request<ApiEnvelope<PatientProfile>>('/patients/profile/me');
+  return response.data;
+}
+
+export async function updatePatientProfile(payload: UpdatePatientProfilePayload): Promise<PatientProfile> {
+  const response = await request<ApiEnvelope<PatientProfile>>('/patients/profile/me', {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+  return response.data;
+}
+
+export async function listPatientAddresses(): Promise<PatientAddress[]> {
+  const response = await request<ApiEnvelope<PatientAddress[]>>('/patients/addresses');
+  return response.data;
+}
+
+export async function addAddress(payload: Omit<PatientAddress, '_id'>) {
   return request<ApiEnvelope<PatientProfile>>('/patients/addresses', {
     method: 'POST',
     body: JSON.stringify(payload)
   });
 }
 
-export async function fetchPatientProfile(): Promise<PatientProfile> {
-  throw new Error('Patient profile API is not available yet.');
+export async function updatePatientAddress(addressId: string, payload: UpdateAddressPayload): Promise<PatientProfile> {
+  const response = await request<ApiEnvelope<PatientProfile>>(`/patients/addresses/${addressId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+  return response.data;
 }
 
-export async function updatePatientProfile(): Promise<never> {
-  throw new Error('Patient profile update API is not available yet.');
+export async function deletePatientAddress(addressId: string): Promise<PatientProfile> {
+  const response = await request<ApiEnvelope<PatientProfile>>(`/patients/addresses/${addressId}`, {
+    method: 'DELETE'
+  });
+  return response.data;
 }
 
-export async function listPatientAddresses(): Promise<PatientAddress[]> {
-  throw new Error('Patient address listing API is not available yet.');
+export async function setDefaultPatientAddress(addressId: string): Promise<PatientProfile> {
+  const response = await request<ApiEnvelope<PatientProfile>>(`/patients/addresses/${addressId}/default`, {
+    method: 'PATCH'
+  });
+  return response.data;
 }
 
-export async function updatePatientAddress(): Promise<never> {
-  throw new Error('Patient address update API is not available yet.');
+export async function updateMedicalHistory(entries: Array<{ note: string; createdAt?: string }>): Promise<PatientProfile> {
+  return updatePatientProfile({ medicalHistory: entries });
 }
 
-export async function deletePatientAddress(): Promise<never> {
-  throw new Error('Patient address delete API is not available yet.');
-}
-
-export async function setDefaultPatientAddress(): Promise<never> {
-  throw new Error('Patient default address API is not available yet.');
-}
-
-export async function updateMedicalHistory(): Promise<never> {
-  throw new Error('Patient medical history API is not available yet.');
-}
-
-export async function updateAllergies(): Promise<never> {
-  throw new Error('Patient allergy API is not available yet.');
-}
-
-export async function updateAccountSettings(): Promise<never> {
-  throw new Error('Patient settings API is not available yet.');
+export async function updateAllergies(allergies: string[]): Promise<PatientProfile> {
+  return updatePatientProfile({ allergies });
 }

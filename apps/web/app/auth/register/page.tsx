@@ -14,8 +14,7 @@ const schema = z.object({
   fullName: z.string().trim().min(2, 'Full name is required'),
   email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
   phone: z.string().trim().min(10, 'Phone number must be at least 10 digits'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  role: z.enum(['patient', 'doctor'])
+  password: z.string().min(8, 'Password must be at least 8 characters')
 });
 
 type RegisterForm = z.infer<typeof schema>;
@@ -39,7 +38,7 @@ export default function RegisterPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await registerUser(values);
+      await registerUser({ ...values, role: 'patient' });
       showToast('Account created successfully. Please sign in.', 'success');
       router.push('/auth/login');
     } catch (err: unknown) {
@@ -63,7 +62,7 @@ export default function RegisterPage() {
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-600">Join the platform</p>
             <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Create your DocDock account</h1>
-            <p className="mt-3 max-w-2xl text-slate-600">Register as a patient or doctor and get started with secure, modern care access.</p>
+            <p className="mt-3 max-w-2xl text-slate-600">Create a patient account and get started with secure, modern care access.</p>
           </div>
           <Link href="/" className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Back home</Link>
         </div>
@@ -97,13 +96,6 @@ export default function RegisterPage() {
                 </div>
                 {errors.password && <p className="mt-2 text-sm text-rose-600">{errors.password.message}</p>}
               </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">I am a</label>
-                <select {...register('role')} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-emerald-500">
-                  <option value="patient">Patient</option>
-                  <option value="doctor">Doctor</option>
-                </select>
-              </div>
               {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
               <button type="submit" disabled={isSubmitting} className="w-full rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-70">
                 {isSubmitting ? 'Creating account…' : 'Create account'}
@@ -122,6 +114,10 @@ export default function RegisterPage() {
             </a>
 
             <p className="mt-6 text-center text-sm text-slate-600">
+              Are you a doctor?{' '}
+              <Link href="/auth/register/doctor" className="font-semibold text-emerald-600">Register as a doctor</Link>
+            </p>
+            <p className="mt-2 text-center text-sm text-slate-600">
               Already have an account?{' '}
               <Link href="/auth/login" className="font-semibold text-emerald-600">Sign in</Link>
             </p>

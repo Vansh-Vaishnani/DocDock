@@ -1,8 +1,10 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
 import { config } from '../../common/config';
 import { ApiError } from '../../common/errors/ApiError';
+import { sendPasswordResetEmail, isEmailServiceEnabled } from '../../services/email.service';
 
 import { DoctorModel } from '../doctor/doctor.repository';
 import { PatientModel } from '../patient/patient.repository';
@@ -78,8 +80,8 @@ export class AuthService {
     if (!match) {
       throw new ApiError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
     }
-    if (user.role === 'doctor' && user.verificationStatus !== 'approved') {
-      throw new ApiError('Doctor account is not verified', 403, 'DOCTOR_NOT_VERIFIED');
+    if (user.role === 'doctor' && user.verificationStatus === 'rejected') {
+      throw new ApiError('Doctor account verification was rejected', 403, 'DOCTOR_NOT_VERIFIED');
     }
     const tokens = this.generateTokens(user._id.toString(), user.role);
     const refreshTokenHash = await bcrypt.hash(tokens.refreshToken, 12);
@@ -93,7 +95,8 @@ export class AuthService {
         fullName: user.fullName,
         email: user.email,
         role: user.role,
-        isVerified: user.isVerified
+        isVerified: user.role === 'doctor' ? user.verificationStatus === 'approved' : user.isVerified,
+        verificationStatus: user.verificationStatus
       },
       tokens
     };
@@ -179,5 +182,64 @@ export class AuthService {
     user.refreshTokenHash = await bcrypt.hash(tokens.refreshToken, 12);
     await user.save();
     return tokens;
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await UserModel.findOne({ email: email.toLowerCase(), isDeleted: false, isActive: true });
+    if (!user) {
+      return;
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    user.passwordResetToken = await bcrypt.hash(resetToken, 12);
+    user.passwordResetExpiry = new Date(Date.now() + 60 * 60 * 1000);
+    await user.save();
+
+    if (isEmailServiceEnabled()) {
+      await sendPasswordResetEmail(user.email, resetToken, user.fullName);
+    } else {
+      console.warn(`Password reset link (email not configured): ${config.appUrl.replace(/\/$/, '')}/auth/reset-password?token=${encodeURIComponent(resetToken)}`);
+    }
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const users = await UserModel.find({
+      passwordResetExpiry: { $gt: new Date() },
+      passwordResetToken: { $exists: true, $ne: null }
+    });
+
+    let matchedUser: IUserDocument | null = null;
+    for (const user of users) {
+      if (user.passwordResetToken && (await bcrypt.compare(token, user.passwordResetToken))) {
+        matchedUser = user;
+        break;
+      }
+    }
+
+    if (!matchedUser) {
+      throw new ApiError('Invalid or expired reset token', 400, 'INVALID_TOKEN');
+    }
+
+    matchedUser.passwordHash = await bcrypt.hash(newPassword, 12);
+    matchedUser.passwordResetToken = undefined;
+    matchedUser.passwordResetExpiry = undefined;
+    matchedUser.refreshTokenHash = undefined;
+    await matchedUser.save();
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await UserModel.findById(userId);
+    if (!user || user.isDeleted || !user.isActive) {
+      throw new ApiError('User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    const match = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!match) {
+      throw new ApiError('Current password is incorrect', 400, 'INVALID_CREDENTIALS');
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    user.refreshTokenHash = undefined;
+    await user.save();
   }
 }

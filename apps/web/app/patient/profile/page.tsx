@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -39,14 +40,14 @@ export default function PatientProfilePage() {
         setProfile(result);
         setError(null);
         reset({
-          fullName: result._id ? '' : '',
-          email: '',
-          phone: '',
+          fullName: result.fullName,
+          email: result.email,
+          phone: result.phone,
           bloodGroup: result.bloodGroup || ''
         });
       } catch (err: unknown) {
         if (!mounted) return;
-        setError(err instanceof Error ? err.message : 'Patient profile API is not available yet.');
+        setError(err instanceof Error ? err.message : 'Unable to load profile.');
       } finally {
         if (mounted) setLoading(false);
       }
@@ -63,11 +64,22 @@ export default function PatientProfilePage() {
   const onSubmit = async (values: FormValues) => {
     setSaving(true);
     try {
-      void values;
-      await updatePatientProfile();
+      const updated = await updatePatientProfile({
+        fullName: values.fullName,
+        email: values.email,
+        phone: values.phone,
+        bloodGroup: values.bloodGroup || undefined
+      });
+      setProfile(updated);
+      reset({
+        fullName: updated.fullName,
+        email: updated.email,
+        phone: updated.phone,
+        bloodGroup: updated.bloodGroup || ''
+      });
       showToast('Profile updated successfully.', 'success');
     } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Profile update is not available yet.', 'error');
+      showToast(err instanceof Error ? err.message : 'Unable to update profile.', 'error');
     } finally {
       setSaving(false);
     }
@@ -81,9 +93,9 @@ export default function PatientProfilePage() {
     <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-2xl font-semibold">Profile</h2>
-        <p className="mt-2 text-slate-600">View and edit the details already stored in your patient record.</p>
+        <p className="mt-2 text-slate-600">View and edit the details stored in your patient record.</p>
 
-        {error && <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div>}
+        {error && <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
           <div>
@@ -114,16 +126,23 @@ export default function PatientProfilePage() {
       </div>
 
       <div className="space-y-6">
-        <div id="addresses" className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-xl font-semibold">Addresses</h3>
-          <p className="mt-2 text-sm text-slate-600">Address management is ready for the backend list/update/delete endpoints.</p>
-          <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-slate-600">Manage your saved locations for home visits.</p>
+          <div className="mt-4 rounded-2xl border border-slate-200 p-4 text-sm text-slate-600">
             Saved addresses: {addressCount}
           </div>
+          <Link href="/patient/addresses" className="mt-4 inline-block text-sm font-semibold text-emerald-600 hover:text-emerald-700">
+            Manage addresses →
+          </Link>
         </div>
         <div className="rounded-[28px] bg-slate-950 p-6 text-white shadow-sm">
-          <h3 className="text-xl font-semibold">Edit scope</h3>
-          <p className="mt-3 text-sm leading-6 text-slate-300">This page is wired only to real backend state. Fields that the backend does not yet expose are intentionally left unpopulated instead of being faked.</p>
+          <h3 className="text-xl font-semibold">Health records</h3>
+          <p className="mt-3 text-sm leading-6 text-slate-300">Keep allergies and medical history up to date so doctors have the information they need during visits.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link href="/patient/allergies" className="rounded-full border border-slate-600 px-4 py-2 text-sm font-medium transition hover:bg-slate-800">Allergies</Link>
+            <Link href="/patient/medical-history" className="rounded-full border border-slate-600 px-4 py-2 text-sm font-medium transition hover:bg-slate-800">Medical history</Link>
+          </div>
         </div>
       </div>
     </section>

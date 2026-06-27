@@ -1,5 +1,15 @@
 import { z } from 'zod';
 
+const timeSlotSchema = z.object({
+  start: z.string().regex(/^\d{2}:\d{2}$/),
+  end: z.string().regex(/^\d{2}:\d{2}$/)
+});
+
+const locationSchema = z.object({
+  type: z.literal('Point'),
+  coordinates: z.tuple([z.number(), z.number()])
+});
+
 export const nearbyDoctorsSchema = z.object({
   query: z.object({
     latitude: z.string().transform(Number),
@@ -11,7 +21,13 @@ export const nearbyDoctorsSchema = z.object({
 
 export const availabilitySchema = z.object({
   body: z.object({
-    isAvailable: z.boolean()
+    isAvailable: z.boolean().optional(),
+    workingDays: z.array(z.string()).optional(),
+    morningSlot: timeSlotSchema.optional(),
+    eveningSlot: timeSlotSchema.optional(),
+    breakTime: timeSlotSchema.optional(),
+    vacationMode: z.boolean().optional(),
+    maxAppointmentsPerDay: z.number().int().min(1).max(50).optional()
   })
 });
 
@@ -24,9 +40,59 @@ export const doctorProfileSchema = z.object({
     bio: z.string().min(10).max(500),
     languages: z.array(z.string().min(2)).min(1),
     consultationFee: z.number().int().min(0),
-    location: z.object({
-      type: z.literal('Point'),
-      coordinates: z.tuple([z.number(), z.number()])
-    })
+    location: locationSchema
+  })
+});
+
+export const doctorRegisterSchema = z.object({
+  body: z.object({
+    fullName: z.string().min(2).max(100),
+    email: z.string().email(),
+    phone: z.string().min(10),
+    password: z.string().min(8),
+    gender: z.enum(['male', 'female', 'other']),
+    dateOfBirth: z.string().min(1),
+    qualification: z.string().min(2),
+    medicalDegree: z.string().min(2),
+    licenseNumber: z.string().min(3),
+    experience: z.coerce.number().int().min(0),
+    specialization: z.string().min(2),
+    consultationFee: z.coerce.number().int().min(0),
+    languages: z.array(z.string().min(2)).min(1),
+    clinicName: z.string().min(2),
+    bio: z.string().min(10).max(1000),
+    location: locationSchema.optional(),
+    profilePhoto: z.string().optional(),
+    governmentId: z.string().optional(),
+    medicalLicense: z.string().optional()
+  })
+});
+
+export const updateDoctorProfileSchema = z.object({
+  body: z.object({
+    fullName: z.string().min(2).max(100).optional(),
+    email: z.string().email().optional(),
+    phone: z.string().min(10).optional(),
+    specialization: z.string().min(2).optional(),
+    qualification: z.string().min(2).optional(),
+    medicalDegree: z.string().min(2).optional(),
+    licenseNumber: z.string().min(3).optional(),
+    experience: z.number().int().min(0).optional(),
+    bio: z.string().max(1000).optional(),
+    languages: z.array(z.string().min(2)).optional(),
+    consultationFee: z.number().int().min(0).optional(),
+    gender: z.enum(['male', 'female', 'other']).optional(),
+    dateOfBirth: z.string().optional(),
+    clinicName: z.string().min(2).optional(),
+    location: locationSchema.optional(),
+    profilePhoto: z.string().optional(),
+    governmentId: z.string().optional(),
+    medicalLicense: z.string().optional()
+  })
+});
+
+export const doctorAppointmentsSchema = z.object({
+  query: z.object({
+    filter: z.enum(['today', 'upcoming', 'all']).optional().default('all')
   })
 });

@@ -6,7 +6,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { useToast } from '../../auth/toast-provider';
-import { addAddress, type PatientAddress, type PatientProfile } from '../api';
+import {
+  addAddress,
+  deletePatientAddress,
+  listPatientAddresses,
+  setDefaultPatientAddress,
+  updatePatientAddress,
+  type PatientAddress
+} from '../api';
 
 const schema = z.object({
   label: z.string().trim().min(3, 'Label is required'),
@@ -17,22 +24,35 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-const emptyAddress: PatientAddress[] = [];
-
 export default function PatientAddressesPage() {
   const { showToast } = useToast();
-  const [addresses, setAddresses] = useState<PatientAddress[]>(emptyAddress);
+  const [addresses, setAddresses] = useState<PatientAddress[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [missingApiMessage, setMissingApiMessage] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [actionId, setActionId] = useState<string | null>(null);
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { isDefault: false }
   });
 
+  const loadAddresses = async () => {
+    setLoading(true);
+    try {
+      const result = await listPatientAddresses();
+      setAddresses(result);
+      setError(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to load addresses.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setLoading(false);
-    setMissingApiMessage('The backend currently exposes address creation only. Address listing, editing, deleting, and default selection are ready here, but they wait for the corresponding API endpoints.');
+    void loadAddresses();
   }, []);
 
   const onSubmit = async (values: FormValues) => {
@@ -47,8 +67,7 @@ export default function PatientAddressesPage() {
         isDefault: values.isDefault || false
       };
       const response = await addAddress(payload);
-      const nextProfile = response.data;
-      setAddresses(nextProfile.addresses);
+      setAddresses(response.data.addresses);
       reset({ label: '', latitude: '', longitude: '', isDefault: false });
       showToast('Address added successfully.', 'success');
     } catch (err: unknown) {
@@ -58,16 +77,70 @@ export default function PatientAddressesPage() {
     }
   };
 
+  const handleDelete = async (addressId: string) => {
+    setActionId(addressId);
+    try {
+      const profile = await deletePatientAddress(addressId);
+      setAddresses(profile.addresses);
+      showToast('Address deleted.', 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Unable to delete address.', 'error');
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleSetDefault = async (addressId: string) => {
+    setActionId(addressId);
+    try {
+      const profile = await setDefaultPatientAddress(addressId);
+      setAddresses(profile.addresses);
+      showToast('Default address updated.', 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Unable to set default address.', 'error');
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const startEdit = (address: PatientAddress) => {
+    if (!address._id) return;
+    setEditingId(address._id);
+    setEditLabel(address.label);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditLabel('');
+  };
+
+  const saveEdit = async (addressId: string) => {
+    if (!editLabel.trim()) {
+      showToast('Label is required.', 'error');
+      return;
+    }
+    setActionId(addressId);
+    try {
+      const profile = await updatePatientAddress(addressId, { label: editLabel.trim() });
+      setAddresses(profile.addresses);
+      cancelEdit();
+      showToast('Address updated.', 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Unable to update address.', 'error');
+    } finally {
+      setActionId(null);
+    }
+  };
+
   const defaultAddress = useMemo(() => addresses.find((address) => address.isDefault), [addresses]);
 
   return (
     <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-2xl font-semibold">Address management</h2>
-        <p className="mt-2 text-slate-600">Add a real address through the current backend endpoint. The rest of the actions are intentionally isolated until the API exists.</p>
+        <p className="mt-2 text-slate-600">Add and manage locations for home doctor visits.</p>
 
         {error && <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-        {missingApiMessage && <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{missingApiMessage}</div>}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
           <div>
@@ -99,7 +172,7 @@ export default function PatientAddressesPage() {
 
       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-xl font-semibold">Saved addresses</h3>
-        <p className="mt-2 text-sm text-slate-600">The list will populate once the backend exposes the remaining address endpoints.</p>
+        <p className="mt-2 text-sm text-slate-600">Edit labels, set a default, or remove addresses you no longer need.</p>
 
         {loading && <div className="mt-5 rounded-2xl bg-slate-100 p-4 text-sm text-slate-600">Loading addresses...</div>}
 
@@ -111,14 +184,67 @@ export default function PatientAddressesPage() {
 
         {!loading && addresses.length > 0 && (
           <div className="mt-5 space-y-3">
-            {addresses.map((address, index) => (
-              <div key={`${address.label}-${index}`} className="rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">{address.label}</p>
-                    <p className="text-sm text-slate-600">{address.location.coordinates.join(', ')}</p>
+            {addresses.map((address) => (
+              <div key={address._id || address.label} className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    {editingId === address._id ? (
+                      <input
+                        value={editLabel}
+                        onChange={(e) => setEditLabel(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-500"
+                      />
+                    ) : (
+                      <p className="font-semibold text-slate-900">{address.label}</p>
+                    )}
+                    <p className="mt-1 text-sm text-slate-600">
+                      {address.location.coordinates[1]}, {address.location.coordinates[0]}
+                    </p>
                   </div>
-                  {address.isDefault && <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Default</span>}
+                  {address.isDefault && <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Default</span>}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {editingId === address._id ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => address._id && saveEdit(address._id)}
+                        disabled={actionId === address._id}
+                        className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                      >
+                        Save
+                      </button>
+                      <button type="button" onClick={cancelEdit} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => startEdit(address)} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                        Edit
+                      </button>
+                      {!address.isDefault && address._id && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefault(address._id!)}
+                          disabled={actionId === address._id}
+                          className="rounded-full border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700 disabled:opacity-60"
+                        >
+                          Set default
+                        </button>
+                      )}
+                      {address._id && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(address._id!)}
+                          disabled={actionId === address._id}
+                          className="rounded-full border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 disabled:opacity-60"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             ))}

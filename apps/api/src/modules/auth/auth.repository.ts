@@ -13,6 +13,8 @@ export interface IUserDocument extends mongoose.Document {
   googleId?: string;
   avatar?: string;
   refreshTokenHash?: string;
+  passwordResetToken?: string;
+  passwordResetExpiry?: Date;
   lastLogin?: Date;
 }
 
@@ -30,6 +32,8 @@ const userSchema = new Schema<IUserDocument>(
     googleId: { type: String, sparse: true },
     avatar: { type: String },
     refreshTokenHash: { type: String },
+    passwordResetToken: { type: String },
+    passwordResetExpiry: { type: Date },
     lastLogin: { type: Date }
   },
   { timestamps: true }

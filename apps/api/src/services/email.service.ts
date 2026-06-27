@@ -1,5 +1,7 @@
 import type { MailDataRequired } from '@sendgrid/mail';
 
+import { config } from '../common/config';
+
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'noreply@docdock.com';
 let sgMailClient: { setApiKey: (key: string) => void; send: (msg: MailDataRequired | MailDataRequired[]) => Promise<unknown>; } | null = null;
@@ -88,7 +90,8 @@ If you didn't request this, please ignore this email.
  * Send password reset email
  */
 export const sendPasswordResetEmail = async (email: string, resetToken: string, name: string): Promise<void> => {
-  const resetLink = `${process.env.APP_URL}/auth/reset-password?token=${resetToken}`;
+  const appUrl = config.appUrl.replace(/\/$/, '');
+  const resetLink = `${appUrl}/auth/reset-password?token=${encodeURIComponent(resetToken)}`;
 
   const html = `
     <h2>Password Reset Request</h2>

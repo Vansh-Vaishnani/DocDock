@@ -4,11 +4,19 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 
 import { getGoogleOAuthConfig, extractProfileFromGoogle } from '../../common/config/oauth';
 import { config } from '../../common/config';
+import { authenticate } from '../../common/middleware/authMiddleware';
 import { validateRequest } from '../../common/middleware/validateRequest';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { registerSchema, loginSchema, refreshSchema } from './auth.validation';
+import {
+  registerSchema,
+  loginSchema,
+  refreshSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  changePasswordSchema
+} from './auth.validation';
 
 const router = express.Router();
 const controller = new AuthController();
@@ -59,5 +67,8 @@ router.get('/google/callback', (req, res, next) => {
 router.post('/register', validateRequest(registerSchema), controller.register.bind(controller));
 router.post('/login', validateRequest(loginSchema), controller.login.bind(controller));
 router.post('/refresh-token', validateRequest(refreshSchema), controller.refreshToken.bind(controller));
+router.post('/forgot-password', validateRequest(forgotPasswordSchema), controller.forgotPassword.bind(controller));
+router.post('/reset-password', validateRequest(resetPasswordSchema), controller.resetPassword.bind(controller));
+router.patch('/change-password', authenticate, validateRequest(changePasswordSchema), controller.changePassword.bind(controller));
 
 export default router;

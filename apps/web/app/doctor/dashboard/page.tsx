@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 import { useAuth } from '../../auth/auth-context';
+import { fetchDoctorDashboard, type DoctorDashboard } from '../api';
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
@@ -17,14 +17,20 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
 }
 
 export default function DoctorDashboardPage() {
-  const router = useRouter();
   const { user } = useAuth();
+  const [dashboard, setDashboard] = useState<DoctorDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user && user.isVerified === false) {
-      router.replace('/doctor/pending-verification');
-    }
-  }, [router, user]);
+    void fetchDoctorDashboard()
+      .then(setDashboard)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unable to load dashboard.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const stats = dashboard?.stats;
+  const profile = dashboard?.profile;
 
   return (
     <div className="space-y-6">
@@ -32,7 +38,7 @@ export default function DoctorDashboardPage() {
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-600">Doctor dashboard</p>
-            <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">Welcome back, {user?.fullName || 'doctor'}</h2>
+            <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">Welcome back, {user?.fullName || profile?.fullName || 'doctor'}</h2>
             <p className="mt-3 text-lg text-slate-600">Review your schedule, profile, and availability from one place.</p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -42,36 +48,20 @@ export default function DoctorDashboardPage() {
         </div>
       </section>
 
+      {error && <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{error}</div>}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Verification" value={user?.isVerified ? 'Verified' : 'Pending'} detail={user?.isVerified ? 'Your account is approved for patient access.' : 'Finish verification to unlock the full doctor workspace.'} />
-        <MetricCard label="Appointments" value="0" detail="Appointment APIs will populate this view when available." />
-        <MetricCard label="Availability" value="Open" detail="Keep your time slots current so patients can find you." />
-        <MetricCard label="Profile" value="Ready" detail="Your public profile is available through the existing auth session." />
+        <MetricCard label="Today's appointments" value={loading ? '...' : String(stats?.todayAppointments ?? 0)} detail="Scheduled for today." />
+        <MetricCard label="Upcoming" value={loading ? '...' : String(stats?.upcomingAppointments ?? 0)} detail="Future confirmed visits." />
+        <MetricCard label="Verification" value={loading ? '...' : stats?.verificationStatus === 'approved' ? 'Verified' : 'Pending'} detail={stats?.verificationStatus === 'approved' ? 'You can accept appointments.' : 'Awaiting admin approval.'} />
+        <MetricCard label="Profile completion" value={loading ? '...' : `${stats?.profileCompletionPercent ?? 0}%`} detail="Complete your profile to improve visibility." />
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-xl font-semibold">Today’s focus</h3>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            {[
-              { title: 'Keep availability current', description: 'Update open slots before patients start booking.' },
-              { title: 'Review appointment flow', description: 'Confirm upcoming visits and next actions.' },
-              { title: 'Refresh your profile', description: 'Keep specialization and credentials up to date.' },
-              { title: 'Check verification status', description: 'Pending doctors are routed here until approval.' }
-            ].map((item) => (
-              <div key={item.title} className="rounded-2xl border border-slate-200 p-4">
-                <p className="font-semibold text-slate-900">{item.title}</p>
-                <p className="mt-2 text-sm text-slate-600">{item.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-[28px] bg-slate-950 p-6 text-white shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-300">Doctor account</p>
-          <h3 className="mt-3 text-2xl font-semibold">Verified access path</h3>
-          <p className="mt-3 text-sm leading-6 text-slate-300">This dashboard stays on the current auth context and JWT session. It does not introduce any new backend flow.</p>
-        </div>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Availability" value={loading ? '...' : stats?.availabilityStatus ? 'Online' : 'Offline'} detail="Toggle from the availability page." />
+        <MetricCard label="Total patients" value={loading ? '...' : String(stats?.totalPatients ?? 0)} detail="Unique patients from completed visits." />
+        <MetricCard label="Average rating" value={loading ? '...' : `${stats?.averageRating?.toFixed(1) ?? '0.0'} ★`} detail={`${stats?.reviewCount ?? 0} reviews`} />
+        <MetricCard label="Total earnings" value={loading ? '...' : `₹${stats?.totalEarnings ?? 0}`} detail="From paid appointments." />
       </section>
     </div>
   );

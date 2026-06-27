@@ -36,7 +36,7 @@ export default function PatientDashboardPage() {
       } catch (err: unknown) {
         if (mounted) {
           setProfile(null);
-          setError(err instanceof Error ? err.message : 'Patient profile API is not available yet.');
+          setError(err instanceof Error ? err.message : 'Unable to load your profile.');
         }
       } finally {
         if (mounted) {
@@ -55,6 +55,7 @@ export default function PatientDashboardPage() {
   const addressCount = profile?.addresses?.length ?? 0;
   const allergyCount = profile?.allergies?.length ?? 0;
   const historyCount = profile?.medicalHistory?.length ?? 0;
+  const profileComplete = profile?.fullName && profile?.phone && profile?.bloodGroup;
 
   return (
     <div className="space-y-6">
@@ -62,7 +63,7 @@ export default function PatientDashboardPage() {
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-600">Patient dashboard</p>
-            <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">Welcome back, {user?.fullName || 'patient'}</h2>
+            <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">Welcome back, {user?.fullName || profile?.fullName || 'patient'}</h2>
             <p className="mt-3 text-lg text-slate-600">Keep your profile, address book, allergies, and medical history in one place.</p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -72,13 +73,17 @@ export default function PatientDashboardPage() {
         </div>
       </section>
 
-      {error && <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">{error}</div>}
+      {error && <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{error}</div>}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Profile status" value={loading ? '...' : profile ? 'Ready' : 'Partial'} detail={profile ? 'Backend profile data loaded.' : 'Core session is active; profile API is pending.'} />
-        <StatCard label="Saved addresses" value={loading ? '...' : String(addressCount)} detail="Addresses will sync here once the list endpoint is available." />
-        <StatCard label="Allergies" value={loading ? '...' : String(allergyCount)} detail="Medical safety details are kept inside your patient record." />
-        <StatCard label="Medical notes" value={loading ? '...' : String(historyCount)} detail="History entries appear here when the API exposes them." />
+        <StatCard
+          label="Profile status"
+          value={loading ? '...' : profileComplete ? 'Complete' : 'Incomplete'}
+          detail={profileComplete ? 'Your profile details are up to date.' : 'Add your blood group and contact details.'}
+        />
+        <StatCard label="Saved addresses" value={loading ? '...' : String(addressCount)} detail={addressCount > 0 ? 'Addresses ready for home visits.' : 'Add an address for doctor visits.'} />
+        <StatCard label="Allergies" value={loading ? '...' : String(allergyCount)} detail={allergyCount > 0 ? 'Allergies recorded for safer care.' : 'No allergies recorded yet.'} />
+        <StatCard label="Medical notes" value={loading ? '...' : String(historyCount)} detail={historyCount > 0 ? 'Medical history entries on file.' : 'Add medical history when ready.'} />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -86,28 +91,34 @@ export default function PatientDashboardPage() {
           <h3 className="text-xl font-semibold text-slate-900">Your next steps</h3>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             {[
-              { title: 'Complete profile', description: 'Review your contact details and blood group.' },
-              { title: 'Add addresses', description: 'Store home and emergency locations.' },
-              { title: 'Update allergies', description: 'Keep medication and food sensitivities current.' },
-              { title: 'Review settings', description: 'Manage notifications and privacy preferences.' }
+              { title: 'Complete profile', description: 'Review your contact details and blood group.', href: '/patient/profile' },
+              { title: 'Add addresses', description: 'Store home and emergency locations.', href: '/patient/addresses' },
+              { title: 'Update allergies', description: 'Keep medication and food sensitivities current.', href: '/patient/allergies' },
+              { title: 'Review settings', description: 'Manage password and account preferences.', href: '/patient/settings' }
             ].map((item) => (
-              <div key={item.title} className="rounded-2xl border border-slate-200 p-4">
+              <Link key={item.title} href={item.href} className="rounded-2xl border border-slate-200 p-4 transition hover:border-emerald-300 hover:bg-emerald-50/50">
                 <p className="font-semibold text-slate-900">{item.title}</p>
                 <p className="mt-2 text-sm text-slate-600">{item.description}</p>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
 
         <div className="rounded-[24px] bg-slate-950 p-6 text-white shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-300">Patient account</p>
-          <h3 className="mt-3 text-2xl font-semibold">Secure access</h3>
-          <p className="mt-3 text-sm leading-6 text-slate-300">Your session, profile, and future patient APIs are routed through the existing auth stack, so the module stays aligned with the current architecture.</p>
-          <div className="mt-6 space-y-3 text-sm text-slate-300">
-            <p>• Protected patient routes</p>
-            <p>• Backend-backed address creation</p>
-            <p>• Ready for profile and record APIs</p>
-          </div>
+          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-300">Quick summary</p>
+          <h3 className="mt-3 text-2xl font-semibold">Your health record</h3>
+          {loading ? (
+            <p className="mt-3 text-sm text-slate-300">Loading profile...</p>
+          ) : profile ? (
+            <div className="mt-6 space-y-3 text-sm text-slate-300">
+              <p>• Blood group: {profile.bloodGroup || 'Not set'}</p>
+              <p>• Email: {profile.email}</p>
+              <p>• Phone: {profile.phone}</p>
+              <p>• Default address: {profile.addresses.find((a) => a.isDefault)?.label || 'None set'}</p>
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-slate-300">Profile data unavailable.</p>
+          )}
         </div>
       </section>
     </div>
