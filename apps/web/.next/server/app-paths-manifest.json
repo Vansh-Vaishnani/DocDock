@@ -1,8 +1,8 @@
 {
   "/page": "app/page.js",
-  "/find-doctors/page": "app/find-doctors/page.js",
-  "/find-doctors/[id]/page": "app/find-doctors/[id]/page.js",
-  "/auth/login/page": "app/auth/login/page.js",
+  "/patient/appointments/[appointmentId]/page": "app/patient/appointments/[appointmentId]/page.js",
+  "/doctor/earnings/page": "app/doctor/earnings/page.js",
+  "/patient/dashboard/page": "app/patient/dashboard/page.js",
   "/patient/appointments/page": "app/patient/appointments/page.js",
-  "/patient/medical-history/page": "app/patient/medical-history/page.js"
+  "/doctor/settings/page": "app/doctor/settings/page.js"
 }

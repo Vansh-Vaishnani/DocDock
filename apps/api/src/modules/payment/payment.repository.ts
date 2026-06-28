@@ -8,6 +8,19 @@ export interface IPaymentDocument extends mongoose.Document {
   status: 'created' | 'paid' | 'failed' | 'refunded';
   amount: number;
   paidAt?: Date;
+  bookingPayload?: {
+    doctorId: string;
+    appointmentDate: string;
+    appointmentTime: string;
+    addressId?: string;
+    address?: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
+    notes?: string;
+  };
+  refundId?: string;
+  refundStatus?: 'initiated' | 'completed' | 'failed';
+  refundAmount?: number;
+  refundCreatedAt?: Date;
+  refundFailureReason?: string;
 }
 
 const paymentSchema = new Schema<IPaymentDocument>(
@@ -18,7 +31,32 @@ const paymentSchema = new Schema<IPaymentDocument>(
     razorpayPaymentId: { type: String },
     status: { type: String, enum: ['created', 'paid', 'failed', 'refunded'], default: 'created' },
     amount: { type: Number, required: true },
-    paidAt: { type: Date }
+    paidAt: { type: Date },
+    bookingPayload: {
+      doctorId: { type: String, required: false },
+      appointmentDate: { type: String, required: false },
+      appointmentTime: { type: String, required: false },
+      addressId: { type: String, required: false },
+      address: {
+        label: { type: String, required: false },
+        location: {
+          type: {
+            type: String,
+            enum: ['Point'],
+            required: false,
+            default: 'Point'
+          },
+          coordinates: { type: [Number], required: false }
+        }
+      },
+      notes: { type: String, required: false }
+    }
+    ,
+    refundId: { type: String, required: false },
+    refundStatus: { type: String, enum: ['initiated', 'completed', 'failed'], required: false },
+    refundAmount: { type: Number, required: false },
+    refundCreatedAt: { type: Date, required: false },
+    refundFailureReason: { type: String, required: false }
   },
   { timestamps: true }
 );

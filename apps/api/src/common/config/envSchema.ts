@@ -29,7 +29,8 @@ const envSchema = z.object({
   DEV_AUTO_VERIFY_DOCTOR: z
     .enum(['true', 'false'])
     .default('false')
-    .transform((value) => value === 'true')
+    .transform((value) => value === 'true'),
+  // Note: development-only bypass removed; do not add runtime flags for status transitions
 });
 
 export type Environment = z.infer<typeof envSchema>;

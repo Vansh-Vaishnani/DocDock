@@ -50,9 +50,10 @@ export const config = {
   smsProviderApiKey: env.TWILIO_AUTH_TOKEN || '',
   twilioAccountSid: env.TWILIO_ACCOUNT_SID || '',
   twilioAuthToken: env.TWILIO_AUTH_TOKEN || '',
-  devAutoVerifyDoctor: env.DEV_AUTO_VERIFY_DOCTOR
+  devAutoVerifyDoctor: env.DEV_AUTO_VERIFY_DOCTOR,
 };
-
+ 
+console.log(`[config] NODE_ENV: ${process.env.NODE_ENV} (validated: ${env.NODE_ENV})`);
 const redisIsTls = redisUrlProtocol === 'rediss:' || redisUrl.includes('.upstash.io');
 const redisSocketOptions: RedisSocketOptions = redisIsTls
   ? { tls: true, reconnectStrategy: (retries: number) => Math.min(retries * 100, 3000) }

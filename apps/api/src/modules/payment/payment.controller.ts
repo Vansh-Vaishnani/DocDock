@@ -1,14 +1,42 @@
+import mongoose from 'mongoose';
 import { Request, Response, NextFunction } from 'express';
 
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { sendCreated, sendSuccess } from '../../common/utils/http';
 
+import { AppointmentService } from '../appointment/appointment.service';
+import { PatientModel } from '../patient/patient.repository';
 import { PaymentService } from './payment.service';
 
 const service = new PaymentService();
+const appointmentService = new AppointmentService();
 
 export class PaymentController {
+  private async resolveBookingPayload(userId: string, body: { doctorId: string; appointmentDate: string; appointmentTime: string; addressId: string; notes?: string }) {
+    const patientProfile = await PatientModel.findOne({ userId: new mongoose.Types.ObjectId(userId) });
+    if (!patientProfile) {
+      throw new ApiError('Patient profile not found', 404, 'PATIENT_NOT_FOUND');
+    }
+
+    const address = patientProfile.addresses.find((item) => item._id?.toString() === body.addressId);
+    if (!address) {
+      throw new ApiError('Selected address not found', 404, 'ADDRESS_NOT_FOUND');
+    }
+
+    return {
+      doctorId: body.doctorId,
+      appointmentDate: body.appointmentDate,
+      appointmentTime: body.appointmentTime,
+      addressId: body.addressId,
+      notes: body.notes,
+      address: {
+        label: address.label,
+        location: address.location
+      }
+    };
+  }
+
   async createOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = (req as AuthenticatedRequest).user;
@@ -16,8 +44,10 @@ export class PaymentController {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
       }
-      const order = await service.createOrder(req.body.amount, 'INR', req.body.appointmentId);
-      await service.createPaymentRecord(req.body.appointmentId, user.sub, order.id, req.body.amount);
+      const bookingPayload = await this.resolveBookingPayload(user.sub, req.body);
+      const order = await service.createOrder(req.body.amount, 'INR', bookingPayload);
+      const appointmentId = new mongoose.Types.ObjectId().toString();
+      await service.createPaymentRecord(appointmentId, user.sub, order.id, req.body.amount, bookingPayload);
       sendCreated(res, { orderId: order.id, amount: order.amount, currency: order.currency }, 'Payment order created.');
     } catch (error) {
       next(error);
@@ -27,12 +57,14 @@ export class PaymentController {
   async verifyPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
-      const valid = await service.verifySignature(JSON.stringify(req.body), razorpaySignature);
+      const valid = await service.verifySignature(`${razorpayOrderId}|${razorpayPaymentId}`, razorpaySignature);
       if (!valid) {
+        await service.markFailed(razorpayOrderId);
         throw new ApiError('Invalid payment signature', 400, 'INVALID_PAYMENT_SIGNATURE');
       }
       const payment = await service.markPaid(razorpayOrderId, razorpayPaymentId);
-      sendSuccess(res, payment, 'Payment verified successfully.');
+      const appointment = await appointmentService.confirmAfterPayment(payment.appointmentId.toString(), payment.bookingPayload, payment.patientId.toString());
+      sendSuccess(res, { ...payment.toObject(), appointmentId: appointment._id.toString() }, 'Payment verified successfully.');
     } catch (error) {
       next(error);
     }

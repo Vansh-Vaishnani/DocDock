@@ -8,10 +8,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../auth/auth-context';
 import { useToast } from '../../auth/toast-provider';
 import {
-  createAppointment,
+  createPaymentOrder,
   fetchDoctorAvailableSlots,
   fetchPatientProfile,
-  type PatientAddress
+  type PatientAddress,
+  verifyPayment
 } from '../../patient/api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
@@ -23,6 +24,27 @@ async function fetchDoctorById(id: string) {
   }
   const payload = await response.json();
   return payload.data ?? payload;
+}
+
+function loadRazorpayCheckoutScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      reject(new Error('Razorpay checkout is only available in the browser.'));
+      return;
+    }
+
+    if ((window as Window & { Razorpay?: unknown }).Razorpay) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Unable to load Razorpay Checkout script.'));
+    document.body.appendChild(script);
+  });
 }
 
 function formatSlotLabel(iso: string): string {
@@ -42,6 +64,9 @@ function DoctorDetailsPageContent() {
   const [notes, setNotes] = useState('');
   const [addresses, setAddresses] = useState<PatientAddress[]>([]);
   const [booking, setBooking] = useState(false);
+  const [paymentStep, setPaymentStep] = useState<'booking' | 'paying' | 'paid' | 'failed'>('booking');
+  const [appointmentId, setAppointmentId] = useState<string | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
 
   const query = useQuery({
     queryKey: ['doctor', id],
@@ -89,14 +114,71 @@ function DoctorDetailsPageContent() {
 
     setBooking(true);
     try {
-      await createAppointment({
+      const amount = Number(doctor.consultationFee || 0);
+      const order = await createPaymentOrder({
+        amount,
         doctorId: String(id),
-        scheduledAt: selectedSlot,
-        address: { label: selectedAddress.label, location: selectedAddress.location },
+        appointmentDate: selectedDate,
+        appointmentTime: new Date(selectedSlot).toTimeString().slice(0, 5),
+        addressId: selectedAddress._id || '',
         notes: notes.trim() || undefined
       });
-      showToast('Appointment booked successfully.', 'success');
-      router.push('/patient/appointments');
+      setAppointmentId(null);
+      setPaymentAmount(amount);
+      setPaymentStep('paying');
+      showToast('Payment is being prepared for your appointment.', 'success');
+
+      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!razorpayKey) {
+        throw new Error('Razorpay is not configured. Missing NEXT_PUBLIC_RAZORPAY_KEY_ID.');
+      }
+
+      await loadRazorpayCheckoutScript();
+      const Razorpay = (window as Window & { Razorpay?: any }).Razorpay;
+      if (!Razorpay) {
+        throw new Error('Razorpay checkout script could not be loaded.');
+      }
+
+      const options = {
+        key: razorpayKey,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'DocDock',
+        description: `Consultation booking for ${doctor.fullName || 'doctor'}`,
+        order_id: order.orderId,
+        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            const verification = await verifyPayment({
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature
+            });
+            setAppointmentId(verification.appointmentId ?? null);
+            setPaymentStep('paid');
+            if (verification.appointmentId) {
+              router.push(`/patient/appointments/${verification.appointmentId}`);
+            } else {
+              router.push('/patient/appointments');
+            }
+          } catch (err: unknown) {
+            setPaymentStep('failed');
+            showToast(err instanceof Error ? err.message : 'Payment could not be verified.', 'error');
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setPaymentStep('failed');
+            showToast('Payment was cancelled. Your appointment is not confirmed.', 'error');
+          }
+        },
+        prefill: {
+          name: user.fullName || '',
+          email: user.email || ''
+        },
+        theme: { color: '#059669' }
+      };
+      const rzp = new Razorpay(options);
+      rzp.open();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Unable to book appointment.', 'error');
     } finally {
@@ -265,14 +347,37 @@ function DoctorDetailsPageContent() {
                 />
               </div>
 
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <p className="font-semibold text-slate-900">Booking flow</p>
+                <p className="mt-1">You will complete the appointment booking and pay securely through Razorpay before the booking is confirmed.</p>
+              </div>
+
               <button
                 type="button"
                 disabled={booking || !selectedSlot || !selectedAddress}
                 onClick={() => void handleBook()}
                 className="rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white disabled:opacity-60"
               >
-                {booking ? 'Booking...' : 'Book appointment'}
+                {booking ? 'Preparing payment...' : paymentStep === 'paying' ? 'Complete payment' : 'Book appointment'}
               </button>
+
+              {paymentStep === 'paid' && appointmentId && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                  Payment successful. Your appointment has been confirmed. <Link href={`/patient/appointments/${appointmentId}`} className="font-semibold">View details</Link>
+                </div>
+              )}
+
+              {paymentStep === 'paying' && paymentAmount && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  Complete the Razorpay checkout to confirm this appointment. Amount due: ₹{paymentAmount}.
+                </div>
+              )}
+
+              {paymentStep === 'failed' && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                  Payment was not completed, so the appointment remains unconfirmed. Please try again when you are ready.
+                </div>
+              )}
             </div>
           )}
         </section>

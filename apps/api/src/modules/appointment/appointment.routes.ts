@@ -16,6 +16,7 @@ const controller = new AppointmentController();
 
 router.get('/doctors/:id/available-slots', validateRequest(availableSlotsSchema), controller.getAvailableSlots.bind(controller));
 router.get('/', requireRole(['patient']), validateRequest(listAppointmentsSchema), controller.list.bind(controller));
+router.get('/:appointmentId', requireRole(['patient', 'doctor', 'admin']), controller.getById.bind(controller));
 router.post('/', requireRole(['patient']), validateRequest(createAppointmentSchema), controller.create.bind(controller));
 router.patch('/:appointmentId/status', requireRole(['doctor', 'patient']), validateRequest(updateAppointmentStatusSchema), controller.updateStatus.bind(controller));
 

@@ -80,6 +80,7 @@ export type DoctorDashboard = {
   stats: {
     todayAppointments: number;
     upcomingAppointments: number;
+    completedAppointments: number;
     availabilityStatus: boolean;
     verificationStatus: string;
     profileCompletionPercent: number;
@@ -98,6 +99,8 @@ export type DoctorAppointment = {
   notes?: string;
   patientName: string;
   patientPhone: string;
+  paymentStatus?: string;
+  paymentStatusLabel?: string;
 };
 
 export type DoctorRegisterPayload = {
@@ -159,11 +162,26 @@ export async function updateDoctorAvailability(payload: Partial<DoctorAvailabili
   return res.data;
 }
 
-export async function updateAppointmentStatus(appointmentId: string, status: string): Promise<void> {
+export async function updateAppointmentStatus(appointmentId: string, status: string, reason?: string): Promise<void> {
   await request<ApiEnvelope<unknown>>(`/appointments/${appointmentId}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ status })
+    body: JSON.stringify({ status, reason })
   });
+}
+
+export async function createOrUpdatePrescription(payload: {
+  appointmentId: string;
+  diagnosis: string;
+  chiefComplaints: string;
+  medications: Array<{ name: string; dosage: string; frequency: string; duration: string; instructions?: string; quantity?: number }>;
+  advice?: string;
+  followUpDate?: string;
+}): Promise<unknown> {
+  const res = await request<ApiEnvelope<unknown>>('/prescriptions', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+  return res.data;
 }
 
 export async function fetchDoctorPrescriptions() {
@@ -173,6 +191,11 @@ export async function fetchDoctorPrescriptions() {
 
 export async function fetchDoctorEarnings() {
   const res = await request<ApiEnvelope<{ totalEarnings: number; payments: unknown[] }>>('/doctors/earnings');
+  return res.data;
+}
+
+export async function fetchDoctorReviews(doctorId: string) {
+  const res = await request<ApiEnvelope<{ reviews: Array<{ _id: string; rating: number; comment: string; createdAt: string; patientId?: string; patientName?: string }> }>>(`/reviews/doctors/${doctorId}/reviews`);
   return res.data;
 }
 

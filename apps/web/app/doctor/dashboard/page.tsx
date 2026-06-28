@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { useAuth } from '../../auth/auth-context';
-import { fetchDoctorDashboard, type DoctorDashboard } from '../api';
+import { fetchDoctorDashboard, fetchDoctorReviews, type DoctorDashboard } from '../api';
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
@@ -19,14 +19,26 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
 export default function DoctorDashboardPage() {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState<DoctorDashboard | null>(null);
+  const [reviews, setReviews] = useState<Array<{ _id: string; rating: number; comment: string; createdAt: string; patientName?: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetchDoctorDashboard()
-      .then(setDashboard)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unable to load dashboard.'))
-      .finally(() => setLoading(false));
+    const load = async () => {
+      try {
+        const dashboardData = await fetchDoctorDashboard();
+        const doctorId = dashboardData.profile?._id;
+        const reviewData = doctorId ? await fetchDoctorReviews(doctorId) : { reviews: [] };
+        setDashboard(dashboardData);
+        setReviews(reviewData.reviews || []);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Unable to load dashboard.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
   }, []);
 
   const stats = dashboard?.stats;

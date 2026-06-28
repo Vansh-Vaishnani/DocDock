@@ -43,6 +43,24 @@ export interface DoctorProfileResponse {
 
 const authService = new AuthService();
 
+async function syncDoctorVerificationState(
+  doctor: IDoctorDocument,
+  user: { verificationStatus?: string; isVerified?: boolean; save: () => Promise<unknown> }
+): Promise<void> {
+  if (!config.devAutoVerifyDoctor) return;
+
+  if (doctor.verificationStatus !== 'approved') {
+    doctor.verificationStatus = 'approved';
+    await doctor.save();
+  }
+
+  if (user.verificationStatus !== 'approved' || user.isVerified !== true) {
+    user.verificationStatus = 'approved';
+    user.isVerified = true;
+    await user.save();
+  }
+}
+
 const formatProfile = (
   doctor: IDoctorDocument,
   user: { fullName: string; email: string; phone: string }
@@ -196,8 +214,7 @@ export class DoctorService {
     });
 
     if (config.devAutoVerifyDoctor) {
-      user.verificationStatus = 'approved';
-      user.isVerified = true;
+      await syncDoctorVerificationState(doctor, user);
     }
 
     const tokens = authService.generateTokens(user._id.toString(), 'doctor');
@@ -227,6 +244,10 @@ export class DoctorService {
     if (!user || user.isDeleted || !user.isActive) {
       throw new ApiError('User not found', 404, 'USER_NOT_FOUND');
     }
+    if (user.role === 'doctor' && config.devAutoVerifyDoctor) {
+      await syncDoctorVerificationState(doctor, user as { verificationStatus?: string; isVerified?: boolean; save: () => Promise<unknown> });
+    }
+
     return formatProfile(doctor, user);
   }
 
@@ -356,6 +377,7 @@ export class DoctorService {
       stats: {
         todayAppointments,
         upcomingAppointments,
+        completedAppointments: completedAppointments.length,
         availabilityStatus: profile.availability.isAvailable && !profile.availability.vacationMode,
         verificationStatus: profile.verificationStatus,
         profileCompletionPercent: profile.profileCompletionPercent,
@@ -383,12 +405,19 @@ export class DoctorService {
     }
 
     const appointments = await AppointmentModel.find(query).sort({ scheduledAt: 1 }).lean();
+    const appointmentIds = appointments.map((a) => a._id);
+    const prescriptions = await PrescriptionModel.find({ appointmentId: { $in: appointmentIds } }).lean();
+    const prescriptionMap = new Map(prescriptions.map((p) => [p.appointmentId.toString(), p]));
     const patientIds = appointments.map((a) => a.patientId);
     const users = await UserModel.find({ _id: { $in: patientIds } }).select('fullName phone').lean();
+    const payments = await PaymentModel.find({ appointmentId: { $in: appointments.map((a) => a._id) } }).lean();
     const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+    const paymentMap = new Map(payments.map((payment) => [payment.appointmentId.toString(), payment]));
 
     return appointments.map((appt) => {
       const patient = userMap.get(appt.patientId.toString());
+      const payment = paymentMap.get(appt._id.toString());
+      const prescription = prescriptionMap.get(appt._id.toString());
       return {
         _id: appt._id,
         scheduledAt: appt.scheduledAt,
@@ -396,7 +425,18 @@ export class DoctorService {
         address: appt.address,
         notes: appt.notes,
         patientName: patient?.fullName ?? 'Patient',
-        patientPhone: patient?.phone ?? ''
+        patientPhone: patient?.phone ?? '',
+        paymentStatus: payment?.status ?? 'created',
+        paymentStatusLabel: payment?.status === 'paid' ? 'Payment Paid' : 'Payment Pending'
+        ,
+        prescription: prescription
+          ? {
+              _id: prescription._id.toString(),
+              diagnosis: prescription.diagnosis,
+              medications: prescription.medications,
+              issuedAt: prescription.issuedAt
+            }
+          : null
       };
     });
   }

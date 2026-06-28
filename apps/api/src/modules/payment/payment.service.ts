@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Razorpay from 'razorpay';
 
 import { AppointmentModel } from '../appointment/appointment.repository';
@@ -11,6 +12,15 @@ interface RazorpayOrder {
   id: string;
   amount: number;
   currency: string;
+}
+
+interface PaymentBookingPayload {
+  doctorId: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  addressId: string;
+  notes?: string;
+  address?: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
 }
 
 export class PaymentService {
@@ -33,39 +43,34 @@ export class PaymentService {
     return this.razorpayInstance;
   }
 
-  async createOrder(amount: number, currency = 'INR', receipt?: string): Promise<RazorpayOrder> {
+  async createOrder(amount: number, currency = 'INR', bookingPayload?: PaymentBookingPayload): Promise<RazorpayOrder> {
     const razorpay = this.getRazorpay();
     const amountInPaise = Math.round(amount * 100);
     const order = await razorpay.orders.create({
       amount: amountInPaise,
       currency,
-      receipt,
+      receipt: bookingPayload?.doctorId,
       payment_capture: true
     });
     return { ...order, amount: amountInPaise } as RazorpayOrder;
   }
 
-  async verifySignature(body: string, signature: string): Promise<boolean> {
+  async verifySignature(payload: string, signature: string): Promise<boolean> {
     this.ensureRazorpayEnabled();
     const crypto = await import('crypto');
-    const expected = crypto.createHmac('sha256', config.razorpayKeySecret).update(body).digest('hex');
+    const expected = crypto.createHmac('sha256', config.razorpayKeySecret).update(payload).digest('hex');
     return expected === signature;
   }
 
-  async createPaymentRecord(appointmentId: string, patientId: string, razorpayOrderId: string, amount: number): Promise<IPaymentDocument> {
-    const appointment = await AppointmentModel.findById(appointmentId);
-    if (!appointment) {
-      throw new ApiError('Appointment not found', 404, 'APPOINTMENT_NOT_FOUND');
-    }
+  async createPaymentRecord(appointmentId: string, patientId: string, razorpayOrderId: string, amount: number, bookingPayload?: PaymentBookingPayload): Promise<IPaymentDocument> {
     const payment = await PaymentModel.create({
-      appointmentId: appointment._id,
-      patientId,
+      appointmentId: new mongoose.Types.ObjectId(appointmentId),
+      patientId: new mongoose.Types.ObjectId(patientId),
       razorpayOrderId,
       amount,
-      status: 'created'
+      status: 'created',
+      bookingPayload
     });
-    appointment.paymentId = payment._id;
-    await appointment.save();
     return payment;
   }
 
@@ -79,5 +84,44 @@ export class PaymentService {
     payment.paidAt = new Date();
     await payment.save();
     return payment;
+  }
+
+  async markFailed(razorpayOrderId: string): Promise<IPaymentDocument> {
+    const payment = await PaymentModel.findOne({ razorpayOrderId });
+    if (!payment) {
+      throw new ApiError('Payment record not found', 404, 'PAYMENT_NOT_FOUND');
+    }
+    payment.status = 'failed';
+    await payment.save();
+    return payment;
+  }
+
+  async initiateRefund(razorpayPaymentId: string, amount?: number): Promise<{ refundId?: string; refundStatus: 'initiated' | 'completed' | 'failed'; refund?: any }> {
+    const razorpay = this.getRazorpay();
+    try {
+      const refund = await razorpay.payments.refund(razorpayPaymentId, amount ? { amount: Math.round(amount * 100) } : {} as any);
+      const stored = await PaymentModel.findOne({ razorpayPaymentId });
+      if (stored) {
+        stored.refundId = refund.id;
+        const statusStr = String(refund.status);
+        const completed = statusStr === 'processed' || statusStr === 'completed';
+        stored.refundStatus = completed ? 'completed' : 'initiated';
+        if (completed) {
+          stored.status = 'refunded';
+        }
+        stored.refundAmount = refund.amount ?? undefined;
+        stored.refundCreatedAt = refund.created_at ? new Date(refund.created_at * 1000) : new Date();
+        await stored.save();
+      }
+      return { refundId: refund.id, refundStatus: stored?.refundStatus ?? 'initiated', refund };
+    } catch (error: unknown) {
+      const stored = await PaymentModel.findOne({ razorpayPaymentId });
+      if (stored) {
+        stored.refundStatus = 'failed';
+        stored.refundFailureReason = error instanceof Error ? error.message : String(error);
+        await stored.save();
+      }
+      return { refundStatus: 'failed' };
+    }
   }
 }

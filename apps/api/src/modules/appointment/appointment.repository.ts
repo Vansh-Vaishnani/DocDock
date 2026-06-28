@@ -19,6 +19,8 @@ export interface IAppointmentDocument extends mongoose.Document {
   address: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
   status: AppointmentStatus;
   notes?: string;
+  rejectionReason?: string | null;
+  cancellationReason?: string | null;
   paymentId?: mongoose.Types.ObjectId;
   prescriptionId?: mongoose.Types.ObjectId;
 }
@@ -57,6 +59,8 @@ const appointmentSchema = new Schema<IAppointmentDocument>(
       default: 'pending'
     },
     notes: { type: String },
+      rejectionReason: { type: String },
+    cancellationReason: { type: String },
     paymentId: { type: Schema.Types.ObjectId, ref: 'Payment' },
     prescriptionId: { type: Schema.Types.ObjectId, ref: 'Prescription' }
   },

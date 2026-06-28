@@ -33,9 +33,23 @@ export class AppointmentController {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
       }
-      const filter = (req.query.filter as 'upcoming' | 'history' | 'all' | undefined) ?? 'all';
+      const filter = (req.query.filter as 'upcoming' | 'completed' | 'cancelled' | 'history' | 'all' | undefined) ?? 'all';
       const appointments = await service.listForPatient(user.sub, filter);
       sendSuccess(res, appointments, 'Appointments retrieved successfully.');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getById(req: any, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = (req as AuthenticatedRequest).user;
+      if (!user) {
+        next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
+        return;
+      }
+      const detail = await service.getByIdForUser(req.params.appointmentId, user.sub, user.role);
+      sendSuccess(res, detail, 'Appointment details retrieved successfully.');
     } catch (error) {
       next(error);
     }
@@ -48,7 +62,9 @@ export class AppointmentController {
         next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
         return;
       }
-      const appointment = await service.updateStatus(req.params.appointmentId, req.body.status, user.sub, user.role);
+      const appointment = await service.updateStatus(req.params.appointmentId, req.body.status, user.sub, user.role, {
+        reason: req.body.reason
+      });
       sendSuccess(res, appointment, 'Appointment status updated.');
     } catch (error) {
       next(error);

@@ -1,4 +1,5 @@
 import { ApiError } from '../../common/errors/ApiError';
+import mongoose from 'mongoose';
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { DoctorModel } from '../doctor/doctor.repository';
 import { UserModel } from '../auth/auth.repository';
@@ -37,36 +38,62 @@ export class PrescriptionService {
       throw new ApiError('Appointment not found', 404, 'APPOINTMENT_NOT_FOUND');
     }
 
-    if (appointment.doctorId.toString() !== doctorId) {
+    // Resolve doctor document from provided user id (controller passes user.sub)
+    const doctor = await DoctorModel.findOne({ userId: appointment.doctorId }) || await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(doctorId) });
+    // The controller passes the authenticated user's id; ensure it matches the appointment's assigned doctor
+    const actingDoctor = await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(doctorId) });
+    if (!actingDoctor) {
+      throw new ApiError('Doctor profile not found for current user', 404, 'DOCTOR_NOT_FOUND');
+    }
+
+    if (appointment.doctorId.toString() !== actingDoctor._id.toString()) {
       throw new ApiError('Only the assigned doctor can create a prescription', 403, 'FORBIDDEN');
     }
 
-    if (appointment.status !== 'in_consultation') {
-      throw new ApiError('Appointment must be in in_consultation state', 400, 'APPOINTMENT_NOT_IN_PROGRESS');
+    // Allow creation or editing of prescription when consultation started.
+    // Editing is allowed until appointment is marked 'completed'.
+    if (appointment.status !== 'in_consultation' && appointment.status !== 'completed') {
+      throw new ApiError('Appointment must be in in_consultation or completed state', 400, 'APPOINTMENT_NOT_IN_PROGRESS');
     }
 
     const existingPrescription = await PrescriptionModel.findOne({ appointmentId: payload.appointmentId });
-    if (existingPrescription) {
-      throw new ApiError('Prescription already exists for this appointment', 409, 'PRESCRIPTION_ALREADY_EXISTS');
+
+    const prescription = existingPrescription
+      ? await PrescriptionModel.findOneAndUpdate(
+          { _id: existingPrescription._id },
+          {
+            diagnosis: payload.diagnosis,
+            chiefComplaints: payload.chiefComplaints,
+            medications: payload.medications,
+            labTests: payload.labTests,
+            advice: payload.advice,
+            followUpDate: payload.followUpDate ? new Date(payload.followUpDate) : undefined,
+            issuedAt: new Date(),
+            isValid: true,
+            prescriptionPdfUrl: existingPrescription.prescriptionPdfUrl || `https://res.cloudinary.com/docdock/prescriptions/${appointment._id}.pdf`
+          },
+          { new: true }
+        )
+      : await PrescriptionModel.create({
+          appointmentId: appointment._id,
+          doctorId: appointment.doctorId,
+          patientId: appointment.patientId,
+          diagnosis: payload.diagnosis,
+          chiefComplaints: payload.chiefComplaints,
+          medications: payload.medications,
+          labTests: payload.labTests,
+          advice: payload.advice,
+          followUpDate: payload.followUpDate ? new Date(payload.followUpDate) : undefined,
+          issuedAt: new Date(),
+          isValid: true,
+          prescriptionPdfUrl: `https://res.cloudinary.com/docdock/prescriptions/${appointment._id}.pdf`
+        });
+
+    if (!prescription) {
+      throw new ApiError('Unable to save prescription', 500, 'PRESCRIPTION_SAVE_FAILED');
     }
 
-    const prescription = await PrescriptionModel.create({
-      appointmentId: appointment._id,
-      doctorId: appointment.doctorId,
-      patientId: appointment.patientId,
-      diagnosis: payload.diagnosis,
-      chiefComplaints: payload.chiefComplaints,
-      medications: payload.medications,
-      labTests: payload.labTests,
-      advice: payload.advice,
-      followUpDate: payload.followUpDate ? new Date(payload.followUpDate) : undefined,
-      issuedAt: new Date(),
-      isValid: true,
-      prescriptionPdfUrl: `https://res.cloudinary.com/docdock/prescriptions/${appointment._id}.pdf`
-    });
-
     appointment.prescriptionId = prescription._id;
-    appointment.status = 'completed';
     await appointment.save();
 
     return {
@@ -87,8 +114,15 @@ export class PrescriptionService {
       return prescription as IPrescriptionDocument;
     }
 
-    if (role === 'doctor' && prescription.doctorId.toString() !== userId) {
-      throw new ApiError('Forbidden', 403, 'FORBIDDEN');
+    if (role === 'doctor') {
+      // userId is the authenticated user's id (User._id). Resolve doctor's document and compare.
+      const actingDoctor = await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(userId) }).lean();
+      if (!actingDoctor) {
+        throw new ApiError('Doctor profile not found for current user', 404, 'FORBIDDEN');
+      }
+      if (prescription.doctorId.toString() !== (actingDoctor._id as any).toString()) {
+        throw new ApiError('Forbidden', 403, 'FORBIDDEN');
+      }
     }
 
     if (role === 'patient' && prescription.patientId.toString() !== userId) {

@@ -33,7 +33,7 @@ export const updateAppointmentStatusSchema = z.object({
 
 export const listAppointmentsSchema = z.object({
   query: z.object({
-    filter: z.enum(['upcoming', 'history', 'all']).optional()
+    filter: z.enum(['upcoming', 'completed', 'cancelled', 'history', 'all']).optional()
   })
 });
 
