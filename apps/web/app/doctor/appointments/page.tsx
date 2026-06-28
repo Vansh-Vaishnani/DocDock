@@ -78,7 +78,8 @@ export default function DoctorAppointmentsPage() {
   const [actionId, setActionId] = useState<string | null>(null);
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ appointmentId: string; status: string } | null>(null);
-  const [selectedReason, setSelectedReason] = useState<string>('');
+  const [selectedOption, setSelectedOption] = useState<string>('Doctor unavailable');
+  const [customReason, setCustomReason] = useState<string>('');
   const REASON_OPTIONS = ['Doctor unavailable', 'Emergency', 'Outside service area', 'Other'];
   const [prescriptionDrafts, setPrescriptionDrafts] = useState<Record<string, PrescriptionDraft>>({});
 
@@ -97,10 +98,8 @@ export default function DoctorAppointmentsPage() {
 
   useEffect(() => {
     void load();
-    const interval = window.setInterval(() => {
-      void load();
-    }, 10000);
-    return () => window.clearInterval(interval);
+    // Removed periodic polling to prevent flicker; page will refresh after actions only
+    return () => {};
   }, [filter]);
 
   const handleStatus = async (appointmentId: string, status: string) => {
@@ -113,7 +112,8 @@ export default function DoctorAppointmentsPage() {
       // For statuses that require a reason from doctor, open modal
       if (status === 'rejected' || status === 'cancelled_by_doctor') {
         setPendingAction({ appointmentId, status });
-        setSelectedReason(REASON_OPTIONS[0]);
+        setSelectedOption(REASON_OPTIONS[0]);
+        setCustomReason('');
         setShowReasonModal(true);
         return;
       }
@@ -132,7 +132,11 @@ export default function DoctorAppointmentsPage() {
     if (!pendingAction) return;
     setActionId(pendingAction.appointmentId);
     try {
-      const reason = selectedReason;
+      const reason = selectedOption === 'Other' ? customReason.trim() : selectedOption;
+      if (!reason) {
+        showToast('Please provide a reason.', 'error');
+        return;
+      }
       await updateAppointmentStatus(pendingAction.appointmentId, pendingAction.status, reason);
       showToast('Appointment updated.', 'success');
       setShowReasonModal(false);
@@ -355,19 +359,30 @@ export default function DoctorAppointmentsPage() {
             <div className="mt-4 space-y-2">
               {REASON_OPTIONS.map((opt) => (
                 <label key={opt} className="flex items-center gap-2">
-                  <input type="radio" name="reason" checked={selectedReason === opt} onChange={() => setSelectedReason(opt)} />
+                  <input type="radio" name="reason" checked={selectedOption === opt} onChange={() => setSelectedOption(opt)} />
                   <span className="text-sm">{opt}</span>
                 </label>
               ))}
-              {selectedReason === 'Other' && (
-                <input className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Describe reason" value={selectedReason === 'Other' ? '' : ''} readOnly />
+              {selectedOption === 'Other' && (
+                <textarea
+                  value={customReason}
+                  onChange={(e) => setCustomReason(e.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  rows={3}
+                  placeholder="Describe reason"
+                />
               )}
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => { setShowReasonModal(false); setPendingAction(null); }} className="rounded-full border px-4 py-2">
                 Cancel
               </button>
-              <button type="button" onClick={confirmReason} className="rounded-full bg-emerald-600 px-4 py-2 text-white">
+              <button
+                type="button"
+                onClick={confirmReason}
+                disabled={selectedOption === 'Other' ? customReason.trim().length === 0 : !selectedOption}
+                className={`rounded-full px-4 py-2 text-white ${selectedOption === 'Other' ? (customReason.trim().length === 0 ? 'bg-slate-300' : 'bg-emerald-600') : 'bg-emerald-600'}`}
+              >
                 Confirm
               </button>
             </div>

@@ -469,7 +469,8 @@ export class DoctorService {
       {
         $match: {
           'appointment.doctorId': doctor._id,
-          status: 'paid'
+          status: 'paid',
+          $or: [{ refundStatus: { $exists: false } }, { refundStatus: null }]
         }
       },
       { $sort: { paidAt: -1 } },
@@ -478,7 +479,9 @@ export class DoctorService {
           amount: 1,
           paidAt: 1,
           appointmentId: 1,
-          status: 1
+          status: 1,
+          refundStatus: 1,
+          refundId: 1
         }
       }
     ]);

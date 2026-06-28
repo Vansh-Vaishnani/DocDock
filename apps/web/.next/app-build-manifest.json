@@ -11,25 +11,25 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/find-doctors/page": [
+    "/patient/dashboard/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/find-doctors/page.js"
-    ],
-    "/find-doctors/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/find-doctors/[id]/page.js"
-    ],
-    "/patient/appointments/[appointmentId]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/patient/appointments/[appointmentId]/page.js"
+      "static/chunks/app/patient/dashboard/page.js"
     ],
     "/patient/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/patient/layout.js"
+    ],
+    "/patient/appointments/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/patient/appointments/page.js"
+    ],
+    "/patient/appointments/[appointmentId]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/patient/appointments/[appointmentId]/page.js"
     ],
     "/doctor/appointments/page": [
       "static/chunks/webpack.js",
@@ -46,30 +46,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/doctor/earnings/page.js"
     ],
-    "/doctor/dashboard/page": [
+    "/doctor/prescriptions/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/doctor/dashboard/page.js"
+      "static/chunks/app/doctor/prescriptions/page.js"
     ],
     "/doctor/profile/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/doctor/profile/page.js"
-    ],
-    "/doctor/settings/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/doctor/settings/page.js"
-    ],
-    "/patient/dashboard/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/patient/dashboard/page.js"
-    ],
-    "/patient/appointments/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/patient/appointments/page.js"
     ]
   }
 }

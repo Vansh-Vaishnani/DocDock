@@ -4,7 +4,14 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { useAuth } from '../../auth/auth-context';
-import { fetchPatientProfile, type PatientProfile } from '../api';
+import { useToast } from '../../auth/toast-provider';
+import {
+  fetchPatientProfile,
+  fetchPatientAppointments,
+  fetchPatientAppointmentDetail,
+  submitReview,
+  type PatientProfile
+} from '../api';
 
 function StatCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
@@ -21,6 +28,16 @@ export default function PatientDashboardPage() {
   const [profile, setProfile] = useState<PatientProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
+
+  // Review modal state
+  const [pendingReviewAppointmentId, setPendingReviewAppointmentId] = useState<string | null>(null);
+  const [pendingReviewDoctorName, setPendingReviewDoctorName] = useState<string | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [snoozedThisSession, setSnoozedThisSession] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -52,6 +69,109 @@ export default function PatientDashboardPage() {
     };
   }, []);
 
+  // After profile loads, check for oldest completed appointment without a review.
+  useEffect(() => {
+    if (loading || error || !profile) return;
+    let mounted = true;
+
+    const dismissedKeyPrefix = 'docdock-review-modal-dismissed:';
+
+    const findOldestPendingReview = async () => {
+      try {
+        const list = await fetchPatientAppointments('completed');
+        if (!mounted) return;
+        if (!list || list.length === 0) return;
+
+        // sort by scheduledAt ascending (oldest first)
+        list.sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+
+        for (const item of list) {
+          // If session was snoozed, stop showing further modals this session
+          if (snoozedThisSession) return;
+
+          const dismissed = typeof window !== 'undefined' ? window.sessionStorage.getItem(`${dismissedKeyPrefix}${item._id}`) === '1' : false;
+          if (dismissed) continue;
+
+          // fetch detail once to check if review exists
+          const detail = await fetchPatientAppointmentDetail(item._id);
+          if (!mounted) return;
+          if (!detail) continue;
+          if (!detail.review) {
+            setPendingReviewAppointmentId(detail.appointment._id);
+            setPendingReviewDoctorName(detail.doctor?.fullName ?? item.doctorName ?? 'your doctor');
+            setRating(5);
+            setComment('');
+            setShowReviewModal(true);
+            // stop at first pending
+            return;
+          }
+        }
+      } catch (err: unknown) {
+        // silently ignore; do not block dashboard render
+        console.warn('Error while checking pending reviews', err);
+      }
+    };
+
+    void findOldestPendingReview();
+
+    return () => {
+      mounted = false;
+    };
+  }, [loading, error, profile, snoozedThisSession]);
+
+  const handleDismissReviewModal = () => {
+    if (!pendingReviewAppointmentId) {
+      setShowReviewModal(false);
+      return;
+    }
+    const key = `docdock-review-modal-dismissed:${pendingReviewAppointmentId}`;
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(key, '1');
+    }
+    setSnoozedThisSession(true);
+    setShowReviewModal(false);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!pendingReviewAppointmentId) return;
+    if (submittingReview) return;
+    setSubmittingReview(true);
+    try {
+      await submitReview(pendingReviewAppointmentId, { rating, comment });
+      showToast('Review submitted. Thank you!', 'success');
+      setShowReviewModal(false);
+
+      // After successful submission, look for next pending review (continue from dashboard state)
+      // Set a small timeout to allow server to persist review before checking
+      setTimeout(async () => {
+        try {
+          const list = await fetchPatientAppointments('completed');
+          list.sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+          for (const item of list) {
+            if (item._id === pendingReviewAppointmentId) continue;
+            const detail = await fetchPatientAppointmentDetail(item._id);
+            if (!detail) continue;
+            if (!detail.review) {
+              // show next one
+              setPendingReviewAppointmentId(detail.appointment._id);
+              setPendingReviewDoctorName(detail.doctor?.fullName ?? item.doctorName ?? 'your doctor');
+              setRating(5);
+              setComment('');
+              setShowReviewModal(true);
+              return;
+            }
+          }
+        } catch (err) {
+          // ignore
+        }
+      }, 300);
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Unable to submit review.', 'error');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   const addressCount = profile?.addresses?.length ?? 0;
   const allergyCount = profile?.allergies?.length ?? 0;
   const historyCount = profile?.medicalHistory?.length ?? 0;
@@ -74,6 +194,46 @@ export default function PatientDashboardPage() {
           </div>
         </div>
       </section>
+      {showReviewModal && pendingReviewAppointmentId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">How was your consultation with {pendingReviewDoctorName}?</h3>
+                <p className="mt-2 text-sm text-slate-600">Share feedback to help others and improve care.</p>
+              </div>
+              <button type="button" onClick={handleDismissReviewModal} className="text-sm font-semibold text-slate-500">Later</button>
+            </div>
+            <div className="mt-6 space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRating(star)}
+                    className={`rounded-full px-3 py-2 text-sm font-semibold ${rating >= star ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-slate-700'}`}
+                  >
+                    {star} ★
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                rows={4}
+                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm"
+                placeholder="Write your review..."
+              />
+              <div className="flex flex-wrap gap-3 justify-end">
+                <button type="button" disabled={submittingReview} onClick={handleSubmitReview} className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                  {submittingReview ? 'Submitting...' : 'Submit'}
+                </button>
+                <button type="button" onClick={handleDismissReviewModal} className="rounded-full border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700">Later</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{error}</div>}
 

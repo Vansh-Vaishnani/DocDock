@@ -44,10 +44,8 @@ export default function PatientAppointmentsPage() {
 
   useEffect(() => {
     void load();
-    const interval = window.setInterval(() => {
-      void load();
-    }, 10000);
-    return () => window.clearInterval(interval);
+    // Removed aggressive polling to avoid UI flicker; refresh only after actions
+    return () => {};
   }, [filter]);
 
   const handleCancel = async (appointmentId: string) => {

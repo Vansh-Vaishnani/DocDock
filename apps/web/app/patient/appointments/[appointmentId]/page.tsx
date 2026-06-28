@@ -27,14 +27,33 @@ export default function AppointmentDetailsPage() {
   const [comment, setComment] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
 
   useEffect(() => {
     if (!appointmentId) return;
+    let mounted = true;
     const load = async () => {
       setLoading(true);
       try {
         const data = await fetchPatientAppointmentDetail(appointmentId);
-        setDetail(data);
+        if (!mounted) return;
+        // Only update state when meaningful fields changed to avoid flicker during edits
+        const prevStatus = detail?.appointment?.status;
+        const nextStatus = data.appointment?.status;
+        const prevRefund = detail?.payment?.refundStatus;
+        const nextRefund = data.payment?.refundStatus;
+        const prevPrescription = detail?.prescription?._id;
+        const nextPrescription = data.prescription?._id;
+
+        setDetail((prev) => {
+          if (!prev) return data;
+          if (prevStatus !== nextStatus || prevRefund !== nextRefund || prevPrescription !== nextPrescription) {
+            return data;
+          }
+          // minor fields unchanged; preserve existing detail to avoid flicker
+          return prev;
+        });
+
         const hasReview = Boolean(data.review);
         setReviewSubmitted(hasReview);
         if (data.appointment?.status === 'completed' && !hasReview) {
@@ -52,10 +71,9 @@ export default function AppointmentDetailsPage() {
     };
 
     void load();
-    const interval = window.setInterval(() => {
-      void load();
-    }, 10000);
-    return () => window.clearInterval(interval);
+    return () => {
+      mounted = false;
+    };
   }, [appointmentId, showToast]);
 
   const handleReviewSubmit = async () => {
@@ -196,9 +214,16 @@ export default function AppointmentDetailsPage() {
                     </div>
                   ))}
                   {detail.prescription.prescriptionPdfUrl && (
-                    <a href={detail.prescription.prescriptionPdfUrl} className="inline-block font-semibold text-emerald-600" target="_blank" rel="noreferrer">
-                      View prescription PDF
-                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setShowPrescriptionModal(true)}
+                      className="inline-block font-semibold text-emerald-600"
+                    >
+                      View prescription
+                    </button>
+                  )}
+                  {!detail.prescription?.prescriptionPdfUrl && (
+                    <button type="button" onClick={() => setShowPrescriptionModal(true)} className="inline-block font-semibold text-emerald-600">View prescription</button>
                   )}
                 </div>
               ) : (
@@ -248,6 +273,75 @@ export default function AppointmentDetailsPage() {
                   Remind me later
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPrescriptionModal && detail?.prescription && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-lg">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Prescription</h3>
+                <p className="text-sm text-slate-600">{detail.prescription.diagnosis}</p>
+              </div>
+              <button type="button" onClick={() => setShowPrescriptionModal(false)} className="text-sm font-semibold text-slate-500">Close</button>
+            </div>
+            <div className="mt-4 space-y-3 text-sm text-slate-700">
+              <div>
+                <h4 className="font-medium">Medications</h4>
+                <div className="mt-2 space-y-2">
+                  {detail.prescription.medications?.map((m: any, i: number) => (
+                    <div key={i} className="rounded-xl border border-slate-100 p-3">
+                      <div className="font-semibold">{m.name}</div>
+                      <div className="text-sm text-slate-600">{m.dosage} • {m.frequency} • {m.duration}</div>
+                      {m.instructions && <div className="text-sm text-slate-600">{m.instructions}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {(detail.prescription as any).labTests?.length > 0 && (
+                <div>
+                  <h4 className="font-medium">Investigations / Tests</h4>
+                  <ul className="mt-2 list-disc pl-5 text-sm text-slate-600">
+                    {(detail.prescription as any).labTests.map((t: string, i: number) => <li key={i}>{t}</li>)}
+                  </ul>
+                </div>
+              )}
+              {(detail.prescription as any).advice && (
+                <div>
+                  <h4 className="font-medium">Advice</h4>
+                  <div className="mt-2 text-sm text-slate-600">{(detail.prescription as any).advice}</div>
+                </div>
+              )}
+              {(detail.prescription as any).followUpDate && (
+                <div>
+                  <h4 className="font-medium">Follow-up</h4>
+                  <div className="mt-2 text-sm text-slate-600">{new Date((detail.prescription as any).followUpDate).toLocaleDateString()}</div>
+                </div>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => {
+                const html = `
+                  <html><head><title>Prescription</title><style>body{font-family: Arial, sans-serif;padding:20px} .med{margin-bottom:12px}</style></head><body>
+                  <h2>Prescription</h2>
+                  <p><strong>Diagnosis:</strong> ${(detail.prescription as any).diagnosis || ''}</p>
+                  ${(detail.prescription as any).medications?.map((m: any) => `<div class="med"><div><strong>${m.name}</strong></div><div>${m.dosage} • ${m.frequency} • ${m.duration}</div><div>${m.instructions || ''}</div></div>`).join('')}
+                  ${(detail.prescription as any).labTests && (detail.prescription as any).labTests.length ? `<h4>Investigations</h4><ul>${(detail.prescription as any).labTests.map((t: string) => `<li>${t}</li>`).join('')}</ul>` : ''}
+                  ${(detail.prescription as any).advice ? `<h4>Advice</h4><div>${(detail.prescription as any).advice}</div>` : ''}
+                  ${(detail.prescription as any).followUpDate ? `<h4>Follow-up</h4><div>${new Date((detail.prescription as any).followUpDate).toLocaleDateString()}</div>` : ''}
+                  </body></html>`;
+                const w = window.open('', '_blank');
+                if (w) {
+                  w.document.write(html);
+                  w.document.close();
+                  w.focus();
+                  setTimeout(() => w.print(), 300);
+                }
+              }} className="rounded-full bg-emerald-600 px-4 py-2 text-white">Download PDF</button>
+              <button type="button" onClick={() => setShowPrescriptionModal(false)} className="rounded-full border px-4 py-2">Close</button>
             </div>
           </div>
         </div>
