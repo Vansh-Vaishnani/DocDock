@@ -185,6 +185,10 @@ export type AppointmentDetail = {
     email?: string;
     phone?: string;
     profilePhotoUrl?: string;
+    clinicName?: string;
+    clinicAddress?: string;
+    clinicLocation?: { type?: string; coordinates?: [number, number] };
+    location?: { type?: string; coordinates?: [number, number] };
   };
   patient: {
     _id?: string;
@@ -259,7 +263,7 @@ export async function cancelPatientAppointment(appointmentId: string): Promise<v
   });
 }
 
-export async function createPaymentOrder(payload: { amount: number; doctorId: string; appointmentDate: string; appointmentTime: string; addressId: string; notes?: string }): Promise<{ orderId: string; amount: number; currency: string }> {
+export async function createPaymentOrder(payload: { amount: number; doctorId: string; appointmentDate: string; appointmentTime: string; addressId?: string; location?: { label: string; location: { type: 'Point'; coordinates: [number, number] } }; notes?: string }): Promise<{ orderId: string; amount: number; currency: string }> {
   const response = await request<ApiEnvelope<{ orderId: string; amount: number; currency: string }>>('/payments/create-order', {
     method: 'POST',
     body: JSON.stringify(payload)

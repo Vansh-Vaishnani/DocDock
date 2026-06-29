@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -14,6 +14,7 @@ import {
   type PatientAddress,
   verifyPayment
 } from '../../patient/api';
+import MapPicker from '@/components/map/MapPicker';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
@@ -54,6 +55,7 @@ function formatSlotLabel(iso: string): string {
 function DoctorDetailsPageContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, isHydrated } = useAuth();
   const { showToast } = useToast();
   const id = Array.isArray(params?.id) ? params.id[0] : params?.id;
@@ -67,6 +69,8 @@ function DoctorDetailsPageContent() {
   const [paymentStep, setPaymentStep] = useState<'booking' | 'paying' | 'paid' | 'failed'>('booking');
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedLocationLabel, setSelectedLocationLabel] = useState('');
 
   const query = useQuery({
     queryKey: ['doctor', id],
@@ -95,20 +99,35 @@ function DoctorDetailsPageContent() {
       .catch(() => setAddresses([]));
   }, [isHydrated, user?.role]);
 
+  useEffect(() => {
+    const latParam = searchParams?.get('lat');
+    const lngParam = searchParams?.get('lng');
+    const labelParam = searchParams?.get('label');
+    if (latParam && lngParam) {
+      const lat = Number(latParam);
+      const lng = Number(lngParam);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        setSelectedLocation({ lat, lng });
+        setSelectedLocationLabel(labelParam || 'Selected search location');
+      }
+    }
+  }, [searchParams]);
+
   const minDate = useMemo(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   }, []);
 
   const selectedAddress = addresses.find((a) => a._id === selectedAddressId);
+  const canUseTemporaryLocation = Boolean(selectedLocation && selectedLocationLabel);
 
   const handleBook = async () => {
     if (!user || user.role !== 'patient') {
       router.push('/auth/login');
       return;
     }
-    if (!selectedSlot || !selectedAddress) {
-      showToast('Please select a date, time slot, and address.', 'error');
+    if (!selectedSlot || (!selectedAddress && !canUseTemporaryLocation)) {
+      showToast('Please select a date, time slot, and an address or location.', 'error');
       return;
     }
 
@@ -120,7 +139,8 @@ function DoctorDetailsPageContent() {
         doctorId: String(id),
         appointmentDate: selectedDate,
         appointmentTime: new Date(selectedSlot).toTimeString().slice(0, 5),
-        addressId: selectedAddress._id || '',
+        addressId: canUseTemporaryLocation ? undefined : selectedAddress?._id,
+        location: canUseTemporaryLocation ? { label: selectedLocationLabel, location: { type: 'Point' as const, coordinates: [selectedLocation!.lng, selectedLocation!.lat] } } : undefined,
         notes: notes.trim() || undefined
       });
       setAppointmentId(null);
@@ -300,16 +320,24 @@ function DoctorDetailsPageContent() {
 
               <div>
                 <p className="text-sm font-medium text-slate-700">Visit address</p>
-                {addresses.length === 0 ? (
-                  <div className="mt-2 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-                    No saved addresses.{' '}
-                    <Link href="/patient/addresses" className="font-semibold text-emerald-600">
-                      Add an address
-                    </Link>{' '}
-                    before booking.
+                <div className="mt-3 rounded-2xl border border-slate-200 p-4">
+                  <MapPicker
+                    value={selectedLocation}
+                    onChange={(lat, lng, label) => {
+                      setSelectedLocation({ lat, lng });
+                      setSelectedLocationLabel(label || 'Selected search location');
+                      setSelectedAddressId(null);
+                    }}
+                    minHeight={300}
+                    placeholder="Search your visit location"
+                  />
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    {selectedLocationLabel || 'Search or tap the map to set the visit location for this booking.'}
                   </div>
-                ) : (
-                  <div className="mt-3 space-y-2">
+                </div>
+                {addresses.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-medium text-slate-700">Or use a saved address</p>
                     {addresses.map((address) => (
                       <label
                         key={address._id}
@@ -321,7 +349,11 @@ function DoctorDetailsPageContent() {
                           type="radio"
                           name="address"
                           checked={selectedAddressId === address._id}
-                          onChange={() => setSelectedAddressId(address._id ?? null)}
+                          onChange={() => {
+                            setSelectedAddressId(address._id ?? null);
+                            setSelectedLocation(null);
+                            setSelectedLocationLabel('');
+                          }}
                         />
                         <span>
                           {address.label}
@@ -354,7 +386,7 @@ function DoctorDetailsPageContent() {
 
               <button
                 type="button"
-                disabled={booking || !selectedSlot || !selectedAddress}
+                disabled={booking || !selectedSlot || (!selectedAddress && !canUseTemporaryLocation)}
                 onClick={() => void handleBook()}
                 className="rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white disabled:opacity-60"
               >

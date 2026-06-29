@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
-import LeafletMap from '@/components/map/LeafletMap';
+import MapPicker from '@/components/map/MapPicker';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -35,12 +35,10 @@ export default function DoctorProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
-  // clinic location state
   const [clinicAddress, setClinicAddress] = useState<string>('');
   const [clinicLatLng, setClinicLatLng] = useState<{ lat: number; lng: number } | null>(null);
   const [serviceRadius, setServiceRadius] = useState<number>(10);
   const [consultationType, setConsultationType] = useState<'home' | 'clinic' | 'both'>('clinic');
-  const mapRef = useRef<any | null>(null);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
@@ -177,34 +175,23 @@ export default function DoctorProfilePage() {
         </div>
         <div className="md:col-span-2">
           <h3 className="text-lg font-semibold">Clinic location</h3>
-          <p className="mt-1 text-sm text-slate-600">Set your clinic address and exact map location. Drag the marker to fine-tune.</p>
-          <div className="mt-3 grid gap-4 md:grid-cols-[1fr_320px]">
-            <div>
-              <LeafletMap
-                value={clinicLatLng ?? null}
-                onChange={(lat: number, lng: number, label?: string) => {
-                  setClinicLatLng({ lat, lng });
-                  if (label) setClinicAddress(label);
-                }}
-                minHeight={360}
-              />
+          <p className="mt-1 text-sm text-slate-600">Search a place, use your current location, or tap anywhere on the map to set the clinic address.</p>
+          <div className="mt-3 space-y-3">
+            <MapPicker
+              value={clinicLatLng ?? null}
+              onChange={(lat: number, lng: number, label?: string) => {
+                setClinicLatLng({ lat, lng });
+                if (label) setClinicAddress(label);
+              }}
+              minHeight={420}
+              placeholder="Search clinic address"
+            />
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">Selected clinic address</p>
+              <p className="mt-1">{clinicAddress || 'Search or use current location to populate the address.'}</p>
             </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium">Search address</label>
-              {/* The map component includes search and use-current controls; keep clinicAddress editable for manual tweaks */}
-              <input value={clinicAddress} onChange={(e) => setClinicAddress(e.target.value)} placeholder="Start typing an address" className="w-full rounded-2xl border border-slate-300 px-4 py-3" />
-              <div className="mt-3 flex gap-2">
-                <button type="button" onClick={() => { if (clinicLatLng) setClinicLatLng({ ...clinicLatLng }); }} className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Center map</button>
-                <button type="button" onClick={() => {
-                  if (!navigator.geolocation) return;
-                  navigator.geolocation.getCurrentPosition((pos) => {
-                    const lat = pos.coords.latitude; const lng = pos.coords.longitude;
-                    setClinicLatLng({ lat, lng });
-                    fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`).then((r) => r.json()).then((data) => setClinicAddress(data?.display_name || '')).catch(() => {});
-                  });
-                }} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Use current location</button>
-              </div>
-              <div className="mt-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
                 <label className="mb-2 block text-sm font-medium">Consultation type</label>
                 <select value={consultationType} onChange={(e) => setConsultationType(e.target.value as any)} className="w-full rounded-2xl border border-slate-300 px-4 py-3">
                   <option value="clinic">Clinic</option>
@@ -212,7 +199,7 @@ export default function DoctorProfilePage() {
                   <option value="both">Both</option>
                 </select>
               </div>
-              <div className="mt-4">
+              <div>
                 <label className="mb-2 block text-sm font-medium">Service radius (km)</label>
                 <input type="number" value={serviceRadius} onChange={(e) => setServiceRadius(Number(e.target.value))} className="w-full rounded-2xl border border-slate-300 px-4 py-3" />
               </div>

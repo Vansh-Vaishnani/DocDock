@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
-import LeafletMap from '@/components/map/LeafletMap';
+import MapPicker from '@/components/map/MapPicker';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -18,7 +18,7 @@ import {
 } from '../api';
 
 const schema = z.object({
-  label: z.string().trim().min(3, 'Label is required'),
+  label: z.string().trim().min(3, 'Address name is required'),
   isDefault: z.boolean().optional().default(false)
 });
 
@@ -33,7 +33,7 @@ export default function PatientAddressesPage() {
   const [editLabel, setEditLabel] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
-  
+  const [selectedAddressLabel, setSelectedAddressLabel] = useState('');
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -45,9 +45,8 @@ export default function PatientAddressesPage() {
     try {
       const result = await listPatientAddresses();
       setAddresses(result);
-      // if there's a default address, set it as the selected location so map centers
       const def = result.find((a) => a.isDefault) || result[0];
-      if (def && def.location?.coordinates) {
+      if (def?.location?.coordinates) {
         const [lng, lat] = def.location.coordinates;
         setSelectedLocation({ lat, lng });
       }
@@ -63,7 +62,6 @@ export default function PatientAddressesPage() {
     void loadAddresses();
   }, []);
 
-
   const onSubmit = async (values: FormValues) => {
     setError(null);
     try {
@@ -72,7 +70,7 @@ export default function PatientAddressesPage() {
         return;
       }
       const payload = {
-        label: values.label,
+        label: values.label.trim(),
         location: {
           type: 'Point' as const,
           coordinates: [selectedLocation.lng, selectedLocation.lat] as [number, number]
@@ -83,6 +81,7 @@ export default function PatientAddressesPage() {
       setAddresses(response.data.addresses);
       reset({ label: '', isDefault: false });
       setSelectedLocation(null);
+      setSelectedAddressLabel('');
       showToast('Address added successfully.', 'success');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unable to add address.';
@@ -130,7 +129,7 @@ export default function PatientAddressesPage() {
 
   const saveEdit = async (addressId: string) => {
     if (!editLabel.trim()) {
-      showToast('Label is required.', 'error');
+      showToast('Address name is required.', 'error');
       return;
     }
     setActionId(addressId);
@@ -149,53 +148,56 @@ export default function PatientAddressesPage() {
   const defaultAddress = useMemo(() => addresses.find((address) => address.isDefault), [addresses]);
 
   return (
-    <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+    <section className="space-y-6">
       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-2xl font-semibold">Address management</h2>
-        <p className="mt-2 text-slate-600">Add and manage locations for home doctor visits.</p>
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold">Saved delivery locations</h2>
+            <p className="mt-2 text-slate-600">Search a place, use your current location, or tap the map to save a home visit address.</p>
+          </div>
+          {defaultAddress && <div className="rounded-full bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">Default: {defaultAddress.label}</div>}
+        </div>
 
         {error && <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Label</label>
-            <input {...register('label')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-500" placeholder="Home / Work / Other" />
-            {errors.label && <p className="mt-2 text-sm text-rose-600">{errors.label.message}</p>}
-          </div>
-          <div className="mt-3 grid gap-4 md:grid-cols-[1fr_320px]">
+          <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
             <div>
-              <LeafletMap
-                value={selectedLocation ?? null}
-                onChange={(lat: number, lng: number, label?: string) => {
-                  setSelectedLocation({ lat, lng });
-                  if (label && !document.activeElement) {
-                    // avoid clobbering manual typing
-                    // no-op: label may be used when saving
-                  }
-                }}
-                minHeight={500}
-              />
+              <label className="mb-2 block text-sm font-medium text-slate-700">Address name</label>
+              <input {...register('label')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-cyan-500" placeholder="Home / Work / Other" />
+              {errors.label && <p className="mt-2 text-sm text-rose-600">{errors.label.message}</p>}
             </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Map controls</label>
-              <div className="flex flex-col gap-2">
-                <div className="text-sm text-slate-600">Click on the map or drag the marker to choose the exact location.</div>
-              </div>
+            <label className="flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
+              <input type="checkbox" {...register('isDefault')} className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500" />
+              Set as default
+            </label>
+          </div>
+
+          <div className="space-y-3">
+            <MapPicker
+              value={selectedLocation ?? null}
+              onChange={(lat: number, lng: number, label?: string) => {
+                setSelectedLocation({ lat, lng });
+                setSelectedAddressLabel(label || '');
+              }}
+              minHeight={500}
+              placeholder="Search for an address"
+            />
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">Selected address</p>
+              <p className="mt-1">{selectedAddressLabel || 'Search or tap the map to choose a location.'}</p>
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input type="checkbox" {...register('isDefault')} className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500" />
-            Set as default address
-          </label>
+
           <button type="submit" className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
-            Add address
+            Save address
           </button>
         </form>
       </div>
 
       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-xl font-semibold">Saved addresses</h3>
-        <p className="mt-2 text-sm text-slate-600">Edit labels, set a default, or remove addresses you no longer need.</p>
+        <p className="mt-2 text-sm text-slate-600">Edit labels, set defaults, or remove addresses you no longer need.</p>
 
         {loading && <div className="mt-5 rounded-2xl bg-slate-100 p-4 text-sm text-slate-600">Loading addresses...</div>}
 
@@ -220,58 +222,30 @@ export default function PatientAddressesPage() {
                     ) : (
                       <p className="font-semibold text-slate-900">{address.label}</p>
                     )}
-                    <p className="mt-1 text-sm text-slate-600">
-                      {address.location.coordinates[1]}, {address.location.coordinates[0]}
-                    </p>
+                    <p className="mt-1 text-sm text-slate-600">{selectedAddressLabel || 'Saved location'}</p>
                   </div>
                   {address.isDefault && <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Default</span>}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {editingId === address._id ? (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => address._id && saveEdit(address._id)}
-                        disabled={actionId === address._id}
-                        className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                      >
-                        Save
-                      </button>
-                      <button type="button" onClick={cancelEdit} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">
-                        Cancel
-                      </button>
+                      <button type="button" onClick={() => address._id && saveEdit(address._id)} disabled={actionId === address._id} className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Save</button>
+                      <button type="button" onClick={cancelEdit} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">Cancel</button>
                     </>
                   ) : (
                     <>
-                      <button type="button" onClick={() => startEdit(address)} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">
-                        Edit
-                      </button>
+                      <button type="button" onClick={() => startEdit(address)} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
                       {!address.isDefault && address._id && (
-                        <button
-                          type="button"
-                          onClick={() => handleSetDefault(address._id!)}
-                          disabled={actionId === address._id}
-                          className="rounded-full border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700 disabled:opacity-60"
-                        >
-                          Set default
-                        </button>
+                        <button type="button" onClick={() => { if (address._id) { void handleSetDefault(address._id); } }} disabled={actionId === address._id} className="rounded-full border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700 disabled:opacity-60">Set default</button>
                       )}
                       {address._id && (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(address._id!)}
-                          disabled={actionId === address._id}
-                          className="rounded-full border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 disabled:opacity-60"
-                        >
-                          Delete
-                        </button>
+                        <button type="button" onClick={() => { if (address._id) { void handleDelete(address._id); } }} disabled={actionId === address._id} className="rounded-full border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 disabled:opacity-60">Delete</button>
                       )}
                     </>
                   )}
                 </div>
               </div>
             ))}
-            {defaultAddress && <p className="text-sm text-slate-500">Default address: {defaultAddress.label}</p>}
           </div>
         )}
       </div>

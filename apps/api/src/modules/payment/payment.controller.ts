@@ -13,15 +13,37 @@ const service = new PaymentService();
 const appointmentService = new AppointmentService();
 
 export class PaymentController {
-  private async resolveBookingPayload(userId: string, body: { doctorId: string; appointmentDate: string; appointmentTime: string; addressId: string; notes?: string }) {
+  private async resolveBookingPayload(
+    userId: string,
+    body: {
+      doctorId: string;
+      appointmentDate: string;
+      appointmentTime: string;
+      addressId?: string;
+      location?: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
+      notes?: string;
+    }
+  ) {
     const patientProfile = await PatientModel.findOne({ userId: new mongoose.Types.ObjectId(userId) });
     if (!patientProfile) {
       throw new ApiError('Patient profile not found', 404, 'PATIENT_NOT_FOUND');
     }
 
-    const address = patientProfile.addresses.find((item) => item._id?.toString() === body.addressId);
-    if (!address) {
-      throw new ApiError('Selected address not found', 404, 'ADDRESS_NOT_FOUND');
+    let resolvedAddress: { label: string; location: { type: 'Point'; coordinates: [number, number] } } | undefined;
+
+    if (body.addressId) {
+      const address = patientProfile.addresses.find((item) => item._id?.toString() === body.addressId);
+      if (!address) {
+        throw new ApiError('Selected address not found', 404, 'ADDRESS_NOT_FOUND');
+      }
+      resolvedAddress = {
+        label: address.label,
+        location: address.location
+      };
+    } else if (body.location) {
+      resolvedAddress = body.location;
+    } else {
+      throw new ApiError('Selected address is required', 400, 'ADDRESS_REQUIRED');
     }
 
     return {
@@ -30,10 +52,7 @@ export class PaymentController {
       appointmentTime: body.appointmentTime,
       addressId: body.addressId,
       notes: body.notes,
-      address: {
-        label: address.label,
-        location: address.location
-      }
+      address: resolvedAddress
     };
   }
 

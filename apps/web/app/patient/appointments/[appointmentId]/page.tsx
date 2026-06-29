@@ -21,35 +21,81 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
   if (!patientCoords) return null;
   const patientLatLng = { lat: patientCoords[1], lng: patientCoords[0] };
 
-  const initialDoctorCoords = (detail.doctor as any)?.location?.coordinates;
-  const fallbackDoctor = { lat: patientLatLng.lat + 0.005, lng: patientLatLng.lng - 0.005 };
-  const [doctorPos, setDoctorPos] = useState<{ lat: number; lng: number }>(initialDoctorCoords ? { lat: initialDoctorCoords[1], lng: initialDoctorCoords[0] } : fallbackDoctor);
+  const clinicLocation = (detail.doctor as any)?.clinicLocation || (detail.doctor as any)?.location;
+  const startDoctorCoords = clinicLocation?.coordinates;
+  const initialDoctorCoords = startDoctorCoords ? { lat: startDoctorCoords[1], lng: startDoctorCoords[0] } : null;
+  const [doctorPos, setDoctorPos] = useState<{ lat: number; lng: number }>(initialDoctorCoords || { lat: patientLatLng.lat + 0.005, lng: patientLatLng.lng - 0.005 });
+  const [routePath, setRoutePath] = useState<[number, number][]>([]);
+  const [routeIndex, setRouteIndex] = useState(0);
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const [remainingDistanceKm, setRemainingDistanceKm] = useState<number | null>(null);
 
   useEffect(() => {
-    let t: any;
-    if (detail.appointment?.status === 'doctor_on_way') {
-      t = setInterval(() => {
-        setDoctorPos((prev) => {
-          const dx = patientLatLng.lat - prev.lat;
-          const dy = patientLatLng.lng - prev.lng;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 0.0002) return prev;
-          const step = 0.15; // fraction of remaining distance
-          return { lat: prev.lat + dx * step, lng: prev.lng + dy * step };
-        });
-      }, 1500);
-    }
-    return () => { if (t) clearInterval(t); };
-  }, [detail.appointment?.status]);
+    if (detail.appointment?.status !== 'doctor_on_way' || !initialDoctorCoords) return;
 
-  const poly = [[doctorPos.lat, doctorPos.lng], [patientLatLng.lat, patientLatLng.lng]];
+    const start = [startDoctorCoords[0], startDoctorCoords[1]];
+    const finish = [patientCoords[0], patientCoords[1]];
+
+    const controller = new AbortController();
+    void fetch(`https://router.project-osrm.org/route/v1/driving/${start[0]},${start[1]};${finish[0]},${finish[1]}?overview=full&geometries=geojson`, {
+      signal: controller.signal
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        const geometry = data?.routes?.[0]?.geometry?.coordinates;
+        if (!Array.isArray(geometry) || geometry.length === 0) return;
+        const path = geometry.map(([lng, lat]: [number, number]) => [lat, lng] as [number, number]);
+        setRoutePath(path);
+        setRouteIndex(0);
+        setDoctorPos({ lat: path[0][0], lng: path[0][1] });
+        const distanceMeters = Number(data?.routes?.[0]?.distance || 0);
+        setRemainingDistanceKm(distanceMeters / 1000);
+        setEtaMinutes(Math.max(3, Math.round((distanceMeters / 1000) / 30 * 60)));
+      })
+      .catch(() => {
+        setRoutePath([]);
+        setEtaMinutes(null);
+        setRemainingDistanceKm(null);
+      });
+
+    return () => controller.abort();
+  }, [detail.appointment?.status, initialDoctorCoords, patientCoords]);
+
+  useEffect(() => {
+    if (detail.appointment?.status !== 'doctor_on_way' || routePath.length === 0) return;
+
+    const timer = window.setInterval(() => {
+      setRouteIndex((current) => {
+        const nextIndex = current + 1;
+        if (nextIndex >= routePath.length) {
+          setDoctorPos({ lat: patientLatLng.lat, lng: patientLatLng.lng });
+          setRemainingDistanceKm(0);
+          setEtaMinutes(0);
+          return routePath.length - 1;
+        }
+        const [lat, lng] = routePath[nextIndex];
+        setDoctorPos({ lat, lng });
+        const progressRatio = nextIndex / Math.max(1, routePath.length - 1);
+        const remaining = Math.max(0, (remainingDistanceKm ?? 0) * (1 - progressRatio));
+        setRemainingDistanceKm(Number(remaining.toFixed(1)));
+        return nextIndex;
+      });
+    }, 1400);
+
+    return () => window.clearInterval(timer);
+  }, [detail.appointment?.status, patientLatLng.lat, patientLatLng.lng, remainingDistanceKm, routePath]);
+
+  const poly = routePath.length > 0 ? routePath.map(([lat, lng]) => [lat, lng]) : [];
+  const statusText = detail.appointment?.status === 'doctor_on_way'
+    ? `Doctor is on the way • ETA: ${etaMinutes === null ? 'calculating...' : etaMinutes === 0 ? 'Arriving now' : `${etaMinutes} min`}${remainingDistanceKm !== null ? ` • ${remainingDistanceKm.toFixed(1)} km left` : ''}`
+    : 'Doctor has arrived';
 
   return (
     <LeafletMap value={patientLatLng} minHeight={320} showSearch={false}>
       <Marker {...({ position: [patientLatLng.lat, patientLatLng.lng], icon: createSvgIcon('#0ea5e9') } as any)} />
       <Marker {...({ position: [doctorPos.lat, doctorPos.lng], icon: createSvgIcon('#16a34a') } as any)} />
-      <Polyline {...({ positions: poly, pathOptions: { color: '#0ea5e9' } } as any)} />
-      <div className="mt-2 text-sm text-slate-600">Doctor is on the way • ETA: approx. —</div>
+      {poly.length > 0 && <Polyline {...({ positions: poly, pathOptions: { color: '#0ea5e9', weight: 5, opacity: 0.8 } } as any)} />}
+      <div className="mt-2 text-sm text-slate-600">{statusText}</div>
     </LeafletMap>
   );
 }

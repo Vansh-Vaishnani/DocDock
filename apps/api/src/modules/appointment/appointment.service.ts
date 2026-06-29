@@ -465,7 +465,11 @@ export class AppointmentService {
                 consultationFee: doctorProfile?.consultationFee,
                 email: (doctorProfile?.userId as { email?: string } | undefined)?.email,
                 phone: (doctorProfile?.userId as { phone?: string } | undefined)?.phone,
-                profilePhotoUrl: (doctorProfile?.userId as { avatar?: string } | undefined)?.avatar
+                profilePhotoUrl: (doctorProfile?.userId as { avatar?: string } | undefined)?.avatar,
+                clinicName: doctorProfile?.clinicName,
+                clinicAddress: doctorProfile?.clinicAddress,
+                clinicLocation: doctorProfile?.location ? { type: doctorProfile.location.type, coordinates: doctorProfile.location.coordinates } : undefined,
+                location: doctorProfile?.location ? { type: doctorProfile.location.type, coordinates: doctorProfile.location.coordinates } : undefined
               },
               patient: {
                 _id: patientUser?._id?.toString(),

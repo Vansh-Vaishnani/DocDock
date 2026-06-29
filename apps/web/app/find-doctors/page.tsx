@@ -1,21 +1,22 @@
 "use client";
-import dynamic from 'next/dynamic';
+
+export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import nextDynamic from 'next/dynamic';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { DoctorCard } from '@/components/doctor-discovery/DoctorCard';
-import { createSvgIcon } from '@/components/map/LeafletMap';
 import { DoctorFilters } from '@/components/doctor-discovery/DoctorFilters';
+import MapPicker, { createSvgIcon } from '@/components/map/MapPicker';
 import { buildDoctorSearchParams } from '@/lib/doctorSearch';
-import { addAddress, fetchPatientProfile } from '../patient/api';
+import { calculateDistanceKm, formatDistanceKm } from '@/lib/locationUtils';
+import { fetchPatientProfile } from '../patient/api';
 import 'leaflet/dist/leaflet.css';
-const MapContainer = dynamic(() => import('react-leaflet').then((m) => m.MapContainer), { ssr: false });
-const TileLayer = dynamic(() => import('react-leaflet').then((m) => m.TileLayer), { ssr: false });
-const CircleMarker = dynamic(() => import('react-leaflet').then((m) => m.CircleMarker), { ssr: false });
-const Marker = dynamic(() => import('react-leaflet').then((m) => m.Marker), { ssr: false });
-const Popup = dynamic(() => import('react-leaflet').then((m) => m.Popup), { ssr: false });
+
+const Marker = nextDynamic(() => import('react-leaflet').then((m) => m.Marker), { ssr: false });
+const Popup = nextDynamic(() => import('react-leaflet').then((m) => m.Popup), { ssr: false });
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
@@ -58,12 +59,9 @@ async function fetchDoctors(filters: Record<string, any>) {
 function FindDoctorsPageContent() {
   const [filters, setFilters] = useState(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState(defaultFilters);
-
-  // Location state
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
-  const mapRef = useRef<any | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
 
   const query = useQuery({
@@ -74,6 +72,9 @@ function FindDoctorsPageContent() {
   });
 
   const doctors = useMemo(() => query.data ?? [], [query.data]);
+  const doctorMarkers = useMemo(() => {
+    return (doctors as any[]).filter((doctor) => Array.isArray(doctor.location?.coordinates) && doctor.location.coordinates.length === 2);
+  }, [doctors]);
 
   const updateFilters = (updates: Record<string, string>) => {
     setFilters((current) => ({ ...current, ...updates }));
@@ -88,14 +89,16 @@ function FindDoctorsPageContent() {
     setAppliedFilters(defaultFilters);
   };
 
-  const leafletMapProps: any = {
-    center: location ? [location.lat, location.lng] : [12.9716, 77.5946],
-    zoom: location ? 13 : 10,
-    style: { height: 480, width: '100%', borderRadius: 8 },
-    whenCreated: (mapInstance: any) => { mapRef.current = mapInstance; }
+  const buildDoctorHref = (doctorId: string) => {
+    if (!location) return `/find-doctors/${doctorId}`;
+    const params = new URLSearchParams({
+      lat: location.lat.toString(),
+      lng: location.lng.toString(),
+      label: locationLabel || `Lat ${location.lat.toFixed(4)}, Lng ${location.lng.toFixed(4)}`
+    });
+    return `/find-doctors/${doctorId}?${params.toString()}`;
   };
 
-  // initialize location: prefer patient's default address, then browser geolocation
   useEffect(() => {
     let mounted = true;
     void fetchPatientProfile().then((profile) => {
@@ -104,7 +107,7 @@ function FindDoctorsPageContent() {
       if (defaultAddress?.location?.coordinates) {
         const [lng, lat] = defaultAddress.location.coordinates;
         setLocation({ lat, lng });
-        setLocationLabel(defaultAddress.label);
+        setLocationLabel(defaultAddress.label || 'Saved address');
         return;
       }
       if (!navigator.geolocation) {
@@ -113,71 +116,22 @@ function FindDoctorsPageContent() {
       }
       navigator.geolocation.getCurrentPosition((pos) => {
         setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      }, (err) => {
-        setMapError('Location permission denied. Click on the map to choose location.');
+      }, () => {
+        setMapError('Location permission denied. Choose a location on the map instead.');
       }, { enableHighAccuracy: true, timeout: 5000 });
     }).catch(() => {
-      // fallback to geolocation
       if (!navigator.geolocation) {
         setMapError('Geolocation not supported by your browser.');
         return;
       }
       navigator.geolocation.getCurrentPosition((pos) => {
         setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      }, (err) => {
-        setMapError('Location permission denied. Click on the map to choose location.');
+      }, () => {
+        setMapError('Location permission denied. Choose a location on the map instead.');
       }, { enableHighAccuracy: true, timeout: 5000 });
     });
     return () => { mounted = false; };
   }, []);
-
-  // attach a click handler to the Leaflet map instance when available
-  useEffect(() => {
-    const map = mapRef.current as any;
-    if (!map) return;
-    const onClick = (e: any) => {
-      const lat = e.latlng.lat;
-      const lng = e.latlng.lng;
-      setLocation({ lat, lng });
-      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`)
-        .then((r) => r.json())
-        .then((data) => {
-          const label = data?.display_name || `Lat ${lat.toFixed(4)}, Lng ${lng.toFixed(4)}`;
-          setLocationLabel(label);
-        })
-        .catch(() => setLocationLabel(`Lat ${lat.toFixed(4)}, Lng ${lng.toFixed(4)}`));
-    };
-    try {
-      map.on('click', onClick);
-    } catch (e) {}
-    return () => { try { map.off('click', onClick); } catch (e) {} };
-  }, [mapRef.current]);
-
-  // compute simple haversine distance in meters
-  const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const toRad = (v: number) => (v * Math.PI) / 180;
-    const R = 6371e3; // meters
-    const φ1 = toRad(lat1);
-    const φ2 = toRad(lat2);
-    const Δφ = toRad(lat2 - lat1);
-    const Δλ = toRad(lon2 - lon1);
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
-
-  // enrich doctors with computed distance when location available
-  useEffect(() => {
-    if (!location || !doctors || doctors.length === 0) return;
-    try {
-      doctors.forEach((d: any) => {
-        if (d.location?.coordinates) {
-          const [lng, lat] = d.location.coordinates;
-          d.distance = d.distance || haversine(location.lat, location.lng, lat, lng);
-        }
-      });
-    } catch (e) {}
-  }, [location, doctors]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
@@ -201,124 +155,107 @@ function FindDoctorsPageContent() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <MapContainer {...leafletMapProps}>
-              <TileLayer {...({ url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '&copy; OpenStreetMap contributors' } as any)} />
+            <MapPicker
+              value={location}
+              onChange={(lat, lng, label) => {
+                setLocation({ lat, lng });
+                setLocationLabel(label || null);
+                setMapError(null);
+              }}
+              minHeight={480}
+              placeholder="Search your area"
+            >
               {location && (
-                <Marker {...({ position: [location.lat, location.lng], draggable: true, icon: createSvgIcon('#0ea5e9') } as any)} eventHandlers={{
-                  dragend: (e: any) => {
-                    const lat = e.target.getLatLng().lat; const lng = e.target.getLatLng().lng; setLocation({ lat, lng });
-                    fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`).then((r) => r.json()).then((data) => setLocationLabel(data?.display_name || null)).catch(() => {});
-                  }
-                }}>
-                  <Popup>Your location</Popup>
+                <Marker {...({ position: [location.lat, location.lng], icon: createSvgIcon('#0ea5e9') } as any)}>
+                  <Popup>Selected location</Popup>
                 </Marker>
               )}
-              {doctors.map((doc: any) => {
-                const coords = doc.location?.coordinates;
-                if (!coords || coords.length < 2) return null;
-                const lat = coords[1];
-                const lng = coords[0];
-                const isSelectedId = selectedDoctorId === doc._id;
-                const availability = doc.availability || {};
-                const lastSeen = availability.lastSeenAt ? new Date(availability.lastSeenAt).getTime() : 0;
-                const recent = Date.now() - lastSeen < 3600_000;
-                const color = isSelectedId ? '#0ea5e9' : (availability.isAvailable ? '#16a34a' : (recent ? '#f59e0b' : '#9ca3af'));
+              {doctorMarkers.map((doctor: any) => {
+                const [lng, lat] = doctor.location.coordinates;
                 return (
-                  <CircleMarker
-                    key={doc._id}
-                    center={[lat, lng]}
-                    pathOptions={{ color, fillColor: color }}
-                    {...({ radius: isSelectedId ? 10 : 6 } as any)}
-                    eventHandlers={{
-                      click: () => {
-                        setSelectedDoctorId(doc._id);
-                        try { mapRef.current?.panTo([lat, lng]); } catch (e) {}
-                        const elCard = document.getElementById(`doctor-card-${doc._id}`);
-                        if (elCard) elCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      }
-                    }}
-                  >
+                  <Marker key={doctor._id} {...({ position: [lat, lng], icon: createSvgIcon('#f59e0b', 30) } as any)}>
                     <Popup>
-                      <div className="text-sm">
-                        <div className="font-semibold">{doc.userId?.fullName || doc.doctorName || doc.name}</div>
-                        <div>{doc.specialization}</div>
-                        <div className="mt-1 text-xs text-slate-600">{doc.averageRating?.toFixed?.(1) ?? ''} • {doc.reviewCount ?? 0} reviews</div>
+                      <div className="min-w-[220px] text-sm">
+                        <p className="font-semibold text-slate-900">{doctor.userId?.fullName || `Dr. ${doctor.specialization}`}</p>
+                        <p className="mt-1 font-medium text-slate-800">{doctor.clinicName || 'Clinic'}</p>
+                        <p className="mt-1 text-slate-600">{doctor.clinicAddress || 'Clinic address available on request'}</p>
+                        <p className="mt-2 font-semibold text-emerald-700">₹{doctor.consultationFee} Consultation</p>
+                        <p className="mt-1 text-slate-600">{doctor.availability?.isAvailable ? 'Available Now' : 'On request'}</p>
                       </div>
                     </Popup>
-                  </CircleMarker>
+                  </Marker>
                 );
               })}
-            </MapContainer>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div className="text-sm text-slate-600">{locationLabel ?? (mapError ?? 'Click on the map to set your location')}</div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // re-request browser location
+            </MapPicker>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-slate-600">{locationLabel || mapError || 'Search or tap the map to set your location'}</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapError(null);
+                  if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition((pos) => {
+                      setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                      setLocationLabel('Current location');
                       setMapError(null);
-                      if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition((pos) => {
-                          setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                        }, (err) => {
-                          setMapError('Location permission denied. Click on the map to choose location.');
-                        });
-                      } else {
-                        setMapError('Geolocation not supported by your browser.');
-                      }
-                    }}
-                    className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-                  >
-                    Use my location
-                  </button>
-                </div>
+                    }, () => {
+                      setMapError('Location permission denied. Choose a location on the map instead.');
+                    });
+                  } else {
+                    setMapError('Geolocation not supported by your browser.');
+                  }
+                }}
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Use my location
+              </button>
             </div>
           </div>
 
           <div>
             {query.isLoading && (
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="animate-pulse rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="h-4 w-24 rounded bg-slate-200" />
-                <div className="mt-4 h-6 w-40 rounded bg-slate-200" />
-                <div className="mt-4 h-4 w-full rounded bg-slate-200" />
-                <div className="mt-2 h-4 w-3/4 rounded bg-slate-200" />
-                <div className="mt-6 h-10 rounded-full bg-slate-200" />
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {[1, 2, 3].map((item) => (
+                  <div key={item} className="animate-pulse rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="h-4 w-24 rounded bg-slate-200" />
+                    <div className="mt-4 h-6 w-40 rounded bg-slate-200" />
+                    <div className="mt-4 h-4 w-full rounded bg-slate-200" />
+                    <div className="mt-2 h-4 w-3/4 rounded bg-slate-200" />
+                    <div className="mt-6 h-10 rounded-full bg-slate-200" />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
             )}
 
             {!query.isLoading && query.isError && (
-          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 text-center text-amber-800">
-            <h2 className="text-xl font-semibold">We could not load doctor results.</h2>
-            <p className="mt-2">Please try again in a moment.</p>
-          </div>
-        )}
+              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 text-center text-amber-800">
+                <h2 className="text-xl font-semibold">We could not load doctor results.</h2>
+                <p className="mt-2">Please try again in a moment.</p>
+              </div>
+            )}
             {!query.isLoading && !query.isError && doctors.length === 0 && (
-          <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">No doctors match these filters yet</h2>
-            <p className="mt-2 text-slate-600">Try broadening your search radius or clearing some filters.</p>
-          </div>
-        )}
+              <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+                <h2 className="text-xl font-semibold text-slate-900">No doctors match these filters yet</h2>
+                <p className="mt-2 text-slate-600">Try broadening your search radius or clearing some filters.</p>
+              </div>
+            )}
             {!query.isLoading && !query.isError && doctors.length > 0 && (
               <div className="space-y-4">
-                {doctors.sort((a: any, b: any) => (a.distance || 0) - (b.distance || 0)).map((doctor: any) => (
-                  <div id={`doctor-card-${doctor._id}`} key={doctor._id} onClick={() => {
-                    setSelectedDoctorId(doctor._id);
-                    // center map on doctor
-                    try {
-                      if (mapRef.current && doctor.location?.coordinates) {
-                        const [lng, lat] = doctor.location.coordinates;
-                        mapRef.current.flyTo([lat, lng], 14);
-                      }
-                    } catch (e) {}
-                  }}>
-                    <DoctorCard doctor={doctor} />
-                    <div className="mt-2 text-sm text-slate-600">Distance: {(doctor.distance / 1000).toFixed(1)} km</div>
-                  </div>
-                ))}
+                {doctors.sort((a: any, b: any) => (Number(a.distance) || 0) - (Number(b.distance) || 0)).map((doctor: any) => {
+                  const backendDistance = Number(doctor.distance);
+                  const distanceLabel = Number.isFinite(backendDistance) && backendDistance > 0
+                    ? formatDistanceKm(backendDistance, true)
+                    : (location && Array.isArray(doctor.location?.coordinates) ? formatDistanceKm(calculateDistanceKm(location.lat, location.lng, doctor.location.coordinates[1], doctor.location.coordinates[0]), false) : '—');
+                  return (
+                    <div id={`doctor-card-${doctor._id}`} key={doctor._id} onClick={() => setSelectedDoctorId(doctor._id)}>
+                      <DoctorCard doctor={doctor} />
+                      <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
+                        <span>Distance: {distanceLabel}</span>
+                        <Link href={buildDoctorHref(doctor._id)} className="font-semibold text-emerald-600">Book here</Link>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
