@@ -1,6 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import 'leaflet/dist/leaflet.css';
+import LeafletMap from '@/components/map/LeafletMap';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,8 +19,6 @@ import {
 
 const schema = z.object({
   label: z.string().trim().min(3, 'Label is required'),
-  latitude: z.string().trim().min(1, 'Latitude is required'),
-  longitude: z.string().trim().min(1, 'Longitude is required'),
   isDefault: z.boolean().optional().default(false)
 });
 
@@ -32,6 +32,8 @@ export default function PatientAddressesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
+  
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -43,6 +45,12 @@ export default function PatientAddressesPage() {
     try {
       const result = await listPatientAddresses();
       setAddresses(result);
+      // if there's a default address, set it as the selected location so map centers
+      const def = result.find((a) => a.isDefault) || result[0];
+      if (def && def.location?.coordinates) {
+        const [lng, lat] = def.location.coordinates;
+        setSelectedLocation({ lat, lng });
+      }
       setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unable to load addresses.');
@@ -55,20 +63,26 @@ export default function PatientAddressesPage() {
     void loadAddresses();
   }, []);
 
+
   const onSubmit = async (values: FormValues) => {
     setError(null);
     try {
+      if (!selectedLocation) {
+        showToast('Please choose a location on the map.', 'error');
+        return;
+      }
       const payload = {
         label: values.label,
         location: {
           type: 'Point' as const,
-          coordinates: [Number(values.longitude), Number(values.latitude)] as [number, number]
+          coordinates: [selectedLocation.lng, selectedLocation.lat] as [number, number]
         },
         isDefault: values.isDefault || false
       };
       const response = await addAddress(payload);
       setAddresses(response.data.addresses);
-      reset({ label: '', latitude: '', longitude: '', isDefault: false });
+      reset({ label: '', isDefault: false });
+      setSelectedLocation(null);
       showToast('Address added successfully.', 'success');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unable to add address.';
@@ -148,16 +162,25 @@ export default function PatientAddressesPage() {
             <input {...register('label')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-500" placeholder="Home / Work / Other" />
             {errors.label && <p className="mt-2 text-sm text-rose-600">{errors.label.message}</p>}
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="mt-3 grid gap-4 md:grid-cols-[1fr_320px]">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Latitude</label>
-              <input {...register('latitude')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-500" placeholder="12.97" />
-              {errors.latitude && <p className="mt-2 text-sm text-rose-600">{errors.latitude.message}</p>}
+              <LeafletMap
+                value={selectedLocation ?? null}
+                onChange={(lat: number, lng: number, label?: string) => {
+                  setSelectedLocation({ lat, lng });
+                  if (label && !document.activeElement) {
+                    // avoid clobbering manual typing
+                    // no-op: label may be used when saving
+                  }
+                }}
+                minHeight={500}
+              />
             </div>
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Longitude</label>
-              <input {...register('longitude')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-500" placeholder="77.59" />
-              {errors.longitude && <p className="mt-2 text-sm text-rose-600">{errors.longitude.message}</p>}
+              <label className="mb-2 block text-sm font-medium text-slate-700">Map controls</label>
+              <div className="flex flex-col gap-2">
+                <div className="text-sm text-slate-600">Click on the map or drag the marker to choose the exact location.</div>
+              </div>
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm text-slate-700">

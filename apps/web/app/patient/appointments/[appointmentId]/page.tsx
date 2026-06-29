@@ -8,8 +8,51 @@ const REVIEW_MODAL_KEY_PREFIX = 'docdock-review-modal-dismissed';
 
 import { useToast } from '../../../auth/toast-provider';
 import { fetchPatientAppointmentDetail, submitReview, type AppointmentDetail } from '../../api';
+import LeafletMap, { createSvgIcon } from '@/components/map/LeafletMap';
+import dynamic from 'next/dynamic';
+import 'leaflet/dist/leaflet.css';
+const Marker = dynamic(() => import('react-leaflet').then((m) => m.Marker), { ssr: false });
+const Polyline = dynamic(() => import('react-leaflet').then((m) => m.Polyline), { ssr: false });
 
 const STAR_LABELS = ['Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
+
+function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
+  const patientCoords = detail.appointment?.address?.location?.coordinates;
+  if (!patientCoords) return null;
+  const patientLatLng = { lat: patientCoords[1], lng: patientCoords[0] };
+
+  const initialDoctorCoords = (detail.doctor as any)?.location?.coordinates;
+  const fallbackDoctor = { lat: patientLatLng.lat + 0.005, lng: patientLatLng.lng - 0.005 };
+  const [doctorPos, setDoctorPos] = useState<{ lat: number; lng: number }>(initialDoctorCoords ? { lat: initialDoctorCoords[1], lng: initialDoctorCoords[0] } : fallbackDoctor);
+
+  useEffect(() => {
+    let t: any;
+    if (detail.appointment?.status === 'doctor_on_way') {
+      t = setInterval(() => {
+        setDoctorPos((prev) => {
+          const dx = patientLatLng.lat - prev.lat;
+          const dy = patientLatLng.lng - prev.lng;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 0.0002) return prev;
+          const step = 0.15; // fraction of remaining distance
+          return { lat: prev.lat + dx * step, lng: prev.lng + dy * step };
+        });
+      }, 1500);
+    }
+    return () => { if (t) clearInterval(t); };
+  }, [detail.appointment?.status]);
+
+  const poly = [[doctorPos.lat, doctorPos.lng], [patientLatLng.lat, patientLatLng.lng]];
+
+  return (
+    <LeafletMap value={patientLatLng} minHeight={320} showSearch={false}>
+      <Marker {...({ position: [patientLatLng.lat, patientLatLng.lng], icon: createSvgIcon('#0ea5e9') } as any)} />
+      <Marker {...({ position: [doctorPos.lat, doctorPos.lng], icon: createSvgIcon('#16a34a') } as any)} />
+      <Polyline {...({ positions: poly, pathOptions: { color: '#0ea5e9' } } as any)} />
+      <div className="mt-2 text-sm text-slate-600">Doctor is on the way • ETA: approx. —</div>
+    </LeafletMap>
+  );
+}
 
 function formatDate(value?: string) {
   if (!value) return '—';
@@ -159,6 +202,19 @@ export default function AppointmentDetailsPage() {
                 <div><span className="font-medium text-slate-900">Prescription:</span> {detail.prescription ? 'Available' : 'Not yet issued'}</div>
               </div>
             </div>
+
+            {/* Live tracking map when doctor is on the way or arrived */}
+            {(detail.appointment?.status === 'doctor_on_way' || detail.appointment?.status === 'arrived') && (
+              <div className="rounded-2xl border border-slate-200 p-5">
+                <h3 className="text-lg font-semibold text-slate-900">Live tracking</h3>
+                <p className="mt-2 text-sm text-slate-600">Doctor is on the way. This map shows live position (UI placeholder).</p>
+                <div className="mt-4">
+                  {detail.appointment?.address?.location?.coordinates && (
+                    <LiveTrackingMap detail={detail} />
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="rounded-2xl border border-slate-200 p-5">
               <h3 className="text-lg font-semibold text-slate-900">Status timeline</h3>

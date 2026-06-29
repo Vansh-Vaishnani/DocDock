@@ -32,6 +32,9 @@ export interface IDoctorDocument extends mongoose.Document {
   profilePhotoUrl?: string;
   governmentIdUrl?: string;
   medicalLicenseUrl?: string;
+  clinicAddress?: string;
+  serviceRadius?: number; // in kilometers
+  consultationType?: 'home' | 'clinic' | 'both';
   location: { type: 'Point'; coordinates: [number, number] };
   availability: IDoctorAvailability;
   verificationStatus: 'pending' | 'approved' | 'rejected';
@@ -71,6 +74,9 @@ const doctorSchema = new Schema<IDoctorDocument>(
     profilePhotoUrl: { type: String },
     governmentIdUrl: { type: String },
     medicalLicenseUrl: { type: String },
+    clinicAddress: { type: String },
+    serviceRadius: { type: Number, default: 10 },
+    consultationType: { type: String, enum: ['home', 'clinic', 'both'], default: 'clinic' },
     location: {
       type: {
         type: String,

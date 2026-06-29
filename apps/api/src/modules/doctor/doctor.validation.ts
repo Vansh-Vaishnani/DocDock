@@ -40,7 +40,10 @@ export const doctorProfileSchema = z.object({
     bio: z.string().min(10).max(500),
     languages: z.array(z.string().min(2)).min(1),
     consultationFee: z.number().int().min(0),
-    location: locationSchema
+    location: locationSchema,
+    clinicAddress: z.string().optional(),
+    serviceRadius: z.number().optional(),
+    consultationType: z.enum(['home', 'clinic', 'both']).optional()
   })
 });
 
@@ -62,6 +65,9 @@ export const doctorRegisterSchema = z.object({
     clinicName: z.string().min(2),
     bio: z.string().min(10).max(1000),
     location: locationSchema.optional(),
+    clinicAddress: z.string().optional(),
+    serviceRadius: z.number().optional(),
+    consultationType: z.enum(['home', 'clinic', 'both']).optional(),
     profilePhoto: z.string().optional(),
     governmentId: z.string().optional(),
     medicalLicense: z.string().optional()
@@ -85,6 +91,9 @@ export const updateDoctorProfileSchema = z.object({
     dateOfBirth: z.string().optional(),
     clinicName: z.string().min(2).optional(),
     location: locationSchema.optional(),
+    clinicAddress: z.string().optional(),
+    serviceRadius: z.number().optional(),
+    consultationType: z.enum(['home', 'clinic', 'both']).optional(),
     profilePhoto: z.string().optional(),
     governmentId: z.string().optional(),
     medicalLicense: z.string().optional()
