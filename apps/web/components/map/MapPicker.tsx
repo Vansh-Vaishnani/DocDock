@@ -50,6 +50,7 @@ export default function MapPicker({
   const [icon, setIcon] = useState<any>(undefined);
   const [searchText, setSearchText] = useState('');
   const [resolvedAddress, setResolvedAddress] = useState('');
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -66,7 +67,7 @@ export default function MapPicker({
   }, []);
 
   const centerMap = (lat: number, lng: number, zoom = 16) => {
-    if (!mapRef.current) return;
+    if (!mapRef.current || !mapReady) return;
     try {
       mapRef.current.flyTo([lat, lng], zoom, { duration: 1.1, easeLinearity: 0.25 });
     } catch {
@@ -77,9 +78,9 @@ export default function MapPicker({
   };
 
   useEffect(() => {
-    if (!mapRef.current || !value) return;
+    if (!mapRef.current || !mapReady || !value) return;
     centerMap(value.lat, value.lng, 16);
-  }, [value?.lat, value?.lng]);
+  }, [value?.lat, value?.lng, mapReady]);
 
   const handleSelection = async (lat: number, lng: number, label?: string) => {
     const resolvedLabel = label || (await reverseGeocode(lat, lng));
@@ -135,7 +136,10 @@ export default function MapPicker({
         center={value ? [value.lat, value.lng] : initialCenter}
         zoom={value ? 16 : initialZoom}
         style={{ height: minHeight, width: '100%' }}
-        whenCreated={(mapInstance: any) => { mapRef.current = mapInstance; }}
+        whenCreated={(mapInstance: any) => {
+          mapRef.current = mapInstance;
+          setMapReady(true);
+        }}
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
         <MapEventsHandler onClick={(lat, lng) => { void handleSelection(lat, lng); }} />

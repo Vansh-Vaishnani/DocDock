@@ -1,6 +1,7 @@
 import { ApiError } from '../../common/errors/ApiError';
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { DoctorModel } from '../doctor/doctor.repository';
+import { UserModel } from '../auth/auth.repository';
 
 import { ReviewModel, IReviewDocument } from './review.repository';
 
@@ -61,10 +62,26 @@ export class ReviewService {
     const reviews = await ReviewModel.find(query)
       .sort({ [sort]: order === 'asc' ? 1 : -1 })
       .skip((page - 1) * limit)
-      .limit(limit);
+      .limit(limit)
+      .populate('patientId', 'fullName avatar')
+      .populate('appointmentId', 'scheduledAt');
+
+    const enrichedReviews = await Promise.all(
+      reviews.map(async (review) => {
+        const reviewObj = review.toObject();
+        const patient = reviewObj.patientId as any;
+        const appointment = reviewObj.appointmentId as any;
+        return {
+          ...reviewObj,
+          patientName: patient?.fullName || 'Patient',
+          patientPhoto: patient?.avatar || null,
+          appointmentDate: appointment?.scheduledAt || reviewObj.createdAt
+        };
+      })
+    );
 
     return {
-      reviews,
+      reviews: enrichedReviews as any,
       meta: {
         page,
         limit,
@@ -72,6 +89,14 @@ export class ReviewService {
         totalPages: Math.ceil(total / limit)
       }
     };
+  }
+
+  async listMyReviews(userId: string, page = 1, limit = 10, sort = 'createdAt', order: 'asc' | 'desc' = 'desc'): Promise<ReviewListResult> {
+    const doctor = await DoctorModel.findOne({ userId });
+    if (!doctor) {
+      throw new ApiError('Doctor profile not found', 404, 'DOCTOR_NOT_FOUND');
+    }
+    return this.listDoctorReviews(doctor._id.toString(), page, limit, sort, order);
   }
 
   async replyToReview(doctorId: string, reviewId: string, reply: string): Promise<IReviewDocument> {

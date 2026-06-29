@@ -38,6 +38,9 @@ export interface IDoctorDocument extends mongoose.Document {
   location: { type: 'Point'; coordinates: [number, number] };
   availability: IDoctorAvailability;
   verificationStatus: 'pending' | 'approved' | 'rejected';
+  verificationNote?: string;
+  verifiedBy?: mongoose.Types.ObjectId;
+  verifiedAt?: Date;
   averageRating: number;
   reviewCount: number;
 }
@@ -97,6 +100,9 @@ const doctorSchema = new Schema<IDoctorDocument>(
       maxAppointmentsPerDay: { type: Number, default: 10, min: 1 }
     },
     verificationStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    verificationNote: { type: String },
+    verifiedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    verifiedAt: { type: Date },
     averageRating: { type: Number, default: 0 },
     reviewCount: { type: Number, default: 0 }
   },

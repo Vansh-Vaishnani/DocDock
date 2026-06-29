@@ -63,6 +63,10 @@ function FindDoctorsPageContent() {
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [isLocationConfirmed, setIsLocationConfirmed] = useState(false);
 
   const query = useQuery({
     queryKey: ['find-doctors', appliedFilters, location?.lat, location?.lng],
@@ -99,36 +103,40 @@ function FindDoctorsPageContent() {
     return `/find-doctors/${doctorId}?${params.toString()}`;
   };
 
+  const handleDoctorCardClick = (doctor: any) => {
+    setSelectedDoctorId(doctor._id);
+    if (Array.isArray(doctor.location?.coordinates) && doctor.location.coordinates.length === 2) {
+      const [lng, lat] = doctor.location.coordinates;
+      setMapCenter({ lat, lng });
+      const cardElement = document.getElementById(`doctor-card-${doctor._id}`);
+      cardElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  const handleMarkerClick = (doctor: any) => {
+    setSelectedDoctorId(doctor._id);
+    const cardElement = document.getElementById(`doctor-card-${doctor._id}`);
+    cardElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
   useEffect(() => {
     let mounted = true;
     void fetchPatientProfile().then((profile) => {
       if (!mounted) return;
+      setSavedAddresses(profile.addresses || []);
       const defaultAddress = profile.addresses?.find((a) => a.isDefault) || profile.addresses?.[0];
       if (defaultAddress?.location?.coordinates) {
         const [lng, lat] = defaultAddress.location.coordinates;
         setLocation({ lat, lng });
         setLocationLabel(defaultAddress.label || 'Saved address');
+        if (defaultAddress._id) {
+          setSelectedAddressId(defaultAddress._id);
+        }
+        setIsLocationConfirmed(true);
         return;
       }
-      if (!navigator.geolocation) {
-        setMapError('Geolocation not supported by your browser.');
-        return;
-      }
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      }, () => {
-        setMapError('Location permission denied. Choose a location on the map instead.');
-      }, { enableHighAccuracy: true, timeout: 5000 });
     }).catch(() => {
-      if (!navigator.geolocation) {
-        setMapError('Geolocation not supported by your browser.');
-        return;
-      }
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      }, () => {
-        setMapError('Location permission denied. Choose a location on the map instead.');
-      }, { enableHighAccuracy: true, timeout: 5000 });
+      setSavedAddresses([]);
     });
     return () => { mounted = false; };
   }, []);
@@ -155,61 +163,109 @@ function FindDoctorsPageContent() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <MapPicker
-              value={location}
-              onChange={(lat, lng, label) => {
-                setLocation({ lat, lng });
-                setLocationLabel(label || null);
-                setMapError(null);
-              }}
-              minHeight={480}
-              placeholder="Search your area"
-            >
-              {location && (
-                <Marker {...({ position: [location.lat, location.lng], icon: createSvgIcon('#0ea5e9') } as any)}>
-                  <Popup>Selected location</Popup>
-                </Marker>
-              )}
-              {doctorMarkers.map((doctor: any) => {
-                const [lng, lat] = doctor.location.coordinates;
-                return (
-                  <Marker key={doctor._id} {...({ position: [lat, lng], icon: createSvgIcon('#f59e0b', 30) } as any)}>
-                    <Popup>
-                      <div className="min-w-[220px] text-sm">
-                        <p className="font-semibold text-slate-900">{doctor.userId?.fullName || `Dr. ${doctor.specialization}`}</p>
-                        <p className="mt-1 font-medium text-slate-800">{doctor.clinicName || 'Clinic'}</p>
-                        <p className="mt-1 text-slate-600">{doctor.clinicAddress || 'Clinic address available on request'}</p>
-                        <p className="mt-2 font-semibold text-emerald-700">₹{doctor.consultationFee} Consultation</p>
-                        <p className="mt-1 text-slate-600">{doctor.availability?.isAvailable ? 'Available Now' : 'On request'}</p>
-                      </div>
-                    </Popup>
-                  </Marker>
-                );
-              })}
-            </MapPicker>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm text-slate-600">{locationLabel || mapError || 'Search or tap the map to set your location'}</div>
-              <button
-                type="button"
-                onClick={() => {
-                  setMapError(null);
-                  if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition((pos) => {
-                      setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                      setLocationLabel('Current location');
-                      setMapError(null);
-                    }, () => {
-                      setMapError('Location permission denied. Choose a location on the map instead.');
-                    });
-                  } else {
-                    setMapError('Geolocation not supported by your browser.');
-                  }
-                }}
-                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Use my location
-              </button>
-            </div>
+            {isLocationConfirmed ? (
+              <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-900">Selected location</p>
+                    <p className="mt-1 text-sm text-emerald-700">{locationLabel}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsLocationConfirmed(false)}
+                    className="rounded-full border border-emerald-300 px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    Change
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {savedAddresses.length > 0 && (
+                  <div className="mb-4 space-y-2">
+                    <p className="text-sm font-medium text-slate-700">Saved addresses</p>
+                    {savedAddresses.map((address) => (
+                      <button
+                        key={address._id}
+                        type="button"
+                        onClick={() => {
+                          if (address.location?.coordinates) {
+                            const [lng, lat] = address.location.coordinates;
+                            setLocation({ lat, lng });
+                            setLocationLabel(address.label || 'Saved address');
+                            setSelectedAddressId(address._id);
+                            setMapCenter({ lat, lng });
+                          }
+                        }}
+                        className={`block w-full rounded-xl border p-3 text-left text-sm transition ${
+                          selectedAddressId === address._id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="font-medium">{address.label}</span>
+                        {address.isDefault && <span className="ml-2 text-xs text-emerald-600">(Default)</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <MapPicker
+                  value={mapCenter || location}
+                  onChange={(lat, lng, label) => {
+                    setLocation({ lat, lng });
+                    setLocationLabel(label || null);
+                    setMapError(null);
+                    setMapCenter(null);
+                    setSelectedAddressId(null);
+                  }}
+                  minHeight={savedAddresses.length > 0 ? 360 : 480}
+                  placeholder="Search your area"
+                >
+                  {location && (
+                    <Marker {...({ position: [location.lat, location.lng], icon: createSvgIcon('#0ea5e9') } as any)}>
+                      <Popup>Selected location</Popup>
+                    </Marker>
+                  )}
+                  {doctorMarkers.map((doctor: any) => {
+                    const [lng, lat] = doctor.location.coordinates;
+                    const backendDistance = Number(doctor.distance);
+                    const distanceLabel = Number.isFinite(backendDistance) && backendDistance > 0
+                      ? formatDistanceKm(backendDistance, true)
+                      : (location && Array.isArray(doctor.location?.coordinates) ? formatDistanceKm(calculateDistanceKm(location.lat, location.lng, doctor.location.coordinates[1], doctor.location.coordinates[0]), false) : '—');
+                    return (
+                      <Marker 
+                        key={doctor._id} 
+                        {...({ position: [lat, lng], icon: createSvgIcon('#f59e0b', 30) } as any)}
+                        eventHandlers={{
+                          click: () => handleMarkerClick(doctor)
+                        }}
+                      >
+                        <Popup>
+                          <div className="min-w-[220px] text-sm">
+                            <p className="font-semibold text-slate-900">{doctor.userId?.fullName || `Dr. ${doctor.specialization}`}</p>
+                            <p className="mt-1 font-medium text-slate-800">{doctor.clinicName || 'Clinic'}</p>
+                            <p className="mt-1 text-slate-600">{doctor.clinicAddress || 'Clinic address available on request'}</p>
+                            <p className="mt-2 font-semibold text-emerald-700">₹{doctor.consultationFee} Consultation</p>
+                            <p className="mt-1 text-slate-600">Distance: {distanceLabel}</p>
+                            <p className="mt-1 text-slate-600">{doctor.availability?.isAvailable ? 'Available Now' : 'On request'}</p>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
+                </MapPicker>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm text-slate-600">{locationLabel || mapError || (location ? `Lat ${location.lat.toFixed(4)}, Lng ${location.lng.toFixed(4)}` : 'Search or tap the map to set your location')}</div>
+                  {location && (
+                    <button
+                      type="button"
+                      onClick={() => setIsLocationConfirmed(true)}
+                      className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    >
+                      Select Location
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           <div>
@@ -247,11 +303,15 @@ function FindDoctorsPageContent() {
                     ? formatDistanceKm(backendDistance, true)
                     : (location && Array.isArray(doctor.location?.coordinates) ? formatDistanceKm(calculateDistanceKm(location.lat, location.lng, doctor.location.coordinates[1], doctor.location.coordinates[0]), false) : '—');
                   return (
-                    <div id={`doctor-card-${doctor._id}`} key={doctor._id} onClick={() => setSelectedDoctorId(doctor._id)}>
+                    <div 
+                      id={`doctor-card-${doctor._id}`} 
+                      key={doctor._id} 
+                      onClick={() => handleDoctorCardClick(doctor)}
+                      className={`cursor-pointer transition hover:shadow-lg ${selectedDoctorId === doctor._id ? 'ring-2 ring-emerald-500 rounded-3xl' : ''}`}
+                    >
                       <DoctorCard doctor={doctor} />
                       <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
                         <span>Distance: {distanceLabel}</span>
-                        <Link href={buildDoctorHref(doctor._id)} className="font-semibold text-emerald-600">Book here</Link>
                       </div>
                     </div>
                   );

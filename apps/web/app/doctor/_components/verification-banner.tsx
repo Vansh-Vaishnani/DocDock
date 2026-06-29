@@ -19,7 +19,9 @@ export function VerificationBanner() {
 
   const message =
     profile.verificationStatus === 'rejected'
-      ? 'Your account verification was rejected. Please contact support or update your documents.'
+      ? profile.verificationNote
+        ? `Your account verification was rejected: ${profile.verificationNote}`
+        : 'Your account verification was rejected. Please contact support or update your documents.'
       : 'Your account is awaiting admin verification.';
 
   return (

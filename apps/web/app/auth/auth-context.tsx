@@ -252,8 +252,9 @@ export function AuthGuard({ children, allowedRoles }: { children: ReactNode; all
 
   useEffect(() => {
     if (!isHydrated) return;
+    const loginPath = allowedRoles?.length === 1 && allowedRoles[0] === 'admin' ? '/admin/login' : '/auth/login';
     if (!user) {
-      router.replace('/auth/login');
+      router.replace(loginPath);
       return;
     }
     if (allowedRoles && !allowedRoles.includes(user.role)) {

@@ -13,7 +13,8 @@
     "dev:web": "npm run dev --workspace docdock-web",
     "build": "npm run build --workspace @docdock/shared && npm run build --workspace docdock-api && npm run build --workspace docdock-web",
     "lint": "npm run lint --workspace docdock-api && npm run lint --workspace docdock-web",
-    "test": "npm run test --workspace docdock-api"
+    "test": "npm run test --workspace docdock-api",
+    "create-admin": "npm run create-admin --workspace docdock-api"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

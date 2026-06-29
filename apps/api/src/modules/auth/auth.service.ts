@@ -80,17 +80,6 @@ export class AuthService {
     if (!match) {
       throw new ApiError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
     }
-    if (user.role === 'doctor' && config.devAutoVerifyDoctor) {
-      const doctor = await DoctorModel.findOne({ userId: user._id });
-      if (doctor && doctor.verificationStatus !== 'approved') {
-        doctor.verificationStatus = 'approved';
-        await doctor.save();
-      }
-      if (user.verificationStatus !== 'approved' || user.isVerified !== true) {
-        user.verificationStatus = 'approved';
-        user.isVerified = true;
-      }
-    }
 
     if (user.role === 'doctor' && user.verificationStatus === 'rejected') {
       throw new ApiError('Doctor account verification was rejected', 403, 'DOCTOR_NOT_VERIFIED');

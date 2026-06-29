@@ -61,6 +61,7 @@ export function AddressAutocomplete({
             if (suggestions[0]) {
               const suggestion = suggestions[0];
               setInput(suggestion.display_name);
+              onChange?.(suggestion.display_name);
               onSelect?.(suggestion);
             }
           }

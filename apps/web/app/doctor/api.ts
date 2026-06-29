@@ -17,7 +17,11 @@ const getStoredAccessToken = (): string | null => {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
-  if (init.body) headers.set('Content-Type', 'application/json');
+  
+  // Don't set Content-Type for FormData - let browser set it with boundary
+  if (init.body && !(init.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   const token = getStoredAccessToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -70,6 +74,7 @@ export type DoctorProfile = {
   location: { type: 'Point'; coordinates: [number, number] };
   availability: DoctorAvailability;
   verificationStatus: 'pending' | 'approved' | 'rejected';
+  verificationNote?: string;
   averageRating: number;
   reviewCount: number;
   profileCompletionPercent: number;
@@ -194,11 +199,39 @@ export async function fetchDoctorEarnings() {
   return res.data;
 }
 
-export async function fetchDoctorReviews(doctorId: string) {
-  const res = await request<ApiEnvelope<{ reviews: Array<{ _id: string; rating: number; comment: string; createdAt: string; patientId?: string; patientName?: string }> }>>(`/reviews/doctors/${doctorId}/reviews`);
+export type DoctorReview = {
+  _id: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  patientName?: string;
+  patientPhoto?: string;
+  appointmentDate?: string;
+  reply?: string;
+  replyAt?: string;
+};
+
+export type DoctorReviewsResponse = {
+  reviews: DoctorReview[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export async function fetchDoctorReviews(doctorId: string, page = 1, limit = 10) {
+  const res = await request<ApiEnvelope<DoctorReviewsResponse>>(`/reviews/doctors/${doctorId}/reviews?page=${page}&limit=${limit}&sort=createdAt&order=desc`);
   return res.data;
 }
 
+export async function fetchMyReviews(page = 1, limit = 10) {
+  const res = await request<ApiEnvelope<DoctorReviewsResponse>>(`/reviews/me?page=${page}&limit=${limit}&sort=createdAt&order=desc`);
+  return res.data;
+}
+
+// Helper for registration - converts file to base64 (used before authentication)
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -206,4 +239,25 @@ export function fileToBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// Authenticated upload for doctor profile (after login)
+export async function uploadDoctorDocument(file: File, documentType: 'profilePhoto' | 'governmentId' | 'medicalLicense'): Promise<{ url: string; documentType: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('documentType', documentType);
+  
+  const res = await request<ApiEnvelope<{ url: string; documentType: string }>>('/doctors/documents/upload', {
+    method: 'POST',
+    body: formData,
+    headers: {} // Let browser set Content-Type for FormData
+  });
+  return res.data;
+}
+
+export async function removeDoctorDocument(documentType: 'profilePhoto' | 'governmentId' | 'medicalLicense'): Promise<{ success: boolean }> {
+  const res = await request<ApiEnvelope<{ success: boolean }>>(`/doctors/documents/${documentType}`, {
+    method: 'DELETE'
+  });
+  return res.data;
 }

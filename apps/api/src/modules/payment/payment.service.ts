@@ -18,7 +18,7 @@ interface PaymentBookingPayload {
   doctorId: string;
   appointmentDate: string;
   appointmentTime: string;
-  addressId: string;
+  addressId?: string;
   notes?: string;
   address?: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
 }

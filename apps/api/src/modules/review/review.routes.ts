@@ -11,6 +11,7 @@ const controller = new ReviewController();
 
 router.post('/appointments/:appointmentId/review', authenticate, requireRole(['patient']), validateRequest(submitReviewSchema), controller.submitReview.bind(controller));
 router.get('/doctors/:doctorId/reviews', authenticate, validateRequest(listDoctorReviewsSchema), controller.listDoctorReviews.bind(controller));
+router.get('/reviews/me', authenticate, requireRole(['doctor']), controller.listMyReviews.bind(controller));
 router.post('/doctors/reviews/:reviewId/reply', authenticate, requireRole(['doctor']), validateRequest(replyReviewSchema), controller.replyToReview.bind(controller));
 router.patch('/admin/reviews/:reviewId/moderate', authenticate, requireRole(['admin']), validateRequest(moderateReviewSchema), controller.moderateReview.bind(controller));
 

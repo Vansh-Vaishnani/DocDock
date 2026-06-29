@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { useToast } from '../../auth/toast-provider';
-import { fetchDoctorProfile, updateDoctorProfile, fileToBase64, type DoctorProfile } from '../api';
+import { fetchDoctorProfile, updateDoctorProfile, uploadDoctorDocument, removeDoctorDocument, type DoctorProfile } from '../api';
 
 const schema = z.object({
   fullName: z.string().min(2),
@@ -34,9 +34,13 @@ export default function DoctorProfilePage() {
   const [profile, setProfile] = useState<DoctorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [governmentIdFile, setGovernmentIdFile] = useState<File | null>(null);
+  const [medicalLicenseFile, setMedicalLicenseFile] = useState<File | null>(null);
   const [clinicAddress, setClinicAddress] = useState<string>('');
   const [clinicLatLng, setClinicLatLng] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapKey, setMapKey] = useState(0);
   const [serviceRadius, setServiceRadius] = useState<number>(10);
   const [consultationType, setConsultationType] = useState<'home' | 'clinic' | 'both'>('clinic');
 
@@ -88,9 +92,6 @@ export default function DoctorProfilePage() {
         payload.serviceRadius = serviceRadius;
         payload.consultationType = consultationType;
       }
-      if (profilePhotoFile) {
-        payload.profilePhoto = await fileToBase64(profilePhotoFile);
-      }
       const updated = await updateDoctorProfile(payload);
       setProfile(updated);
       showToast('Profile updated successfully.', 'success');
@@ -98,6 +99,29 @@ export default function DoctorProfilePage() {
       showToast(err instanceof Error ? err.message : 'Unable to update profile.', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDocumentUpload = async (file: File, documentType: 'profilePhoto' | 'governmentId' | 'medicalLicense') => {
+    setUploadingDoc(documentType);
+    try {
+      const result = await uploadDoctorDocument(file, documentType);
+      setProfile((prev) => prev ? { ...prev, [documentType === 'profilePhoto' ? 'profilePhotoUrl' : documentType === 'governmentId' ? 'governmentIdUrl' : 'medicalLicenseUrl']: result.url } : null);
+      showToast(`${documentType === 'profilePhoto' ? 'Profile photo' : documentType === 'governmentId' ? 'Government ID' : 'Medical license'} uploaded successfully.`, 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Upload failed.', 'error');
+    } finally {
+      setUploadingDoc(null);
+    }
+  };
+
+  const handleDocumentRemove = async (documentType: 'profilePhoto' | 'governmentId' | 'medicalLicense') => {
+    try {
+      await removeDoctorDocument(documentType);
+      setProfile((prev) => prev ? { ...prev, [documentType === 'profilePhoto' ? 'profilePhotoUrl' : documentType === 'governmentId' ? 'governmentIdUrl' : 'medicalLicenseUrl']: undefined } : null);
+      showToast('Document removed successfully.', 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Removal failed.', 'error');
     }
   };
 
@@ -178,10 +202,12 @@ export default function DoctorProfilePage() {
           <p className="mt-1 text-sm text-slate-600">Search a place, use your current location, or tap anywhere on the map to set the clinic address.</p>
           <div className="mt-3 space-y-3">
             <MapPicker
+              key={mapKey}
               value={clinicLatLng ?? null}
               onChange={(lat: number, lng: number, label?: string) => {
                 setClinicLatLng({ lat, lng });
                 if (label) setClinicAddress(label);
+                setMapKey((prev) => prev + 1);
               }}
               minHeight={420}
               placeholder="Search clinic address"
@@ -190,6 +216,17 @@ export default function DoctorProfilePage() {
               <p className="font-semibold text-slate-900">Selected clinic address</p>
               <p className="mt-1">{clinicAddress || 'Search or use current location to populate the address.'}</p>
             </div>
+            {clinicLatLng && clinicAddress && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Location is already selected via onChange, this button just confirms
+                }}
+                className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                Location Selected
+              </button>
+            )}
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-medium">Consultation type</label>
@@ -210,9 +247,49 @@ export default function DoctorProfilePage() {
           <label className="mb-2 block text-sm font-medium">About doctor</label>
           <textarea {...register('bio')} rows={4} className="w-full rounded-2xl border border-slate-300 px-4 py-3" />
         </div>
-        <div className="md:col-span-2">
-          <label className="mb-2 block text-sm font-medium">Update profile photo</label>
-          <input type="file" accept="image/*" onChange={(e) => setProfilePhotoFile(e.target.files?.[0] ?? null)} className="w-full text-sm" />
+        <div className="md:col-span-2 space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium">Profile photo</label>
+            {profile?.profilePhotoUrl ? (
+              <div className="flex items-center gap-4">
+                <img src={profile.profilePhotoUrl} alt="Profile" className="h-20 w-20 rounded-full object-cover" />
+                <div className="flex gap-2">
+                  <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'profilePhoto')} className="text-sm" disabled={uploadingDoc === 'profilePhoto'} />
+                  <button type="button" onClick={() => void handleDocumentRemove('profilePhoto')} disabled={uploadingDoc === 'profilePhoto'} className="rounded-full border border-rose-300 px-3 py-1 text-sm text-rose-600 hover:bg-rose-50 disabled:opacity-50">Remove</button>
+                </div>
+              </div>
+            ) : (
+              <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'profilePhoto')} className="w-full text-sm" disabled={uploadingDoc === 'profilePhoto'} />
+            )}
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium">Government ID</label>
+            {profile?.governmentIdUrl ? (
+              <div className="flex items-center gap-4">
+                <a href={profile.governmentIdUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-600 underline">View document</a>
+                <div className="flex gap-2">
+                  <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'governmentId')} className="text-sm" disabled={uploadingDoc === 'governmentId'} />
+                  <button type="button" onClick={() => void handleDocumentRemove('governmentId')} disabled={uploadingDoc === 'governmentId'} className="rounded-full border border-rose-300 px-3 py-1 text-sm text-rose-600 hover:bg-rose-50 disabled:opacity-50">Remove</button>
+                </div>
+              </div>
+            ) : (
+              <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'governmentId')} className="w-full text-sm" disabled={uploadingDoc === 'governmentId'} />
+            )}
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium">Medical Registration Certificate</label>
+            {profile?.medicalLicenseUrl ? (
+              <div className="flex items-center gap-4">
+                <a href={profile.medicalLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-600 underline">View document</a>
+                <div className="flex gap-2">
+                  <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'medicalLicense')} className="text-sm" disabled={uploadingDoc === 'medicalLicense'} />
+                  <button type="button" onClick={() => void handleDocumentRemove('medicalLicense')} disabled={uploadingDoc === 'medicalLicense'} className="rounded-full border border-rose-300 px-3 py-1 text-sm text-rose-600 hover:bg-rose-50 disabled:opacity-50">Remove</button>
+                </div>
+              </div>
+            ) : (
+              <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'medicalLicense')} className="w-full text-sm" disabled={uploadingDoc === 'medicalLicense'} />
+            )}
+          </div>
         </div>
         <div className="md:col-span-2">
           <button type="submit" disabled={saving} className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-70">

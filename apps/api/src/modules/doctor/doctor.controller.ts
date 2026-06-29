@@ -138,4 +138,28 @@ export class DoctorController {
       next(error);
     }
   }
+
+  async uploadDocument(req: any, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const file = req.file;
+      if (!file) {
+        next(new Error('No file uploaded'));
+        return;
+      }
+      const result = await service.uploadDocument(this.getUserId(req as AuthenticatedRequest), { file, documentType: req.body.documentType });
+      sendSuccess(res, result, 'Document uploaded successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async removeDocument(req: any, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { documentType } = req.params;
+      const result = await service.removeDocument(this.getUserId(req as AuthenticatedRequest), documentType as 'profilePhoto' | 'governmentId' | 'medicalLicense');
+      sendSuccess(res, result, 'Document removed successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
 }

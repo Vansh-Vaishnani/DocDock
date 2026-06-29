@@ -54,6 +54,7 @@ export default function LeafletMap({
   const [q, setQ] = useState('');
   const [leaflet, setLeaflet] = useState<LeafletModule | null>(null);
   const [icon, setIcon] = useState<any>(undefined);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -70,9 +71,9 @@ export default function LeafletMap({
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current || !value) return;
+    if (!mapRef.current || !mapReady || !value) return;
     try { mapRef.current.flyTo([value.lat, value.lng], 16); } catch (e) {}
-  }, [value]);
+  }, [value, mapReady]);
 
   const doReverse = async (lat: number, lng: number) => {
     try {
@@ -90,7 +91,9 @@ export default function LeafletMap({
       if (data && data.length > 0) {
         const item = data[0];
         const lat = Number(item.lat); const lng = Number(item.lon);
-        try { mapRef.current?.flyTo([lat, lng], 16); } catch (e) {}
+        if (mapRef.current && mapReady) {
+          try { mapRef.current.flyTo([lat, lng], 16); } catch (e) {}
+        }
         const label = item.display_name || '';
         onChange?.(lat, lng, label);
       }
@@ -101,7 +104,9 @@ export default function LeafletMap({
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const lat = pos.coords.latitude; const lng = pos.coords.longitude;
-      try { mapRef.current?.flyTo([lat, lng], 16); } catch (e) {}
+      if (mapRef.current && mapReady) {
+        try { mapRef.current.flyTo([lat, lng], 16); } catch (e) {}
+      }
       const label = await doReverse(lat, lng);
       onChange?.(lat, lng, label);
     }, () => {} , { enableHighAccuracy: true });
@@ -135,14 +140,17 @@ export default function LeafletMap({
             <button type="button" onClick={() => void handleSearch()} className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Search</button>
           </>
         )}
-        <button type="button" onClick={handleUseCurrent} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Use current location</button>
+        <button type="button" onClick={handleUseCurrent} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Use Current Location</button>
       </div>
 
       <MapContainer
         center={value ? [value.lat, value.lng] : [12.9716, 77.5946]}
         zoom={value ? 16 : 11}
         style={{ height: minHeight, width: '100%', borderRadius: 12 }}
-        whenCreated={(m: any) => { mapRef.current = m; }}
+        whenCreated={(m: any) => {
+          mapRef.current = m;
+          setMapReady(true);
+        }}
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
         <MapEventsHandler onClick={async (lat, lng) => {
@@ -156,7 +164,9 @@ export default function LeafletMap({
               const lat = e.target.getLatLng().lat; const lng = e.target.getLatLng().lng;
               const label = await doReverse(lat, lng);
               onChange?.(lat, lng, label);
-              try { mapRef.current?.flyTo([lat, lng], 16); } catch (e) {}
+              if (mapRef.current && mapReady) {
+                try { mapRef.current.flyTo([lat, lng], 16); } catch (e) {}
+              }
             }
           }}>
             <Popup>Selected location</Popup>

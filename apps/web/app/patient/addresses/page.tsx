@@ -187,6 +187,17 @@ export default function PatientAddressesPage() {
               <p className="font-semibold text-slate-900">Selected address</p>
               <p className="mt-1">{selectedAddressLabel || 'Search or tap the map to choose a location.'}</p>
             </div>
+            {selectedLocation && selectedAddressLabel && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Location is already selected via onChange, this button just confirms
+                }}
+                className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                Location Selected
+              </button>
+            )}
           </div>
 
           <button type="submit" className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">

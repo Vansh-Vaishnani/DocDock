@@ -10,8 +10,8 @@ export const registerGlobalMiddleware = (app: express.Express): void => {
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors({ origin: true, credentials: true }));
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: '10mb', type: 'application/json' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb', type: 'application/x-www-form-urlencoded' }));
   app.use(cookieParser(config.cookieSecret));
   app.use(morgan('dev'));
 };
