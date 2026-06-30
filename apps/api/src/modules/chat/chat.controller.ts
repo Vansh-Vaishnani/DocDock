@@ -2,6 +2,7 @@ import { NextFunction, Response } from 'express';
 
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { sendCreated, sendSuccess } from '../../common/utils/http';
+import { uploadFile } from '../../services/cloudinary.service';
 
 import { ChatService } from './chat.service';
 
@@ -48,6 +49,19 @@ export class ChatController {
         ...req.body
       });
       sendCreated(res, message, 'Message sent.');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async uploadAttachment(req: any, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.file) {
+        res.status(400).json({ success: false, message: 'No file uploaded' });
+        return;
+      }
+      const url = await uploadFile(req.file, 'chat');
+      sendSuccess(res, { url }, 'File uploaded successfully.');
     } catch (error) {
       next(error);
     }

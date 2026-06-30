@@ -78,4 +78,17 @@ export class PatientController {
       next(error);
     }
   }
+
+  async triggerSos(req: any, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { latitude, longitude } = req.body;
+      if (latitude === undefined || longitude === undefined) {
+        throw new ApiError('Location coordinates (latitude and longitude) are required', 400, 'VALIDATION_ERROR');
+      }
+      const result = await service.triggerSos(this.getUserId(req as AuthenticatedRequest), [longitude, latitude]);
+      sendSuccess(res, result, 'Emergency SOS triggered successfully.');
+    } catch (error) {
+      next(error);
+    }
+  }
 }

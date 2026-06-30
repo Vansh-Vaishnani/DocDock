@@ -1,14 +1,376 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --text-primary: #0f172a;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --border-color: #e5e7eb;
+  --border-subtle: #f9fafb;
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e5e7eb;
+  --header-bg: rgba(255, 255, 255, 0.92);
+  --card-bg: #ffffff;
+  --card-border: #e5e7eb;
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --emerald: #10b981;
+  --emerald-dark: #059669;
+  --navy: #0f172a;
+}
+
+.dark {
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --bg-tertiary: #1f2937;
+  --text-primary: #ffffff;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --border-color: #374151;
+  --border-subtle: #111827;
+  --sidebar-bg: #1f2937;
+  --sidebar-border: #374151;
+  --header-bg: rgba(31, 41, 55, 0.95);
+  --card-bg: #1f2937;
+  --card-border: #374151;
+  --input-bg: #1f2937;
+  --input-border: #374151;
+  --emerald: #10b981;
+  --emerald-dark: #059669;
+  --navy: #ffffff;
+}
+
+/* ─── Base ──────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f8fafc;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.25s ease, color 0.25s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ─── Focus styles ──────────────────────────────────────── */
+*:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 2px;
+}
+
+/* ─── Selection ──────────────────────────────────────── */
+::selection {
+  background: rgba(16, 185, 129, 0.2);
+  color: #065f46;
+}
+
+.dark ::selection {
+  background: rgba(16, 185, 129, 0.25);
+  color: #6ee7b7;
+}
+
+/* ─── Utility classes ──────────────────────────────────────── */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Glassmorphism card */
+  .glass {
+    background: var(--header-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+  }
+
+  /* Shimmer skeleton loader */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--bg-tertiary) 25%,
+      var(--border-subtle) 50%,
+      var(--bg-tertiary) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Gradient text */
+  .text-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Brand gradient background */
+  .bg-brand-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  }
+
+  /* Hover lift effect */
+  .hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px -8px rgba(15, 23, 42, 0.2);
+  }
+
+  .dark .hover-lift:hover {
+    box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ─── Component layer ──────────────────────────────────────── */
+@layer components {
+  /* Consistent card style */
+  .dd-card {
+    @apply rounded-2xl border bg-white p-5 shadow-soft transition-all;
+    border-color: var(--card-border);
+    background-color: var(--card-bg);
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-emerald-sm transition-all hover:bg-emerald-700 hover:shadow-emerald active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+    border-color: var(--border-color);
+    color: var(--text-primary);
+  }
+
+  .btn-secondary:hover {
+    background-color: var(--bg-tertiary);
+  }
+
+  /* Ghost button */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all active:scale-[0.98];
+    color: var(--text-secondary);
+  }
+
+  .btn-ghost:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  /* Danger button */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-rose-700 active:scale-[0.98] disabled:opacity-50;
+  }
+
+  /* Input field */
+  .dd-input {
+    @apply w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition-all;
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+  }
+
+  .dd-input:focus {
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+  }
+
+  .dd-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  /* Label */
+  .dd-label {
+    @apply mb-1.5 block text-sm font-medium;
+    color: var(--text-secondary);
+  }
+
+  /* Stat card */
+  .stat-card {
+    @apply dd-card flex flex-col gap-1 hover-lift cursor-default;
+  }
+
+  /* Status badge */
+  .status-badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+
+  /* Nav link */
+  .nav-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all;
+    color: var(--text-secondary);
+  }
+
+  .nav-link:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .nav-link.active {
+    @apply bg-emerald-600 text-white shadow-emerald-sm;
+  }
+
+  .dark .nav-link.active {
+    @apply bg-emerald-600 text-white;
+  }
+
+  /* Section header */
+  .section-header {
+    @apply mb-1 text-xs font-semibold uppercase tracking-[0.35em];
+    color: var(--text-muted);
+  }
+
+  /* Quick action card */
+  .quick-action {
+    @apply dd-card flex flex-col items-center justify-center gap-3 p-5 text-center hover-lift cursor-pointer;
+    min-height: 100px;
+  }
+}
+
+/* ─── Leaflet overrides for dark mode ──────────────────────── */
+.dark .leaflet-container {
+  filter: invert(92%) hue-rotate(180deg) brightness(90%);
+}
+
+.dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* ─── Dark mode form overrides ──────────────────────────────── */
+.dark select option {
+  background-color: #111827;
+  color: #f8fafc;
+}
+
+/* ─── Transition for dark mode ──────────────────────────────── */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+
+/* Don't transition transforms (causes jank) */
+.hover-lift, button, a, [role="button"] {
+  transition-property: background-color, border-color, color, transform, box-shadow, opacity;
+}
+
+/* ─── Global Dark Mode Class Overrides ──────────────────────── */
+/* Cards, Modals, Panels */
+.dark .bg-white, 
+.dark .bg-slate-50\/50, 
+.dark .bg-slate-100\/50 {
+  background-color: var(--card-bg) !important;
+}
+
+/* Background/Section overlays */
+.dark .bg-slate-50, 
+.dark .bg-gray-50, 
+.dark .bg-slate-100, 
+.dark .bg-gray-100, 
+.dark .bg-slate-200\/50 {
+  background-color: var(--bg-primary) !important;
+}
+
+/* Borders */
+.dark .border-slate-100, 
+.dark .border-slate-200, 
+.dark .border-slate-300, 
+.dark .border-gray-200, 
+.dark .border-slate-300\/50 {
+  border-color: var(--border-color) !important;
+}
+
+/* Text Colors */
+.dark .text-slate-900, 
+.dark .text-gray-900, 
+.dark .text-slate-800, 
+.dark .text-slate-700 {
+  color: var(--text-primary) !important;
+}
+.dark .text-slate-600, 
+.dark .text-slate-500, 
+.dark .text-gray-500, 
+.dark .text-slate-400 {
+  color: var(--text-secondary) !important;
+}
+.dark .text-slate-500 {
+  color: var(--text-muted) !important;
+}
+
+/* Inputs, Textareas, Selects */
+.dark input, 
+.dark textarea, 
+.dark select {
+  background-color: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+.dark input::placeholder, 
+.dark textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* Table Headers & Rows */
+.dark table th {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+.dark table td {
+  border-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* Leaflet Popup overrides */
+.dark .leaflet-popup-content-wrapper {
+  background-color: var(--card-bg) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color);
+}
+.dark .leaflet-popup-tip {
+  background-color: var(--card-bg) !important;
+}
+.dark .leaflet-popup-content {
+  color: var(--text-primary) !important;
+}
+.dark .leaflet-popup-content p {
+  color: var(--text-secondary) !important;
+}
+.dark .leaflet-popup-content .font-semibold {
+  color: var(--text-primary) !important;
 }

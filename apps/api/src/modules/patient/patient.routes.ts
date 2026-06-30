@@ -18,5 +18,6 @@ router.post('/addresses', patientOnly, validateRequest(addAddressSchema), contro
 router.patch('/addresses/:addressId', patientOnly, validateRequest(updateAddressSchema), controller.updateAddress.bind(controller));
 router.delete('/addresses/:addressId', patientOnly, validateRequest(addressIdSchema), controller.deleteAddress.bind(controller));
 router.patch('/addresses/:addressId/default', patientOnly, validateRequest(addressIdSchema), controller.setDefaultAddress.bind(controller));
+router.post('/sos', patientOnly, controller.triggerSos.bind(controller));
 
 export default router;

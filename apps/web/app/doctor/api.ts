@@ -106,6 +106,9 @@ export type DoctorAppointment = {
   patientPhone: string;
   paymentStatus?: string;
   paymentStatusLabel?: string;
+  patientId: string;
+  doctorId: string;
+  isEmergency?: boolean;
 };
 
 export type DoctorRegisterPayload = {
@@ -167,10 +170,10 @@ export async function updateDoctorAvailability(payload: Partial<DoctorAvailabili
   return res.data;
 }
 
-export async function updateAppointmentStatus(appointmentId: string, status: string, reason?: string): Promise<void> {
+export async function updateAppointmentStatus(appointmentId: string, status: string, reason?: string, otp?: string): Promise<void> {
   await request<ApiEnvelope<unknown>>(`/appointments/${appointmentId}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ status, reason })
+    body: JSON.stringify({ status, reason, otp })
   });
 }
 

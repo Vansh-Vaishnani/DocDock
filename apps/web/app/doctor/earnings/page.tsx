@@ -22,31 +22,31 @@ export default function DoctorEarningsPage() {
   }, [showToast]);
 
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-2xl font-semibold">Earnings</h2>
-      <p className="mt-2 text-slate-600">Track payments from completed appointments.</p>
+    <div className="dd-card">
+      <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Earnings</h2>
+      <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>Track payments from completed appointments.</p>
 
-      <div className="mt-6 rounded-2xl bg-slate-950 p-6 text-white">
-        <p className="text-sm text-slate-300">Total earnings</p>
-        <p className="mt-2 text-4xl font-semibold">{loading ? '...' : `₹${totalEarnings}`}</p>
+      <div className="mt-6 rounded-2xl p-6 text-white" style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}>
+        <p className="text-sm opacity-90">Total Earnings</p>
+        <p className="mt-2 text-4xl font-extrabold">{loading ? '...' : `₹${totalEarnings}`}</p>
       </div>
 
-      {loading && <div className="mt-6 text-sm text-slate-600">Loading payments...</div>}
+      {loading && <div className="mt-6 text-sm" style={{ color: 'var(--text-secondary)' }}>Loading payments...</div>}
 
       {!loading && payments.length === 0 && (
-        <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600">
+        <div className="mt-6 rounded-2xl border border-dashed p-6 text-center text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
           No paid appointments yet.
         </div>
       )}
 
       <div className="mt-6 space-y-3">
         {payments.map((payment, index) => (
-          <div key={index} className="flex items-center justify-between rounded-2xl border border-slate-200 p-4">
-            <span className="text-sm text-slate-600">{payment.paidAt ? new Date(payment.paidAt).toLocaleDateString() : 'Paid'}</span>
-            <span className="font-semibold text-slate-900">₹{payment.amount}</span>
+          <div key={index} className="flex items-center justify-between rounded-2xl border p-4" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{payment.paidAt ? new Date(payment.paidAt).toLocaleDateString() : 'Paid'}</span>
+            <span className="font-bold" style={{ color: 'var(--text-primary)' }}>₹{payment.amount}</span>
           </div>
         ))}
       </div>
-    </section>
+    </div>
   );
 }

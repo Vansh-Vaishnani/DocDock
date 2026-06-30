@@ -5,15 +5,18 @@ import { useState, type ReactNode } from 'react';
 
 import { AuthProvider } from './auth/auth-context';
 import { ToastProvider } from './auth/toast-provider';
+import { ThemeProvider } from './theme-context';
 
 export default function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <ToastProvider>{children}</ToastProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

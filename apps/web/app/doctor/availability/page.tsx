@@ -53,45 +53,47 @@ export default function DoctorAvailabilityPage() {
   };
 
   if (loading || !availability) {
-    return <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-600 shadow-sm">Loading availability...</div>;
+    return <div className="dd-card text-center p-8">Loading availability...</div>;
   }
 
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-2xl font-semibold">Availability</h2>
-      <p className="mt-2 text-slate-600">Manage working days, slots, and vacation mode.</p>
+    <div className="dd-card">
+      <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Availability Settings</h2>
+      <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>Manage working days, slots, and vacation mode.</p>
 
       <div className="mt-6 space-y-6">
-        <label className="flex items-center gap-3">
+        <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
             checked={availability.isAvailable}
             onChange={(e) => setProfile({ ...profile!, availability: { ...availability, isAvailable: e.target.checked } })}
-            className="h-4 w-4"
+            className="h-4.5 w-4.5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
           />
-          <span className="text-sm font-medium">Currently available for appointments</span>
+          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Currently available for appointments</span>
         </label>
 
-        <label className="flex items-center gap-3">
+        <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
             checked={availability.vacationMode}
             onChange={(e) => setProfile({ ...profile!, availability: { ...availability, vacationMode: e.target.checked } })}
-            className="h-4 w-4"
+            className="h-4.5 w-4.5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
           />
-          <span className="text-sm font-medium">Vacation mode</span>
+          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Vacation mode</span>
         </label>
 
         <div>
-          <p className="mb-3 text-sm font-medium text-slate-700">Working days</p>
+          <p className="mb-3 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Working Days</p>
           <div className="flex flex-wrap gap-2">
             {DAYS.map((day) => (
               <button
                 key={day}
                 type="button"
                 onClick={() => toggleDay(day)}
-                className={`rounded-full px-4 py-2 text-sm font-medium capitalize ${
-                  availability.workingDays.includes(day) ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-slate-700'
+                className={`rounded-full px-4 py-2 text-xs font-semibold capitalize transition-all ${
+                  availability.workingDays.includes(day)
+                    ? 'bg-emerald-600 text-white shadow-emerald-sm'
+                    : 'border border-slate-300 hover:bg-slate-50 text-slate-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
                 }`}
               >
                 {day}
@@ -101,25 +103,33 @@ export default function DoctorAvailabilityPage() {
         </div>
 
         {(['morningSlot', 'eveningSlot', 'breakTime'] as const).map((slot) => (
-          <div key={slot} className="grid gap-4 sm:grid-cols-2">
-            <p className="sm:col-span-2 text-sm font-medium capitalize text-slate-700">{slot.replace('Slot', ' slot').replace('breakTime', 'Break time')}</p>
-            <input
-              type="time"
-              value={availability[slot].start}
-              onChange={(e) => updateSlot(slot, 'start', e.target.value)}
-              className="rounded-2xl border border-slate-300 px-4 py-3"
-            />
-            <input
-              type="time"
-              value={availability[slot].end}
-              onChange={(e) => updateSlot(slot, 'end', e.target.value)}
-              className="rounded-2xl border border-slate-300 px-4 py-3"
-            />
+          <div key={slot} className="grid gap-4 sm:grid-cols-2 border-t pt-4" style={{ borderColor: 'var(--border-color)' }}>
+            <p className="sm:col-span-2 text-sm font-bold capitalize" style={{ color: 'var(--text-primary)' }}>
+              {slot.replace('Slot', ' slot').replace('breakTime', 'Break time')}
+            </p>
+            <div>
+              <label className="dd-label">Start Time</label>
+              <input
+                type="time"
+                value={availability[slot].start}
+                onChange={(e) => updateSlot(slot, 'start', e.target.value)}
+                className="dd-input"
+              />
+            </div>
+            <div>
+              <label className="dd-label">End Time</label>
+              <input
+                type="time"
+                value={availability[slot].end}
+                onChange={(e) => updateSlot(slot, 'end', e.target.value)}
+                className="dd-input"
+              />
+            </div>
           </div>
         ))}
 
-        <div>
-          <label className="mb-2 block text-sm font-medium">Maximum appointments per day</label>
+        <div className="border-t pt-4" style={{ borderColor: 'var(--border-color)' }}>
+          <label className="dd-label">Maximum appointments per day</label>
           <input
             type="number"
             min={1}
@@ -131,14 +141,16 @@ export default function DoctorAvailabilityPage() {
                 availability: { ...availability, maxAppointmentsPerDay: Number(e.target.value) }
               })
             }
-            className="w-full max-w-xs rounded-2xl border border-slate-300 px-4 py-3"
+            className="dd-input max-w-xs"
           />
         </div>
 
-        <button type="button" onClick={save} disabled={saving} className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-70">
-          {saving ? 'Saving...' : 'Save availability'}
-        </button>
+        <div className="border-t pt-4" style={{ borderColor: 'var(--border-color)' }}>
+          <button type="button" onClick={save} disabled={saving} className="btn-primary py-3 px-6 text-sm font-semibold">
+            {saving ? 'Saving...' : 'Save Availability'}
+          </button>
+        </div>
       </div>
-    </section>
+    </div>
   );
 }

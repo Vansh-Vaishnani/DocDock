@@ -149,28 +149,31 @@ export default function PatientAddressesPage() {
 
   return (
     <section className="space-y-6">
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="dd-card">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold">Saved delivery locations</h2>
-            <p className="mt-2 text-slate-600">Search a place, use your current location, or tap the map to save a home visit address.</p>
+            <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Saved delivery locations</h2>
+            <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>Search a place, use your current location, or tap the map to save a home visit address.</p>
           </div>
-          {defaultAddress && <div className="rounded-full bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">Default: {defaultAddress.label}</div>}
+          {defaultAddress && <div className="rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">Default: {defaultAddress.label}</div>}
         </div>
 
-        {error && <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+        {error && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-900 px-4 py-3 text-sm text-rose-700 dark:text-rose-400">{error}</div>}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
           <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Address name</label>
-              <input {...register('label')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-cyan-500" placeholder="Home / Work / Other" />
-              {errors.label && <p className="mt-2 text-sm text-rose-600">{errors.label.message}</p>}
+              <label className="dd-label">Address name</label>
+              <input {...register('label')} className="dd-input" placeholder="Home / Work / Other" />
+              {errors.label && <p className="mt-1.5 text-xs text-rose-600">{errors.label.message}</p>}
             </div>
-            <label className="flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
-              <input type="checkbox" {...register('isDefault')} className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500" />
-              Set as default
-            </label>
+            <div>
+              <label className="dd-label">Options</label>
+              <label className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm cursor-pointer transition" style={{ backgroundColor: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}>
+                <input type="checkbox" {...register('isDefault')} className="h-4 w-4 rounded border-slate-300 text-emerald-600 accent-emerald-600 focus:ring-emerald-500" />
+                Set as default
+              </label>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -183,74 +186,76 @@ export default function PatientAddressesPage() {
               minHeight={500}
               placeholder="Search for an address"
             />
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <p className="font-semibold text-slate-900">Selected address</p>
-              <p className="mt-1">{selectedAddressLabel || 'Search or tap the map to choose a location.'}</p>
+            <div className="rounded-xl border px-4 py-3 text-sm" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}>
+              <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Selected address</p>
+              <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>{selectedAddressLabel || 'Search or tap the map to choose a location.'}</p>
             </div>
             {selectedLocation && selectedAddressLabel && (
               <button
                 type="button"
-                onClick={() => {
-                  // Location is already selected via onChange, this button just confirms
-                }}
-                className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                className="btn-secondary text-xs px-3 py-1.5"
               >
-                Location Selected
+                ✓ Location Selected
               </button>
             )}
           </div>
 
-          <button type="submit" className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+          <button type="submit" className="btn-primary w-full py-3 text-sm">
             Save address
           </button>
         </form>
       </div>
 
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-xl font-semibold">Saved addresses</h3>
-        <p className="mt-2 text-sm text-slate-600">Edit labels, set defaults, or remove addresses you no longer need.</p>
+      <div className="dd-card">
+        <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Saved addresses</h3>
+        <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>Edit labels, set defaults, or remove addresses you no longer need.</p>
 
-        {loading && <div className="mt-5 rounded-2xl bg-slate-100 p-4 text-sm text-slate-600">Loading addresses...</div>}
+        {loading && (
+          <div className="mt-4 space-y-3">
+            <div className="h-10 skeleton rounded-xl" />
+            <div className="h-10 skeleton rounded-xl" />
+          </div>
+        )}
 
         {!loading && addresses.length === 0 && (
-          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600">
+          <div className="mt-4 rounded-xl border border-dashed p-8 text-center text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
             No saved addresses yet.
           </div>
         )}
 
         {!loading && addresses.length > 0 && (
-          <div className="mt-5 space-y-3">
+          <div className="mt-4 space-y-3">
             {addresses.map((address) => (
-              <div key={address._id || address.label} className="rounded-2xl border border-slate-200 p-4">
+              <div key={address._id || address.label} className="rounded-xl border p-4" style={{ borderColor: 'var(--border-color)' }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     {editingId === address._id ? (
                       <input
                         value={editLabel}
                         onChange={(e) => setEditLabel(e.target.value)}
-                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-500"
+                        className="dd-input"
                       />
                     ) : (
-                      <p className="font-semibold text-slate-900">{address.label}</p>
+                      <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{address.label}</p>
                     )}
-                    <p className="mt-1 text-sm text-slate-600">{selectedAddressLabel || 'Saved location'}</p>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{selectedAddressLabel || 'Saved location'}</p>
                   </div>
-                  {address.isDefault && <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Default</span>}
+                  {address.isDefault && <span className="shrink-0 status-badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">Default</span>}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {editingId === address._id ? (
                     <>
-                      <button type="button" onClick={() => address._id && saveEdit(address._id)} disabled={actionId === address._id} className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Save</button>
-                      <button type="button" onClick={cancelEdit} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">Cancel</button>
+                      <button type="button" onClick={() => address._id && saveEdit(address._id)} disabled={actionId === address._id} className="btn-primary text-xs px-3 py-1.5 disabled:opacity-60">Save</button>
+                      <button type="button" onClick={cancelEdit} className="btn-secondary text-xs px-3 py-1.5">Cancel</button>
                     </>
                   ) : (
                     <>
-                      <button type="button" onClick={() => startEdit(address)} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
+                      <button type="button" onClick={() => startEdit(address)} className="btn-secondary text-xs px-3 py-1.5">Edit</button>
                       {!address.isDefault && address._id && (
-                        <button type="button" onClick={() => { if (address._id) { void handleSetDefault(address._id); } }} disabled={actionId === address._id} className="rounded-full border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700 disabled:opacity-60">Set default</button>
+                        <button type="button" onClick={() => { if (address._id) { void handleSetDefault(address._id); } }} disabled={actionId === address._id} className="btn-secondary text-xs px-3 py-1.5 text-emerald-600 border-emerald-200 dark:border-emerald-900/50 dark:text-emerald-400 disabled:opacity-60">Set default</button>
                       )}
                       {address._id && (
-                        <button type="button" onClick={() => { if (address._id) { void handleDelete(address._id); } }} disabled={actionId === address._id} className="rounded-full border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 disabled:opacity-60">Delete</button>
+                        <button type="button" onClick={() => { if (address._id) { void handleDelete(address._id); } }} disabled={actionId === address._id} className="btn-secondary text-xs px-3 py-1.5 text-rose-600 border-rose-200 dark:border-rose-900/50 dark:text-rose-400 disabled:opacity-60">Delete</button>
                       )}
                     </>
                   )}

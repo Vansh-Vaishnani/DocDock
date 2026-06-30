@@ -86,65 +86,75 @@ export default function PatientProfilePage() {
   };
 
   if (loading) {
-    return <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-600 shadow-sm">Loading profile...</div>;
+    return (
+      <div className="dd-card py-12 text-center">
+        <div className="h-6 w-32 skeleton rounded mx-auto mb-3" />
+        <div className="h-4 w-48 skeleton rounded mx-auto" />
+      </div>
+    );
   }
 
   return (
     <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-2xl font-semibold">Profile</h2>
-        <p className="mt-2 text-slate-600">View and edit the details stored in your patient record.</p>
+      <div className="dd-card">
+        <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Profile</h2>
+        <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>View and edit the details stored in your patient record.</p>
 
-        {error && <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+        {error && (
+          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-900 px-4 py-3 text-sm text-rose-700 dark:text-rose-400">
+            {error}
+          </div>
+        )}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Full name</label>
-            <input {...register('fullName')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-500" placeholder="Your name" />
-            {errors.fullName && <p className="mt-2 text-sm text-rose-600">{errors.fullName.message}</p>}
+            <label className="dd-label">Full name</label>
+            <input {...register('fullName')} className="dd-input" placeholder="Your name" />
+            {errors.fullName && <p className="mt-1.5 text-xs text-rose-600">{errors.fullName.message}</p>}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
-              <input {...register('email')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-500" placeholder="you@example.com" />
-              {errors.email && <p className="mt-2 text-sm text-rose-600">{errors.email.message}</p>}
+              <label className="dd-label">Email</label>
+              <input {...register('email')} className="dd-input" placeholder="you@example.com" />
+              {errors.email && <p className="mt-1.5 text-xs text-rose-600">{errors.email.message}</p>}
             </div>
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Phone</label>
-              <input {...register('phone')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-500" placeholder="Phone number" />
-              {errors.phone && <p className="mt-2 text-sm text-rose-600">{errors.phone.message}</p>}
+              <label className="dd-label">Phone</label>
+              <input {...register('phone')} className="dd-input" placeholder="Phone number" />
+              {errors.phone && <p className="mt-1.5 text-xs text-rose-600">{errors.phone.message}</p>}
             </div>
           </div>
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Blood group</label>
-            <input {...register('bloodGroup')} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-500" placeholder="A+, O-, ..." />
+            <label className="dd-label">Blood group</label>
+            <input {...register('bloodGroup')} className="dd-input" placeholder="A+, O-, ..." />
           </div>
-          <button type="submit" disabled={saving} className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70">
+          <button type="submit" disabled={saving} className="btn-primary w-full mt-2">
             {saving ? 'Saving...' : 'Save profile'}
           </button>
         </form>
       </div>
 
       <div className="space-y-6">
-        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-xl font-semibold">Addresses</h3>
-          <p className="mt-2 text-sm text-slate-600">Manage your saved locations for home visits.</p>
-          <div className="mt-4 rounded-2xl border border-slate-200 p-4 text-sm text-slate-600">
+        <div className="dd-card">
+          <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Addresses</h3>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>Manage your saved locations for home visits.</p>
+          <div className="mt-4 rounded-xl border p-3 text-sm font-medium" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
             Saved addresses: {addressCount}
           </div>
-          <Link href="/patient/addresses" className="mt-4 inline-block text-sm font-semibold text-emerald-600 hover:text-emerald-700">
+          <Link href="/patient/addresses" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 hover:text-emerald-700">
             Manage addresses →
           </Link>
         </div>
-        <div className="rounded-[28px] bg-slate-950 p-6 text-white shadow-sm">
-          <h3 className="text-xl font-semibold">Health records</h3>
-          <p className="mt-3 text-sm leading-6 text-slate-300">Keep allergies and medical history up to date so doctors have the information they need during visits.</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link href="/patient/allergies" className="rounded-full border border-slate-600 px-4 py-2 text-sm font-medium transition hover:bg-slate-800">Allergies</Link>
-            <Link href="/patient/medical-history" className="rounded-full border border-slate-600 px-4 py-2 text-sm font-medium transition hover:bg-slate-800">Medical history</Link>
+        <div className="dd-card">
+          <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Health records</h3>
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>Keep allergies and medical history up to date so doctors have the information they need during visits.</p>
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            <Link href="/patient/allergies" className="btn-secondary py-2 px-4 text-xs font-semibold">Allergies</Link>
+            <Link href="/patient/medical-history" className="btn-secondary py-2 px-4 text-xs font-semibold">Medical history</Link>
           </div>
         </div>
       </div>
     </section>
   );
 }
+

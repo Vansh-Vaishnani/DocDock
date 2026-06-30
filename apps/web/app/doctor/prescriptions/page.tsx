@@ -25,27 +25,27 @@ export default function DoctorPrescriptionsPage() {
   }, [showToast]);
 
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-2xl font-semibold">Prescriptions</h2>
-      <p className="mt-2 text-slate-600">View prescriptions you have issued.</p>
+    <div className="dd-card">
+      <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Prescriptions</h2>
+      <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>View prescriptions you have issued.</p>
 
-      {loading && <div className="mt-6 text-sm text-slate-600">Loading prescriptions...</div>}
+      {loading && <div className="mt-6 text-sm" style={{ color: 'var(--text-secondary)' }}>Loading prescriptions...</div>}
 
       {!loading && prescriptions.length === 0 && (
-        <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600">
+        <div className="mt-6 rounded-2xl border border-dashed p-6 text-center text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
           No prescriptions yet.
         </div>
       )}
 
       <div className="mt-6 space-y-3">
         {prescriptions.map((rx) => (
-          <div key={rx._id} className="rounded-2xl border border-slate-200 p-4">
-            <p className="font-semibold text-slate-900">{rx.diagnosis}</p>
-            <p className="text-sm text-slate-600">Patient: {rx.patientName ?? 'Patient'}</p>
-            <p className="text-xs text-slate-500">{new Date(rx.issuedAt).toLocaleString()}</p>
+          <div key={rx._id} className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+            <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{rx.diagnosis}</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Patient: {rx.patientName ?? 'Patient'}</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{new Date(rx.issuedAt).toLocaleString()}</p>
           </div>
         ))}
       </div>
-    </section>
+    </div>
   );
 }

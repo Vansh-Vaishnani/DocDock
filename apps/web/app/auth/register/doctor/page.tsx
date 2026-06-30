@@ -10,23 +10,24 @@ import { z } from 'zod';
 import { type AuthUser, getRoleHomePath, useAuth } from '../../auth-context';
 import { useToast } from '../../toast-provider';
 import { fileToBase64, registerDoctor } from '../../../doctor/api';
+import { DarkModeToggle } from '../../../theme-context';
 
 const schema = z.object({
-  fullName: z.string().min(2),
-  email: z.string().email(),
-  phone: z.string().min(10),
-  password: z.string().min(8),
+  fullName: z.string().min(2, 'Full name is required'),
+  email: z.string().email('Enter a valid email address'),
+  phone: z.string().min(10, 'Phone must be at least 10 digits'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   gender: z.enum(['male', 'female', 'other']),
-  dateOfBirth: z.string().min(1),
-  qualification: z.string().min(2),
-  medicalDegree: z.string().min(2),
-  licenseNumber: z.string().min(3),
-  experience: z.coerce.number().min(0),
-  specialization: z.string().min(2),
-  consultationFee: z.coerce.number().min(0),
-  languages: z.string().min(2),
-  clinicName: z.string().min(2),
-  bio: z.string().min(10)
+  dateOfBirth: z.string().min(1, 'Birth date is required'),
+  qualification: z.string().min(2, 'Qualification is required'),
+  medicalDegree: z.string().min(2, 'Medical degree is required'),
+  licenseNumber: z.string().min(3, 'License number is required'),
+  experience: z.coerce.number().min(0, 'Experience must be a positive number'),
+  specialization: z.string().min(2, 'Specialization is required'),
+  consultationFee: z.coerce.number().min(0, 'Fee must be a positive number'),
+  languages: z.string().min(2, 'Languages are required'),
+  clinicName: z.string().min(2, 'Clinic name is required'),
+  bio: z.string().min(10, 'Bio must be at least 10 characters')
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -102,85 +103,212 @@ export default function DoctorRegisterPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#f8fafc,_#eef2ff_55%,_#f8fafc)] px-4 py-10">
-      <div className="mx-auto max-w-3xl rounded-[32px] border border-slate-200 bg-white p-8 shadow-lg">
-        <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-600">Doctor registration</p>
-        <h1 className="mt-3 text-3xl font-semibold">Join DocDock as a doctor</h1>
-        <p className="mt-2 text-slate-600">Submit your professional credentials for admin verification.</p>
-
-        <form className="mt-8 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
-          <div className="md:col-span-2"><input {...register('fullName')} placeholder="Full name" className="w-full rounded-2xl border border-slate-300 px-4 py-3" /></div>
-          <input {...register('email')} placeholder="Email" className="rounded-2xl border border-slate-300 px-4 py-3" />
-          <input {...register('phone')} placeholder="Phone" className="rounded-2xl border border-slate-300 px-4 py-3" />
-          <input type="password" {...register('password')} placeholder="Password" className="md:col-span-2 rounded-2xl border border-slate-300 px-4 py-3" />
-          <select {...register('gender')} className="rounded-2xl border border-slate-300 px-4 py-3"><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Birth Date</label>
-            <input type="date" {...register('dateOfBirth')} className="w-full rounded-2xl border border-slate-300 px-4 py-3" />
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      {/* Top Header */}
+      <header className="flex h-14 items-center justify-between px-6 border-b" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--header-bg)' }}>
+        <Link href="/" className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /><path d="M12 8v4M12 16h.01" />
+            </svg>
           </div>
-          <input {...register('qualification')} placeholder="Qualification" className="rounded-2xl border border-slate-300 px-4 py-3" />
-          <input {...register('medicalDegree')} placeholder="Medical degree" className="rounded-2xl border border-slate-300 px-4 py-3" />
-          <input {...register('licenseNumber')} placeholder="Medical council registration number" className="md:col-span-2 rounded-2xl border border-slate-300 px-4 py-3" />
-          <input type="number" {...register('experience')} placeholder="Years of experience" className="rounded-2xl border border-slate-300 px-4 py-3" />
-          <input {...register('specialization')} placeholder="Specialization" className="rounded-2xl border border-slate-300 px-4 py-3" />
-          <input type="number" {...register('consultationFee')} placeholder="Consultation fee (₹)" className="rounded-2xl border border-slate-300 px-4 py-3" />
-          <input {...register('languages')} placeholder="Languages (comma-separated)" className="rounded-2xl border border-slate-300 px-4 py-3" />
-          <input {...register('clinicName')} placeholder="Clinic / hospital name" className="md:col-span-2 rounded-2xl border border-slate-300 px-4 py-3" />
-          <textarea {...register('bio')} placeholder="About doctor" rows={4} className="md:col-span-2 rounded-2xl border border-slate-300 px-4 py-3" />
-          <div className="md:col-span-2 space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-medium">Profile photo</label>
-              {profilePhotoUrl ? (
-                <div className="flex items-center gap-4">
-                  <img src={profilePhotoUrl} alt="Profile" className="h-20 w-20 rounded-full object-cover" />
-                  <div className="flex gap-2">
-                    <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'profilePhoto')} className="text-sm" disabled={uploadingDoc === 'profilePhoto'} />
-                    <button type="button" onClick={() => handleDocumentRemove('profilePhoto')} disabled={uploadingDoc === 'profilePhoto'} className="rounded-full border border-rose-300 px-3 py-1 text-sm text-rose-600 hover:bg-rose-50 disabled:opacity-50">Remove</button>
-                  </div>
-                </div>
-              ) : (
-                <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'profilePhoto')} className="w-full text-sm" disabled={uploadingDoc === 'profilePhoto'} />
-              )}
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium">Government ID</label>
-              {governmentIdUrl ? (
-                <div className="flex items-center gap-4">
-                  <a href={governmentIdUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-600 underline">View document</a>
-                  <div className="flex gap-2">
-                    <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'governmentId')} className="text-sm" disabled={uploadingDoc === 'governmentId'} />
-                    <button type="button" onClick={() => handleDocumentRemove('governmentId')} disabled={uploadingDoc === 'governmentId'} className="rounded-full border border-rose-300 px-3 py-1 text-sm text-rose-600 hover:bg-rose-50 disabled:opacity-50">Remove</button>
-                  </div>
-                </div>
-              ) : (
-                <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'governmentId')} className="w-full text-sm" disabled={uploadingDoc === 'governmentId'} />
-              )}
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium">Medical Registration Certificate</label>
-              {medicalLicenseUrl ? (
-                <div className="flex items-center gap-4">
-                  <a href={medicalLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-600 underline">View document</a>
-                  <div className="flex gap-2">
-                    <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'medicalLicense')} className="text-sm" disabled={uploadingDoc === 'medicalLicense'} />
-                    <button type="button" onClick={() => handleDocumentRemove('medicalLicense')} disabled={uploadingDoc === 'medicalLicense'} className="rounded-full border border-rose-300 px-3 py-1 text-sm text-rose-600 hover:bg-rose-50 disabled:opacity-50">Remove</button>
-                  </div>
-                </div>
-              ) : (
-                <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'medicalLicense')} className="w-full text-sm" disabled={uploadingDoc === 'medicalLicense'} />
-              )}
-            </div>
-          </div>
-          {error && <p className="md:col-span-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
-          <button type="submit" disabled={isSubmitting} className="md:col-span-2 rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-70">
-            {isSubmitting ? 'Submitting...' : 'Register as doctor'}
-          </button>
-        </form>
+          <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>DocDock</span>
+        </Link>
+        <div className="flex items-center gap-3">
+          <DarkModeToggle />
+          <Link href="/auth/login" className="btn-secondary text-sm">Sign in</Link>
+        </div>
+      </header>
 
-        <p className="mt-6 text-center text-sm text-slate-600">
-          Register as a patient? <Link href="/auth/register" className="font-semibold text-emerald-600">Patient registration</Link>
-        </p>
-      </div>
-    </main>
+      {/* Main Container */}
+      <main className="flex-1 flex items-center justify-center p-6 sm:p-10">
+        <div className="w-full max-w-3xl dd-card shadow-large animate-slide-up">
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">Doctor Registration</p>
+            <h1 className="text-2xl font-bold mt-1.5" style={{ color: 'var(--text-primary)' }}>Join DocDock as a Doctor</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Submit your professional credentials for admin verification.</p>
+          </div>
+
+          <form className="grid gap-5 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
+            {/* Full Name */}
+            <div className="md:col-span-2">
+              <label className="dd-label">Full Name <span className="text-rose-500">*</span></label>
+              <input {...register('fullName')} className="dd-input" placeholder="Dr. Alex Morgan" />
+              {errors.fullName && <p className="mt-1 text-xs text-rose-600">{errors.fullName.message}</p>}
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="dd-label">Email <span className="text-rose-500">*</span></label>
+              <input {...register('email')} type="email" className="dd-input" placeholder="doctor@example.com" />
+              {errors.email && <p className="mt-1 text-xs text-rose-600">{errors.email.message}</p>}
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label className="dd-label">Phone <span className="text-rose-500">*</span></label>
+              <input {...register('phone')} type="tel" className="dd-input" placeholder="+91 98765 43210" />
+              {errors.phone && <p className="mt-1 text-xs text-rose-600">{errors.phone.message}</p>}
+            </div>
+
+            {/* Password */}
+            <div className="md:col-span-2">
+              <label className="dd-label">Password <span className="text-rose-500">*</span></label>
+              <input type="password" {...register('password')} className="dd-input" placeholder="Min 8 characters" />
+              {errors.password && <p className="mt-1 text-xs text-rose-600">{errors.password.message}</p>}
+            </div>
+
+            {/* Gender */}
+            <div>
+              <label className="dd-label">Gender <span className="text-rose-500">*</span></label>
+              <select {...register('gender')} className="dd-input">
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+              {errors.gender && <p className="mt-1 text-xs text-rose-600">{errors.gender.message}</p>}
+            </div>
+
+            {/* Date of Birth */}
+            <div>
+              <label className="dd-label">Date of Birth <span className="text-rose-500">*</span></label>
+              <input type="date" {...register('dateOfBirth')} className="dd-input" />
+              {errors.dateOfBirth && <p className="mt-1 text-xs text-rose-600">{errors.dateOfBirth.message}</p>}
+            </div>
+
+            {/* Qualification */}
+            <div>
+              <label className="dd-label">Qualification <span className="text-rose-500">*</span></label>
+              <input {...register('qualification')} className="dd-input" placeholder="MBBS, MD" />
+              {errors.qualification && <p className="mt-1 text-xs text-rose-600">{errors.qualification.message}</p>}
+            </div>
+
+            {/* Medical Degree */}
+            <div>
+              <label className="dd-label">Medical Degree <span className="text-rose-500">*</span></label>
+              <input {...register('medicalDegree')} className="dd-input" placeholder="Doctor of Medicine" />
+              {errors.medicalDegree && <p className="mt-1 text-xs text-rose-600">{errors.medicalDegree.message}</p>}
+            </div>
+
+            {/* Medical Council Registration Number */}
+            <div className="md:col-span-2">
+              <label className="dd-label">Medical Council Registration Number <span className="text-rose-500">*</span></label>
+              <input {...register('licenseNumber')} className="dd-input" placeholder="MCI-123456" />
+              {errors.licenseNumber && <p className="mt-1 text-xs text-rose-600">{errors.licenseNumber.message}</p>}
+            </div>
+
+            {/* Years of Experience */}
+            <div>
+              <label className="dd-label">Years of Experience <span className="text-rose-500">*</span></label>
+              <input type="number" {...register('experience')} className="dd-input" placeholder="e.g. 5" />
+              {errors.experience && <p className="mt-1 text-xs text-rose-600">{errors.experience.message}</p>}
+            </div>
+
+            {/* Specialization */}
+            <div>
+              <label className="dd-label">Specialization <span className="text-rose-500">*</span></label>
+              <input {...register('specialization')} className="dd-input" placeholder="Cardiologist, Pediatrician" />
+              {errors.specialization && <p className="mt-1 text-xs text-rose-600">{errors.specialization.message}</p>}
+            </div>
+
+            {/* Consultation Fee */}
+            <div>
+              <label className="dd-label">Consultation Fee (₹) <span className="text-rose-500">*</span></label>
+              <input type="number" {...register('consultationFee')} className="dd-input" placeholder="e.g. 500" />
+              {errors.consultationFee && <p className="mt-1 text-xs text-rose-600">{errors.consultationFee.message}</p>}
+            </div>
+
+            {/* Languages */}
+            <div>
+              <label className="dd-label">Languages (comma-separated) <span className="text-rose-500">*</span></label>
+              <input {...register('languages')} className="dd-input" placeholder="English, Hindi" />
+              {errors.languages && <p className="mt-1 text-xs text-rose-600">{errors.languages.message}</p>}
+            </div>
+
+            {/* Clinic Name */}
+            <div className="md:col-span-2">
+              <label className="dd-label">Clinic / Hospital Name <span className="text-rose-500">*</span></label>
+              <input {...register('clinicName')} className="dd-input" placeholder="Apollo Hospital / Apex Clinic" />
+              {errors.clinicName && <p className="mt-1 text-xs text-rose-600">{errors.clinicName.message}</p>}
+            </div>
+
+            {/* Bio */}
+            <div className="md:col-span-2">
+              <label className="dd-label">Bio <span className="text-rose-500">*</span></label>
+              <textarea {...register('bio')} rows={4} className="dd-input resize-none" placeholder="Provide a brief background of yourself..." />
+              {errors.bio && <p className="mt-1 text-xs text-rose-600">{errors.bio.message}</p>}
+            </div>
+
+            {/* File Uploads */}
+            <div className="md:col-span-2 space-y-4 border-t pt-4" style={{ borderColor: 'var(--border-color)' }}>
+              <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Documents Upload</h3>
+
+              {/* Profile Photo */}
+              <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                <label className="dd-label font-bold">Profile Photo <span className="text-rose-500">*</span></label>
+                {profilePhotoUrl ? (
+                  <div className="flex items-center gap-4">
+                    <img src={profilePhotoUrl} alt="Profile" className="h-16 w-16 rounded-full object-cover border-2 border-emerald-500" />
+                    <button type="button" onClick={() => handleDocumentRemove('profilePhoto')} className="btn-secondary text-xs px-3 py-1.5 text-rose-600 border-rose-200">Remove</button>
+                  </div>
+                ) : (
+                  <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'profilePhoto')} className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" disabled={uploadingDoc === 'profilePhoto'} />
+                )}
+                {uploadingDoc === 'profilePhoto' && <p className="text-xs text-emerald-600 mt-1.5">Uploading...</p>}
+              </div>
+
+              {/* Government ID */}
+              <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                <label className="dd-label font-bold">Government ID <span className="text-rose-500">*</span></label>
+                {governmentIdUrl ? (
+                  <div className="flex items-center gap-4">
+                    <a href={governmentIdUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold hover:underline">View Document</a>
+                    <button type="button" onClick={() => handleDocumentRemove('governmentId')} className="btn-secondary text-xs px-3 py-1.5 text-rose-600 border-rose-200">Remove</button>
+                  </div>
+                ) : (
+                  <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'governmentId')} className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" disabled={uploadingDoc === 'governmentId'} />
+                )}
+                {uploadingDoc === 'governmentId' && <p className="text-xs text-emerald-600 mt-1.5">Uploading...</p>}
+              </div>
+
+              {/* Medical Certificate */}
+              <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                <label className="dd-label font-bold">Medical Registration Certificate <span className="text-rose-500">*</span></label>
+                {medicalLicenseUrl ? (
+                  <div className="flex items-center gap-4">
+                    <a href={medicalLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold hover:underline">View Document</a>
+                    <button type="button" onClick={() => handleDocumentRemove('medicalLicense')} className="btn-secondary text-xs px-3 py-1.5 text-rose-600 border-rose-200">Remove</button>
+                  </div>
+                ) : (
+                  <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'medicalLicense')} className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" disabled={uploadingDoc === 'medicalLicense'} />
+                )}
+                {uploadingDoc === 'medicalLicense' && <p className="text-xs text-emerald-600 mt-1.5">Uploading...</p>}
+              </div>
+            </div>
+
+            {error && <p className="md:col-span-2 rounded-xl border border-rose-200 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-900 px-4 py-3 text-xs text-rose-700 dark:text-rose-400">{error}</p>}
+
+            <button type="submit" disabled={isSubmitting} className="md:col-span-2 btn-primary py-3 text-sm rounded-xl">
+              {isSubmitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Submitting Registration…
+                </span>
+              ) : 'Register as Doctor'}
+            </button>
+          </form>
+
+          <p className="mt-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+            Register as a patient instead?{' '}
+            <Link href="/auth/register" className="font-semibold text-emerald-600 hover:text-emerald-700 transition-colors">
+              Patient registration
+            </Link>
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }

@@ -120,13 +120,13 @@ export default function PatientAppointmentsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <div className="space-y-6 animate-fade-in">
+      <div className="dd-card">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-600">Patient journey</p>
-            <h2 className="mt-2 text-2xl font-semibold">My appointments</h2>
-            <p className="mt-2 text-slate-600">Track upcoming visits, completed consultations, and cancelled bookings in one place.</p>
+            <p className="text-xs font-bold uppercase tracking-[0.35em] text-emerald-600">Patient journey</p>
+            <h2 className="mt-2 text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>My Appointments</h2>
+            <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>Track upcoming visits, completed consultations, and cancelled bookings in one place.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {(['upcoming', 'completed', 'cancelled'] as const).map((f) => (
@@ -134,8 +134,10 @@ export default function PatientAppointmentsPage() {
                 key={f}
                 type="button"
                 onClick={() => setFilter(f)}
-                className={`rounded-full px-4 py-2 text-sm font-medium capitalize ${
-                  filter === f ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-slate-700'
+                className={`rounded-full px-4 py-2 text-xs font-semibold capitalize transition-all ${
+                  filter === f
+                    ? 'bg-emerald-600 text-white shadow-emerald-sm'
+                    : 'border border-slate-300 hover:bg-slate-50 text-slate-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
                 }`}
               >
                 {f}
@@ -147,35 +149,35 @@ export default function PatientAppointmentsPage() {
         {loading && (
           <div className="mt-6 space-y-3">
             {[1, 2].map((item) => (
-              <div key={item} className="h-24 animate-pulse rounded-2xl bg-slate-100" />
+              <div key={item} className="h-24 animate-pulse rounded-2xl" style={{ backgroundColor: 'var(--bg-tertiary)' }} />
             ))}
           </div>
         )}
 
         {!loading && appointments.length === 0 && (
-          <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600">
+          <div className="mt-6 rounded-2xl border border-dashed p-8 text-center text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
             No {filter} appointments found.
           </div>
         )}
 
         <div className="mt-6 space-y-3">
           {appointments.map((appt) => (
-            <div key={appt._id} className="rounded-2xl border border-slate-200 p-5 shadow-sm transition hover:border-emerald-200 hover:shadow-md">
+            <div key={appt._id} className="rounded-2xl border p-5 transition-all hover:border-emerald-500" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-3">
-                    <p className="font-semibold text-slate-900">{appt.doctorName}</p>
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[appt.status] ?? 'bg-slate-100 text-slate-700'}`}>
+                    <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>{appt.doctorName}</p>
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLORS[appt.status] ?? 'bg-slate-100 text-slate-700'}`}>
                       {appt.statusLabel}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-slate-500">{appt.specialization}</p>
-                  <p className="mt-3 text-sm text-slate-600">{new Date(appt.scheduledAt).toLocaleString()}</p>
-                  <p className="text-sm text-slate-600">{appt.address.label}</p>
-                  {appt.notes && <p className="mt-2 text-sm text-slate-500">Notes: {appt.notes}</p>}
+                  <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>{appt.specialization}</p>
+                  <p className="mt-3 text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>{new Date(appt.scheduledAt).toLocaleString()}</p>
+                  <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>{appt.address.label}</p>
+                  {appt.notes && <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>Notes: {appt.notes}</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Link href={`/patient/appointments/${appt._id}`} className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700">
+                  <Link href={`/patient/appointments/${appt._id}`} className="btn-secondary text-xs px-3.5 py-1.5">
                     View details
                   </Link>
                   {filter === 'upcoming' && appt.status === 'pending' && (
@@ -183,7 +185,7 @@ export default function PatientAppointmentsPage() {
                       type="button"
                       disabled={actionId === appt._id}
                       onClick={() => void handleCancel(appt._id)}
-                      className="rounded-full border border-rose-300 px-3 py-1.5 text-sm font-semibold text-rose-700 disabled:opacity-60"
+                      className="btn-secondary text-xs px-3.5 py-1.5 text-rose-600 border-rose-200 dark:border-rose-900/50 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 disabled:opacity-60"
                     >
                       {actionId === appt._id ? 'Cancelling...' : 'Cancel'}
                     </button>
@@ -193,7 +195,7 @@ export default function PatientAppointmentsPage() {
             </div>
           ))}
         </div>
-      </section>
+      </div>
     </div>
   );
 }

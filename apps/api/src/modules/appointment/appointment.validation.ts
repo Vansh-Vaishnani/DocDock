@@ -28,7 +28,11 @@ export const createAppointmentSchema = z.object({
 
 export const updateAppointmentStatusSchema = z.object({
   params: z.object({ appointmentId: z.string().min(24) }),
-  body: z.object({ status: appointmentStatusEnum })
+  body: z.object({
+    status: appointmentStatusEnum,
+    reason: z.string().max(500).optional(),
+    otp: z.string().length(6).optional()
+  })
 });
 
 export const listAppointmentsSchema = z.object({

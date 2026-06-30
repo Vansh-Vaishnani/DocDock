@@ -6,7 +6,7 @@ export class ChatRepository {
     appointmentId: string;
     senderId: string;
     senderRole: 'patient' | 'doctor';
-    type: 'text' | 'image';
+    type: 'text' | 'image' | 'prescription' | 'document';
     content?: string;
     mediaUrl?: string;
     isRead?: boolean;

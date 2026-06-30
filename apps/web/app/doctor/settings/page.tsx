@@ -34,23 +34,39 @@ export default function DoctorSettingsPage() {
 
   return (
     <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-2xl font-semibold">Account settings</h2>
-        <p className="mt-2 text-slate-600">Change your password and manage account security.</p>
+      <div className="dd-card">
+        <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Account Settings</h2>
+        <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>Change your password and manage account security.</p>
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
-          <input type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full rounded-2xl border border-slate-300 px-4 py-3" required />
-          <input type="password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full rounded-2xl border border-slate-300 px-4 py-3" required minLength={8} />
-          <input type="password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full rounded-2xl border border-slate-300 px-4 py-3" required minLength={8} />
-          <button type="submit" disabled={saving} className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-70">
+          <div>
+            <label className="dd-label">Current Password</label>
+            <input type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="dd-input" required />
+          </div>
+          <div>
+            <label className="dd-label">New Password</label>
+            <input type="password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="dd-input" required minLength={8} />
+          </div>
+          <div>
+            <label className="dd-label">Confirm New Password</label>
+            <input type="password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="dd-input" required minLength={8} />
+          </div>
+          <button type="submit" disabled={saving} className="btn-primary py-2.5">
             {saving ? 'Updating...' : 'Change password'}
           </button>
         </form>
       </div>
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-xl font-semibold">Account</h3>
-        <p className="mt-4 text-sm text-slate-600">Name: {user?.fullName}</p>
-        <p className="text-sm text-slate-600">Email: {user?.email}</p>
-        <p className="text-sm text-slate-600">Verification: {user?.isVerified ? 'Approved' : user?.verificationStatus ?? 'Pending'}</p>
+      <div className="dd-card">
+        <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Account Details</h3>
+        <div className="mt-4 space-y-2">
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}><span className="font-semibold">Name:</span> {user?.fullName}</p>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}><span className="font-semibold">Email:</span> {user?.email}</p>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            <span className="font-semibold">Verification status:</span>{' '}
+            <span className={`status-badge text-[10px] uppercase tracking-wide ${user?.isVerified ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'}`}>
+              {user?.isVerified ? 'Approved' : user?.verificationStatus ?? 'Pending'}
+            </span>
+          </p>
+        </div>
       </div>
     </section>
   );

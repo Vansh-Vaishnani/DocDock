@@ -2,93 +2,203 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 
 import { useAuth } from '../../auth/auth-context';
 import { VerificationBanner } from './verification-banner';
 import NotificationBell from '@/components/NotificationBell';
+import { DarkModeToggle } from '../../theme-context';
+
+function Icon({ path, size = 18 }: { path: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d={path} />
+    </svg>
+  );
+}
+
+const ICONS: Record<string, string> = {
+  dashboard: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10',
+  profile: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  availability: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M12 6v6l4 2',
+  appointments: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  prescriptions: 'M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+  earnings: 'M12 1v22M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+  logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9',
+  menu: 'M3 12h18M3 6h18M3 18h18',
+  close: 'M18 6L6 18M6 6l12 12',
+};
 
 const navItems = [
-  { href: '/doctor/dashboard', label: 'Dashboard' },
-  { href: '/doctor/profile', label: 'Profile' },
-  { href: '/doctor/availability', label: 'Availability' },
-  { href: '/doctor/appointments', label: 'Appointments' },
-  { href: '/doctor/prescriptions', label: 'Prescriptions' },
-  { href: '/doctor/earnings', label: 'Earnings' },
-  { href: '/doctor/settings', label: 'Settings' }
+  { href: '/doctor/dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { href: '/doctor/profile', label: 'Profile', icon: 'profile' },
+  { href: '/doctor/availability', label: 'Availability', icon: 'availability' },
+  { href: '/doctor/appointments', label: 'Appointments', icon: 'appointments' },
+  { href: '/doctor/prescriptions', label: 'Prescriptions', icon: 'prescriptions' },
+  { href: '/doctor/earnings', label: 'Earnings', icon: 'earnings' },
+  { href: '/doctor/settings', label: 'Settings', icon: 'settings' },
 ];
+
+function DocDockLogo() {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-600 shadow-emerald-sm">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" />
+          <path d="M12 8v4M12 16h.01" />
+        </svg>
+      </div>
+      <div>
+        <div className="text-base font-bold leading-none" style={{ color: 'var(--text-primary)' }}>DocDock</div>
+        <div className="mt-0.5 text-[10px] leading-none" style={{ color: 'var(--text-muted)' }}>Knock-Knock, your doctor is here.</div>
+      </div>
+    </div>
+  );
+}
+
+function Avatar({ name, role }: { name: string; role: string }) {
+  const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+        {initials || 'D'}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>Dr. {name || 'Doctor'}</p>
+        <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400 capitalize">{role}</p>
+      </div>
+    </div>
+  );
+}
+
+function NavItem({ href, label, icon, isActive, onClick }: {
+  href: string;
+  label: string;
+  icon: string;
+  isActive: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={`nav-link ${isActive ? 'active' : ''}`}
+    >
+      <span className="flex-shrink-0">
+        <Icon path={ICONS[icon]} size={17} />
+      </span>
+      <span className="flex-1 truncate">{label}</span>
+      {isActive && (
+        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-white opacity-80" />
+      )}
+    </Link>
+  );
+}
 
 export function DoctorShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const activeItem = useMemo(() => {
     return navItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ?? navItems[0];
   }, [pathname]);
 
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#eefaf4,_#f8fafc_45%,_#eff6ff)] text-slate-900">
-      <div className="mx-auto grid min-h-screen max-w-7xl gap-6 px-4 py-4 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-8">
-        <aside className="flex flex-col rounded-[28px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur">
-          <div className="rounded-[22px] bg-slate-950 p-5 text-white">
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">Doctor portal</p>
-            <h1 className="mt-3 text-2xl font-semibold">DocDock</h1>
-            <p className="mt-2 text-sm text-slate-300">Practice tools for your dashboard, availability, and appointments.</p>
-          </div>
+  const sidebarContent = (
+    <div className="flex h-full flex-col">
+      <div className="px-3 py-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
+        <Link href="/" onClick={() => setMobileOpen(false)}>
+          <DocDockLogo />
+        </Link>
+      </div>
 
-          <nav className="mt-6 space-y-2">
-            {navItems.map((item) => {
-              const isActive = activeItem.href === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                    isActive ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <span>{item.label}</span>
-                  {isActive && <span className="h-2 w-2 rounded-full bg-white" />}
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-            <p className="font-semibold text-slate-900">Signed in as</p>
-            <p className="mt-1 break-words">{user?.fullName || 'Doctor'}</p>
-            <p className="break-words text-xs text-slate-500">{user?.email}</p>
-          </div>
-
-          <div className="mt-auto space-y-3 pt-6">
-            <Link href="/find-doctors" className="block rounded-2xl border border-slate-300 px-4 py-3 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
-              Find doctors
-            </Link>
-            <button type="button" onClick={logout} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
-              Log out
-            </button>
-          </div>
-        </aside>
-
-        <div className="flex min-w-0 flex-col gap-6">
-          <header className="relative z-30 rounded-[28px] border border-slate-200/80 bg-white/90 px-5 py-4 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.28)] backdrop-blur sm:px-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-600">{activeItem.label}</p>
-                <p className="mt-1 text-sm text-slate-500">Manage your practice from one place.</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <NotificationBell />
-                <Link href="/" className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
-                  Home
-                </Link>
-              </div>
-            </div>
-          </header>
-
-          <VerificationBanner />
-          <main className="flex-1">{children}</main>
+      <div className="px-3 pt-4 pb-2">
+        <div className="flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 px-3 py-2">
+          <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">Doctor Portal</span>
         </div>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
+        {navItems.map((item) => (
+          <NavItem
+            key={item.href}
+            href={item.href}
+            label={item.label}
+            icon={item.icon}
+            isActive={activeItem.href === item.href}
+            onClick={() => setMobileOpen(false)}
+          />
+        ))}
+      </nav>
+
+      <div className="border-t px-3 py-3 space-y-2.5" style={{ borderColor: 'var(--border-color)' }}>
+        <Avatar name={user?.fullName || 'Doctor'} role={user?.role || 'doctor'} />
+        <button
+          type="button"
+          onClick={logout}
+          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30"
+        >
+          <Icon path={ICONS.logout} size={15} />
+          <span>Sign out</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <aside className="fixed top-0 left-0 z-40 hidden h-full w-[240px] lg:flex flex-col border-r"
+        style={{ backgroundColor: 'var(--sidebar-bg)', borderColor: 'var(--border-color)' }}>
+        {sidebarContent}
+      </aside>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} />
+      )}
+
+      <aside
+        className={`fixed top-0 left-0 z-50 h-full w-[240px] flex-col border-r transition-transform duration-300 lg:hidden ${
+          mobileOpen ? 'flex translate-x-0' : 'hidden -translate-x-full'
+        }`}
+        style={{ backgroundColor: 'var(--sidebar-bg)', borderColor: 'var(--border-color)' }}
+      >
+        {sidebarContent}
+      </aside>
+
+      <div className="lg:ml-[240px] flex flex-col min-h-screen">
+        <header
+          className="sticky top-0 z-30 flex h-14 items-center justify-between border-b px-4 sm:px-6"
+          style={{ backgroundColor: 'var(--header-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(20px)' }}
+        >
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg lg:hidden transition-all hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Toggle menu"
+            >
+              <Icon path={mobileOpen ? ICONS.close : ICONS.menu} size={18} />
+            </button>
+            <div className="hidden sm:block">
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{activeItem.label}</p>
+            </div>
+            <div className="block sm:hidden">
+              <Link href="/"><DocDockLogo /></Link>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <DarkModeToggle />
+            <NotificationBell />
+          </div>
+        </header>
+
+        <VerificationBanner />
+
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 animate-fade-in">
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -34,12 +34,21 @@ export class ChatService {
     appointmentId: string;
     senderId: string;
     senderRole: 'patient' | 'doctor';
-    type: 'text' | 'image';
+    type: 'text' | 'image' | 'prescription' | 'document';
     content?: string;
     mediaUrl?: string;
   }) {
-    if (payload.type === 'image' && !payload.mediaUrl) {
-      throw new ApiError('Media URL is required for image messages', 400, 'VALIDATION_ERROR');
+    const appointment = await AppointmentModel.findById(payload.appointmentId);
+    if (!appointment) {
+      throw new ApiError('Appointment not found', 404, 'APPOINTMENT_NOT_FOUND');
+    }
+    const activeStatuses = ['accepted', 'doctor_on_way', 'arrived', 'in_consultation'];
+    if (!activeStatuses.includes(appointment.status)) {
+      throw new ApiError('Chat is closed for this appointment.', 400, 'CHAT_CLOSED');
+    }
+
+    if (payload.type !== 'text' && !payload.mediaUrl) {
+      throw new ApiError('Media URL is required for image/attachment messages', 400, 'VALIDATION_ERROR');
     }
     if (payload.type === 'text' && !payload.content) {
       throw new ApiError('Message content is required', 400, 'VALIDATION_ERROR');

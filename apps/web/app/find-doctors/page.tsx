@@ -13,6 +13,8 @@ import MapPicker, { createSvgIcon } from '@/components/map/MapPicker';
 import { buildDoctorSearchParams } from '@/lib/doctorSearch';
 import { calculateDistanceKm, formatDistanceKm } from '@/lib/locationUtils';
 import { fetchPatientProfile } from '../patient/api';
+import { useAuth, getRoleHomePath } from '../auth/auth-context';
+import { DarkModeToggle } from '../theme-context';
 import 'leaflet/dist/leaflet.css';
 
 const Marker = nextDynamic(() => import('react-leaflet').then((m) => m.Marker), { ssr: false });
@@ -140,41 +142,90 @@ function FindDoctorsPageContent() {
     return () => { mounted = false; };
   }, []);
 
+  const { user, isHydrated, logout } = useAuth();
+
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-8">
-        <header className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      {/* ─── Top Navbar ─────────────────────────────────────── */}
+      <header
+        className="sticky top-0 z-50 border-b"
+        style={{ backgroundColor: 'var(--header-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(20px)' }}
+      >
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-600">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /><path d="M12 8v4M12 16h.01" />
+              </svg>
+            </div>
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-emerald-600">Doctor Discovery</p>
-              <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Find the right clinician near you</h1>
-              <p className="mt-3 max-w-2xl text-lg text-slate-600">
-                Search verified specialists, compare experience and fees, and book an appointment with confidence.
+              <div className="text-base font-bold leading-none" style={{ color: 'var(--text-primary)' }}>DocDock</div>
+              <div className="hidden sm:block mt-0.5 text-[10px] leading-none" style={{ color: 'var(--text-muted)' }}>
+                Knock-Knock, your doctor is here.
+              </div>
+            </div>
+          </Link>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2">
+            <DarkModeToggle />
+
+            {!isHydrated && (
+              <div className="h-8 w-24 skeleton rounded-full" />
+            )}
+
+            {isHydrated && !user && (
+              <>
+                <Link href="/auth/login" className="btn-ghost text-sm">Sign in</Link>
+                <Link href="/auth/register" className="btn-primary text-sm">Get Started</Link>
+              </>
+            )}
+
+            {isHydrated && user && (
+              <>
+                <Link href={getRoleHomePath(user)} className="btn-primary text-sm">Dashboard</Link>
+                <button onClick={logout} className="btn-ghost text-sm">Sign out</button>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Page Content */}
+      <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-6">
+          <header className="relative overflow-hidden rounded-3xl p-6 text-white sm:p-8" style={{ background: 'linear-gradient(135deg, #059669 0%, #0f766e 100%)' }}>
+            <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+              <div className="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+            </div>
+            <div className="relative flex flex-col gap-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-emerald-200">Doctor Discovery</p>
+              <h1 className="mt-1 text-2xl font-bold sm:text-3xl">Find the right doctor near you</h1>
+              <p className="text-sm text-emerald-100 max-w-xl">
+                Search verified specialists, compare experience and fees, and book with confidence.
               </p>
             </div>
-            <Link href="/" className="inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">
-              Back to home
-            </Link>
-          </div>
-        </header>
+          </header>
 
-        <DoctorFilters values={filters} onChange={updateFilters} onApply={handleApply} onReset={handleReset} />
+          <DoctorFilters values={filters} onChange={updateFilters} onApply={handleApply} onReset={handleReset} />
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          {/* Full Width Map card */}
+          <div className="dd-card p-4">
+            <h2 className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>Set Your Location</h2>
             {isLocationConfirmed ? (
-              <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-900 px-4 py-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-emerald-900">Selected location</p>
-                    <p className="mt-1 text-sm text-emerald-700">{locationLabel}</p>
+                    <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-300">Selected location</p>
+                    <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-400">{locationLabel}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setIsLocationConfirmed(false)}
-                    className="rounded-full border border-emerald-300 px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                    className="rounded-full border border-emerald-300 px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
                   >
-                    Change
+                    Change Location
                   </button>
                 </div>
               </div>
@@ -182,28 +233,30 @@ function FindDoctorsPageContent() {
               <>
                 {savedAddresses.length > 0 && (
                   <div className="mb-4 space-y-2">
-                    <p className="text-sm font-medium text-slate-700">Saved addresses</p>
-                    {savedAddresses.map((address) => (
-                      <button
-                        key={address._id}
-                        type="button"
-                        onClick={() => {
-                          if (address.location?.coordinates) {
-                            const [lng, lat] = address.location.coordinates;
-                            setLocation({ lat, lng });
-                            setLocationLabel(address.label || 'Saved address');
-                            setSelectedAddressId(address._id);
-                            setMapCenter({ lat, lng });
-                          }
-                        }}
-                        className={`block w-full rounded-xl border p-3 text-left text-sm transition ${
-                          selectedAddressId === address._id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className="font-medium">{address.label}</span>
-                        {address.isDefault && <span className="ml-2 text-xs text-emerald-600">(Default)</span>}
-                      </button>
-                    ))}
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Saved addresses</p>
+                    <div className="flex flex-wrap gap-2">
+                      {savedAddresses.map((address) => (
+                        <button
+                          key={address._id}
+                          type="button"
+                          onClick={() => {
+                            if (address.location?.coordinates) {
+                              const [lng, lat] = address.location.coordinates;
+                              setLocation({ lat, lng });
+                              setLocationLabel(address.label || 'Saved address');
+                              setSelectedAddressId(address._id);
+                              setMapCenter({ lat, lng });
+                            }
+                          }}
+                          className={`rounded-full border px-4 py-2 text-xs font-medium transition-all ${
+                            selectedAddressId === address._id ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900'
+                          }`}
+                        >
+                          {address.label}
+                          {address.isDefault && <span className="ml-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">(Default)</span>}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
                 <MapPicker
@@ -215,14 +268,10 @@ function FindDoctorsPageContent() {
                     setMapCenter(null);
                     setSelectedAddressId(null);
                   }}
-                  minHeight={savedAddresses.length > 0 ? 360 : 480}
+                  minHeight={320}
                   placeholder="Search your area"
                 >
-                  {location && (
-                    <Marker {...({ position: [location.lat, location.lng], icon: createSvgIcon('#0ea5e9') } as any)}>
-                      <Popup>Selected location</Popup>
-                    </Marker>
-                  )}
+
                   {doctorMarkers.map((doctor: any) => {
                     const [lng, lat] = doctor.location.coordinates;
                     const backendDistance = Number(doctor.distance);
@@ -252,14 +301,14 @@ function FindDoctorsPageContent() {
                   })}
                 </MapPicker>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-sm text-slate-600">{locationLabel || mapError || (location ? `Lat ${location.lat.toFixed(4)}, Lng ${location.lng.toFixed(4)}` : 'Search or tap the map to set your location')}</div>
+                  <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{locationLabel || mapError || (location ? `Lat ${location.lat.toFixed(4)}, Lng ${location.lng.toFixed(4)}` : 'Search or tap the map to set your location')}</div>
                   {location && (
                     <button
                       type="button"
                       onClick={() => setIsLocationConfirmed(true)}
-                      className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                      className="btn-primary text-xs px-4 py-2"
                     >
-                      Select Location
+                      Confirm Location
                     </button>
                   )}
                 </div>
@@ -267,35 +316,45 @@ function FindDoctorsPageContent() {
             )}
           </div>
 
-          <div>
+          {/* Doctors Grid Section */}
+          <div className="mt-2">
+            <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Available Doctors</h2>
+
             {query.isLoading && (
-              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                 {[1, 2, 3].map((item) => (
-                  <div key={item} className="animate-pulse rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <div className="h-4 w-24 rounded bg-slate-200" />
-                    <div className="mt-4 h-6 w-40 rounded bg-slate-200" />
-                    <div className="mt-4 h-4 w-full rounded bg-slate-200" />
-                    <div className="mt-2 h-4 w-3/4 rounded bg-slate-200" />
-                    <div className="mt-6 h-10 rounded-full bg-slate-200" />
+                  <div key={item} className="animate-pulse dd-card p-6">
+                    <div className="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800" />
+                    <div className="mt-4 h-6 w-40 rounded bg-slate-200 dark:bg-slate-800" />
+                    <div className="mt-4 h-4 w-full rounded bg-slate-200 dark:bg-slate-800" />
+                    <div className="mt-2 h-4 w-3/4 rounded bg-slate-200 dark:bg-slate-800" />
+                    <div className="mt-6 h-10 rounded-full bg-slate-200 dark:bg-slate-800" />
                   </div>
                 ))}
               </div>
             )}
 
             {!query.isLoading && query.isError && (
-              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 text-center text-amber-800">
-                <h2 className="text-xl font-semibold">We could not load doctor results.</h2>
-                <p className="mt-2">Please try again in a moment.</p>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-8 text-center">
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Could not load doctors.</p>
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">Please try again in a moment.</p>
               </div>
             )}
+
             {!query.isLoading && !query.isError && doctors.length === 0 && (
-              <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-                <h2 className="text-xl font-semibold text-slate-900">No doctors match these filters yet</h2>
-                <p className="mt-2 text-slate-600">Try broadening your search radius or clearing some filters.</p>
+              <div className="rounded-2xl border p-10 text-center" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--card-bg)' }}>
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl mx-auto mb-4 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+                  </svg>
+                </div>
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>No doctors found</h2>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>Try broadening your search radius or clearing some filters.</p>
               </div>
             )}
+
             {!query.isLoading && !query.isError && doctors.length > 0 && (
-              <div className="space-y-4">
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {doctors.sort((a: any, b: any) => (Number(a.distance) || 0) - (Number(b.distance) || 0)).map((doctor: any) => {
                   const backendDistance = Number(doctor.distance);
                   const distanceLabel = Number.isFinite(backendDistance) && backendDistance > 0
@@ -306,10 +365,11 @@ function FindDoctorsPageContent() {
                       id={`doctor-card-${doctor._id}`} 
                       key={doctor._id} 
                       onClick={() => handleDoctorCardClick(doctor)}
-                      className={`cursor-pointer transition hover:shadow-lg ${selectedDoctorId === doctor._id ? 'ring-2 ring-emerald-500 rounded-3xl' : ''}`}
+                      className={`cursor-pointer transition duration-200 hover-lift rounded-2xl border ${selectedDoctorId === doctor._id ? 'ring-2 ring-emerald-500' : ''}`}
+                      style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
                     >
                       <DoctorCard doctor={doctor} location={location} locationLabel={locationLabel} />
-                      <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
+                      <div className="px-5 pb-4 pt-1 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
                         <span>Distance: {distanceLabel}</span>
                       </div>
                     </div>
@@ -319,8 +379,8 @@ function FindDoctorsPageContent() {
             )}
           </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
 

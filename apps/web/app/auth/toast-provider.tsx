@@ -34,15 +34,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`max-w-md rounded-2xl px-4 py-3 text-sm font-medium shadow-lg ring-1 ${
+            className={`flex items-center gap-2.5 rounded-2xl px-4 py-3 text-sm font-medium shadow-large animate-slide-up ring-1 ${
               toast.type === 'success'
                 ? 'bg-emerald-600 text-white ring-emerald-500'
                 : toast.type === 'error'
                   ? 'bg-rose-600 text-white ring-rose-500'
                   : 'bg-slate-900 text-white ring-slate-700'
             }`}
+            style={{ maxWidth: '28rem' }}
           >
-            {toast.message}
+            {toast.type === 'success' && (
+              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-bold">✓</span>
+            )}
+            {toast.type === 'error' && (
+              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-bold">✕</span>
+            )}
+            {toast.type === 'info' && (
+              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-bold">i</span>
+            )}
+            <span>{toast.message}</span>
           </div>
         ))}
       </div>

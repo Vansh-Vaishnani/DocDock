@@ -196,84 +196,88 @@ export default function AdminDoctorsPage() {
       </div>
 
       <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
-
       {selectedId && detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] bg-white p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl p-6 shadow-large border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-semibold">{detail.user.fullName}</h3>
-                <p className="text-sm text-slate-500">{detail.user.email} · {detail.user.phone}</p>
+                <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{detail.user.fullName}</h3>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{detail.user.email} · {detail.user.phone}</p>
               </div>
-              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-slate-500">✕</button>
+              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-xl font-medium" style={{ color: 'var(--text-muted)' }}>✕</button>
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div><p className="text-xs text-slate-500">License</p><p className="font-medium">{detail.doctor.licenseNumber}</p></div>
-              <div><p className="text-xs text-slate-500">Specialization</p><p className="font-medium">{detail.doctor.specialization}</p></div>
-              <div><p className="text-xs text-slate-500">Experience</p><p className="font-medium">{detail.doctor.experience} years</p></div>
-              <div><p className="text-xs text-slate-500">Clinic</p><p className="font-medium">{detail.doctor.clinicName ?? '—'}</p></div>
-              <div className="sm:col-span-2"><p className="text-xs text-slate-500">Qualifications</p><p className="font-medium">{detail.doctor.qualifications?.join(', ') || '—'}</p></div>
-              <div className="sm:col-span-2"><p className="text-xs text-slate-500">Clinic address</p><p className="font-medium">{detail.doctor.clinicAddress ?? '—'}</p></div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 border-t pt-4" style={{ borderColor: 'var(--border-color)' }}>
+              <div><p className="text-xs" style={{ color: 'var(--text-muted)' }}>License</p><p className="font-semibold">{detail.doctor.licenseNumber}</p></div>
+              <div><p className="text-xs" style={{ color: 'var(--text-muted)' }}>Specialization</p><p className="font-semibold">{detail.doctor.specialization}</p></div>
+              <div><p className="text-xs" style={{ color: 'var(--text-muted)' }}>Experience</p><p className="font-semibold">{detail.doctor.experience} years</p></div>
+              <div><p className="text-xs" style={{ color: 'var(--text-muted)' }}>Clinic</p><p className="font-semibold">{detail.doctor.clinicName ?? '—'}</p></div>
+              <div className="sm:col-span-2"><p className="text-xs" style={{ color: 'var(--text-muted)' }}>Qualifications</p><p className="font-semibold">{detail.doctor.qualifications?.join(', ') || '—'}</p></div>
+              <div className="sm:col-span-2"><p className="text-xs" style={{ color: 'var(--text-muted)' }}>Clinic address</p><p className="font-semibold">{detail.doctor.clinicAddress ?? '—'}</p></div>
             </div>
 
-            <div className="mt-6">
-              <p className="text-sm font-semibold text-slate-900">Uploaded Documents</p>
-              <div className="mt-3 grid gap-4 sm:grid-cols-3">
-                <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-xs font-medium text-slate-500">Profile Photo</p>
+            <div className="mt-6 border-t pt-4" style={{ borderColor: 'var(--border-color)' }}>
+              <p className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>Uploaded Documents</p>
+              <div className="grid gap-4 sm:grid-cols-3">
+                {/* Profile Photo */}
+                <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Profile Photo</p>
                   {detail.doctor.profilePhotoUrl ? (
                     <div className="mt-2">
                       {isPdfUrl(detail.doctor.profilePhotoUrl) ? (
-                        <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-slate-100">
-                          <span className="text-xs font-medium text-slate-600">PDF</span>
+                        <div className="flex h-20 w-20 items-center justify-center rounded-lg border bg-slate-100 dark:bg-slate-800">
+                          <span className="text-xs font-semibold">PDF</span>
                         </div>
                       ) : (
-                        <img src={detail.doctor.profilePhotoUrl} alt="Profile" className="h-24 w-24 rounded-lg object-cover" />
+                        <img src={detail.doctor.profilePhotoUrl} alt="Profile" className="h-20 w-20 rounded-lg object-cover border" />
                       )}
                       <div className="mt-2 flex gap-2">
-                        <a href={detail.doctor.profilePhotoUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600">Open</a>
-                        <a href={getDownloadUrl(detail.doctor.profilePhotoUrl)} download className="text-xs font-semibold text-slate-600">Download</a>
+                        <a href={detail.doctor.profilePhotoUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Open</a>
+                        <a href={getDownloadUrl(detail.doctor.profilePhotoUrl)} download className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:underline">Download</a>
                       </div>
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-rose-600">Not uploaded</p>
                   )}
                 </div>
-                <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-xs font-medium text-slate-500">Government ID</p>
+
+                {/* Government ID */}
+                <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Government ID</p>
                   {detail.doctor.governmentIdUrl ? (
                     <div className="mt-2">
                       {isPdfUrl(detail.doctor.governmentIdUrl) ? (
-                        <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-slate-100">
-                          <span className="text-xs font-medium text-slate-600">PDF</span>
+                        <div className="flex h-20 w-20 items-center justify-center rounded-lg border bg-slate-100 dark:bg-slate-800">
+                          <span className="text-xs font-semibold">PDF</span>
                         </div>
                       ) : (
-                        <img src={detail.doctor.governmentIdUrl} alt="Government ID" className="h-24 w-24 rounded-lg object-cover" />
+                        <img src={detail.doctor.governmentIdUrl} alt="Government ID" className="h-20 w-20 rounded-lg object-cover border" />
                       )}
                       <div className="mt-2 flex gap-2">
-                        <a href={detail.doctor.governmentIdUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600">Open</a>
-                        <a href={getDownloadUrl(detail.doctor.governmentIdUrl)} download className="text-xs font-semibold text-slate-600">Download</a>
+                        <a href={detail.doctor.governmentIdUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Open</a>
+                        <a href={getDownloadUrl(detail.doctor.governmentIdUrl)} download className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:underline">Download</a>
                       </div>
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-rose-600">Not uploaded</p>
                   )}
                 </div>
-                <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-xs font-medium text-slate-500">Medical License</p>
+
+                {/* Medical License */}
+                <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Medical License</p>
                   {detail.doctor.medicalLicenseUrl ? (
                     <div className="mt-2">
                       {isPdfUrl(detail.doctor.medicalLicenseUrl) ? (
-                        <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-slate-100">
-                          <span className="text-xs font-medium text-slate-600">PDF</span>
+                        <div className="flex h-20 w-20 items-center justify-center rounded-lg border bg-slate-100 dark:bg-slate-800">
+                          <span className="text-xs font-semibold">PDF</span>
                         </div>
                       ) : (
-                        <img src={detail.doctor.medicalLicenseUrl} alt="Medical License" className="h-24 w-24 rounded-lg object-cover" />
+                        <img src={detail.doctor.medicalLicenseUrl} alt="Medical License" className="h-20 w-20 rounded-lg object-cover border" />
                       )}
                       <div className="mt-2 flex gap-2">
-                        <a href={detail.doctor.medicalLicenseUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600">Open</a>
-                        <a href={getDownloadUrl(detail.doctor.medicalLicenseUrl)} download className="text-xs font-semibold text-slate-600">Download</a>
+                        <a href={detail.doctor.medicalLicenseUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Open</a>
+                        <a href={getDownloadUrl(detail.doctor.medicalLicenseUrl)} download className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:underline">Download</a>
                       </div>
                     </div>
                   ) : (
@@ -283,21 +287,21 @@ export default function AdminDoctorsPage() {
               </div>
             </div>
 
-            <div className="mt-6">
-              <label className="mb-2 block text-sm font-medium text-slate-700">Rejection / suspend reason</label>
+            <div className="mt-6 border-t pt-4" style={{ borderColor: 'var(--border-color)' }}>
+              <label className="dd-label">Rejection / Suspend Reason</label>
               <textarea
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 rows={3}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm"
+                className="dd-input resize-none"
                 placeholder="Required when rejecting a doctor"
               />
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button type="button" disabled={actionLoading} onClick={() => void handleAction('approve')} className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Approve</button>
-              <button type="button" disabled={actionLoading} onClick={() => void handleAction('reject')} className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Reject</button>
-              <button type="button" disabled={actionLoading} onClick={() => void handleAction('suspend')} className="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Suspend</button>
+            <div className="mt-6 flex flex-wrap gap-3 border-t pt-4" style={{ borderColor: 'var(--border-color)' }}>
+              <button type="button" disabled={actionLoading} onClick={() => void handleAction('approve')} className="btn-primary text-xs px-4 py-2 disabled:opacity-60 flex-1">Approve</button>
+              <button type="button" disabled={actionLoading} onClick={() => void handleAction('reject')} className="btn-secondary text-xs px-4 py-2 text-rose-600 border-rose-200 dark:border-rose-900/50 dark:text-rose-400 disabled:opacity-60 flex-1">Reject</button>
+              <button type="button" disabled={actionLoading} onClick={() => void handleAction('suspend')} className="btn-secondary text-xs px-4 py-2 text-amber-600 border-amber-200 dark:border-amber-900/50 dark:text-amber-400 disabled:opacity-60 flex-1">Suspend</button>
             </div>
           </div>
         </div>

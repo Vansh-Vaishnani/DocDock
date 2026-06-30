@@ -28,6 +28,7 @@ const getStoredAccessToken = (): string | null => {
 import { useToast } from '../../../auth/toast-provider';
 
 import { fetchPatientAppointmentDetail, submitReview, type AppointmentDetail } from '../../api';
+import ChatSection from '../../../../components/ChatSection';
 
 import LeafletMap, { createSvgIcon } from '@/components/map/LeafletMap';
 
@@ -298,6 +299,93 @@ export default function AppointmentDetailsPage() {
 
   const [comment, setComment] = useState('');
 
+  const [resendingOtp, setResendingOtp] = useState(false);
+
+  const [showChat, setShowChat] = useState(false);
+  const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'connected' | 'ended' | 'missed'>('idle');
+  const [activeCallLogId, setActiveCallLogId] = useState<string | null>(null);
+
+  const handleCall = async () => {
+    if (!appointmentId) return;
+    setCallStatus('calling');
+    try {
+      const token = getStoredAccessToken();
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+      const res = await fetch(`${API_BASE}/appointments/${appointmentId}/call`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) {
+        throw new Error('Failed to initiate call');
+      }
+      const data = await res.json();
+      setActiveCallLogId(data.data._id);
+      
+      // Simulate calling sequence
+      setTimeout(async () => {
+        setCallStatus('connected');
+        try {
+          await fetch(`${API_BASE}/appointments/${appointmentId}/calls/${data.data._id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ status: 'connected' })
+          });
+        } catch {}
+      }, 3000);
+
+      setTimeout(async () => {
+        setCallStatus('ended');
+        try {
+          await fetch(`${API_BASE}/appointments/${appointmentId}/calls/${data.data._id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ status: 'ended', duration: 7 })
+          });
+        } catch {}
+        setTimeout(() => setCallStatus('idle'), 3000);
+      }, 10000);
+    } catch (err) {
+      setCallStatus('missed');
+      showToast('Could not bridge call.', 'error');
+      setTimeout(() => setCallStatus('idle'), 3000);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!appointmentId) return;
+    setResendingOtp(true);
+    try {
+      const token = getStoredAccessToken();
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+      const res = await fetch(`${API_BASE}/appointments/${appointmentId}/resend-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || 'Failed to resend OTP.');
+      }
+      showToast('OTP resent successfully to your phone.', 'success');
+      void load();
+    } catch (err: any) {
+      showToast(err.message || 'Unable to resend OTP.', 'error');
+    } finally {
+      setResendingOtp(false);
+    }
+  };
+
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -537,6 +625,34 @@ export default function AppointmentDetailsPage() {
 
                 <div><span className="font-medium text-slate-900">Phone:</span> {detail.doctor?.phone || '—'}</div>
 
+                {['accepted', 'doctor_on_way', 'arrived', 'in_consultation'].includes(detail.appointment?.status || '') && (
+                  <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowChat((prev) => !prev)}
+                      className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                    >
+                      {showChat ? '💬 Close Chat' : '💬 Open Chat'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={callStatus !== 'idle'}
+                      onClick={handleCall}
+                      className={`rounded-full px-4 py-2 text-xs font-semibold text-white shadow-sm transition ${
+                        callStatus === 'idle' ? 'bg-indigo-600 hover:bg-indigo-700' :
+                        callStatus === 'calling' ? 'bg-amber-500 animate-pulse' :
+                        callStatus === 'connected' ? 'bg-emerald-600' :
+                        callStatus === 'missed' ? 'bg-rose-600' : 'bg-slate-500'
+                      }`}
+                    >
+                      {callStatus === 'idle' && '📞 Call Doctor'}
+                      {callStatus === 'calling' && '📞 Calling...'}
+                      {callStatus === 'connected' && '📞 Connected'}
+                      {callStatus === 'ended' && '📞 Ended'}
+                      {callStatus === 'missed' && '📞 Missed'}
+                    </button>
+                  </div>
+                )}
               </div>
 
             </div>
@@ -595,6 +711,37 @@ export default function AppointmentDetailsPage() {
 
 
 
+            {detail.appointment?.status === 'arrived' && (
+              <div className="rounded-2xl border-2 border-emerald-500 bg-emerald-50 p-5 shadow-sm">
+                <h3 className="text-lg font-semibold text-emerald-950">Doctor has Arrived</h3>
+                <p className="mt-2 text-sm text-emerald-700 font-normal">
+                  Please share the following OTP with your doctor to begin the consultation.
+                </p>
+                {detail.appointment?.otpCode ? (
+                  <div className="mt-4 flex flex-col items-center justify-center rounded-xl bg-white p-4 border border-emerald-200">
+                    <span className="text-3xl font-extrabold tracking-widest text-emerald-800">
+                      {detail.appointment.otpCode}
+                    </span>
+                    <span className="mt-1 text-xs text-slate-500 font-medium">OTP Code (Dev Mode Display)</span>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-col items-center justify-center rounded-xl bg-white p-4 border border-emerald-200">
+                    <span className="text-sm font-semibold text-slate-700 font-mono">OTP Sent via SMS</span>
+                  </div>
+                )}
+                <div className="mt-4 flex justify-between items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={resendingOtp}
+                    onClick={handleResendOtp}
+                    className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none disabled:opacity-50"
+                  >
+                    {resendingOtp ? 'Resending...' : 'Resend OTP'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="rounded-2xl border border-slate-200 p-5">
 
               <h3 className="text-lg font-semibold text-slate-900">Status timeline</h3>
@@ -617,6 +764,17 @@ export default function AppointmentDetailsPage() {
 
             </div>
 
+            {showChat && (
+              <ChatSection
+                appointmentId={detail.appointment?._id}
+                roomId={`${detail.appointment?._id}:${detail.patient?._id}:${detail.doctor?._id}`}
+                senderRole="patient"
+                userId={detail.patient?._id || ''}
+                peerName={detail.doctor?.fullName || 'Doctor'}
+                isActive={['accepted', 'doctor_on_way', 'arrived', 'in_consultation'].includes(detail.appointment?.status)}
+                onClose={() => setShowChat(false)}
+              />
+            )}
           </div>
 
 

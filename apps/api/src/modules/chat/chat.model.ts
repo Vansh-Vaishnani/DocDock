@@ -5,7 +5,7 @@ export interface IChatMessageDocument extends mongoose.Document {
   appointmentId: mongoose.Types.ObjectId;
   senderId: mongoose.Types.ObjectId;
   senderRole: 'patient' | 'doctor';
-  type: 'text' | 'image';
+  type: 'text' | 'image' | 'prescription' | 'document';
   content?: string;
   mediaUrl?: string;
   isRead: boolean;
@@ -18,7 +18,7 @@ const chatMessageSchema = new Schema<IChatMessageDocument>(
     appointmentId: { type: Schema.Types.ObjectId, required: true, ref: 'Appointment' },
     senderId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     senderRole: { type: String, enum: ['patient', 'doctor'], required: true },
-    type: { type: String, enum: ['text', 'image'], default: 'text' },
+    type: { type: String, enum: ['text', 'image', 'prescription', 'document'], default: 'text' },
     content: { type: String },
     mediaUrl: { type: String },
     isRead: { type: Boolean, default: false },

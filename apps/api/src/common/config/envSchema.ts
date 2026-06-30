@@ -26,6 +26,11 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_PHONE_NUMBER: z.string().optional(),
+  SMS_PROVIDER: z.string().optional().default('console'),
+  FAST2SMS_API_KEY: z.string().optional(),
+  MSG91_AUTH_KEY: z.string().optional(),
+  CALL_PROVIDER: z.string().optional().default('console'),
   DEV_AUTO_VERIFY_DOCTOR: z
     .enum(['true', 'false'])
     .default('false')

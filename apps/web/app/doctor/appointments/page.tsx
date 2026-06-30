@@ -5,6 +5,7 @@ import { io } from 'socket.io-client';
 
 import { useToast } from '../../auth/toast-provider';
 import { createOrUpdatePrescription, fetchDoctorAppointments, fetchDoctorProfile, updateAppointmentStatus, updateTrackingLocation, type DoctorAppointment } from '../api';
+import ChatSection from '../../../components/ChatSection';
 
 const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
 
@@ -98,6 +99,92 @@ export default function DoctorAppointmentsPage() {
   const [prescriptionDrafts, setPrescriptionDrafts] = useState<Record<string, PrescriptionDraft>>({});
   const simStepsRef = useRef<Record<string, number>>({});
   const [doctorCoords, setDoctorCoords] = useState<[number, number] | null>(null);
+
+  const [pendingOtpActionApptId, setPendingOtpActionApptId] = useState<string | null>(null);
+  const [otpInput, setOtpInput] = useState('');
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+
+  const [activeChatApptId, setActiveChatApptId] = useState<string | null>(null);
+  const [callStatusMap, setCallStatusMap] = useState<Record<string, 'idle' | 'calling' | 'connected' | 'ended' | 'missed'>>({});
+
+  const handleCallPatient = async (appointmentId: string) => {
+    setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'calling' }));
+    try {
+      const token = getStoredAccessToken();
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+      const res = await fetch(`${API_BASE}/appointments/${appointmentId}/call`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) {
+        throw new Error('Failed to initiate call');
+      }
+      const data = await res.json();
+      
+      // Simulate calling sequence
+      setTimeout(async () => {
+        setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'connected' }));
+        try {
+          await fetch(`${API_BASE}/appointments/${appointmentId}/calls/${data.data._id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ status: 'connected' })
+          });
+        } catch {}
+      }, 3000);
+
+      setTimeout(async () => {
+        setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'ended' }));
+        try {
+          await fetch(`${API_BASE}/appointments/${appointmentId}/calls/${data.data._id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ status: 'ended', duration: 8 })
+          });
+        } catch {}
+        setTimeout(() => {
+          setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'idle' }));
+        }, 3000);
+      }, 10000);
+    } catch (err) {
+      setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'missed' }));
+      showToast('Could not bridge call.', 'error');
+      setTimeout(() => {
+        setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'idle' }));
+      }, 3000);
+    }
+  };
+
+  const confirmOtp = async () => {
+    if (!pendingOtpActionApptId) return;
+    if (otpInput.trim().length !== 6) {
+      setOtpError('Please enter a valid 6-digit OTP.');
+      return;
+    }
+
+    setVerifyingOtp(true);
+    setOtpError(null);
+    try {
+      await updateAppointmentStatus(pendingOtpActionApptId, 'in_consultation', undefined, otpInput.trim());
+      showToast('OTP verified. Consultation started.', 'success');
+      setPendingOtpActionApptId(null);
+      await load();
+    } catch (err: unknown) {
+      setOtpError(err instanceof Error ? err.message : 'Invalid OTP. Please try again.');
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -266,6 +353,13 @@ export default function DoctorAppointmentsPage() {
         return;
       }
 
+      if (status === 'in_consultation') {
+        setPendingOtpActionApptId(appointmentId);
+        setOtpInput('');
+        setOtpError(null);
+        return;
+      }
+
       await updateAppointmentStatus(appointmentId, status);
       showToast('Appointment updated.', 'success');
       await load();
@@ -326,11 +420,11 @@ export default function DoctorAppointmentsPage() {
   };
 
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="dd-card">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold">Appointments</h2>
-          <p className="mt-2 text-slate-600">Manage requests and active consultations.</p>
+          <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Appointments</h2>
+          <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>Manage requests and active consultations.</p>
         </div>
         <div className="flex gap-2">
           {(['today', 'upcoming', 'all'] as const).map((f) => (
@@ -338,8 +432,10 @@ export default function DoctorAppointmentsPage() {
               key={f}
               type="button"
               onClick={() => setFilter(f)}
-              className={`rounded-full px-4 py-2 text-sm font-medium capitalize ${
-                filter === f ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-slate-700'
+              className={`rounded-full px-4 py-2 text-xs font-semibold capitalize transition-all ${
+                filter === f
+                  ? 'bg-emerald-600 text-white shadow-emerald-sm'
+                  : 'border border-slate-300 hover:bg-slate-50 text-slate-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
               }`}
             >
               {f}
@@ -348,10 +444,14 @@ export default function DoctorAppointmentsPage() {
         </div>
       </div>
 
-      {loading && <div className="mt-6 rounded-2xl bg-slate-100 p-4 text-sm text-slate-600">Loading appointments...</div>}
+      {loading && (
+        <div className="mt-6 rounded-2xl p-4 text-sm" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
+          Loading appointments...
+        </div>
+      )}
 
       {!loading && appointments.length === 0 && (
-        <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600">
+        <div className="mt-6 rounded-2xl border border-dashed p-6 text-center text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
           No appointments found.
         </div>
       )}
@@ -405,6 +505,34 @@ export default function DoctorAppointmentsPage() {
                           {action.label}
                         </button>
                       ))}
+                    </div>
+                  )}
+                  {['accepted', 'doctor_on_way', 'arrived', 'in_consultation'].includes(appt.status) && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveChatApptId((prev) => (prev === appt._id ? null : appt._id))}
+                        className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                      >
+                        {activeChatApptId === appt._id ? '💬 Close Chat' : '💬 Open Chat'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={callStatusMap[appt._id] && callStatusMap[appt._id] !== 'idle'}
+                        onClick={() => handleCallPatient(appt._id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition ${
+                          (callStatusMap[appt._id] ?? 'idle') === 'idle' ? 'bg-indigo-600 hover:bg-indigo-700' :
+                          callStatusMap[appt._id] === 'calling' ? 'bg-amber-500 animate-pulse' :
+                          callStatusMap[appt._id] === 'connected' ? 'bg-emerald-600' :
+                          callStatusMap[appt._id] === 'missed' ? 'bg-rose-600' : 'bg-slate-500'
+                        }`}
+                      >
+                        {(callStatusMap[appt._id] ?? 'idle') === 'idle' && '📞 Call Patient'}
+                        {callStatusMap[appt._id] === 'calling' && '📞 Calling...'}
+                        {callStatusMap[appt._id] === 'connected' && '📞 Connected'}
+                        {callStatusMap[appt._id] === 'ended' && '📞 Ended'}
+                        {callStatusMap[appt._id] === 'missed' && '📞 Missed'}
+                      </button>
                     </div>
                   )}
                   {!actions.length && appt.paymentStatus !== 'paid' && (
@@ -495,41 +623,54 @@ export default function DoctorAppointmentsPage() {
                   </div>
                 </div>
               )}
+              {activeChatApptId === appt._id && (
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <ChatSection
+                    appointmentId={appt._id}
+                    roomId={`${appt._id}:${appt.patientId}:${appt.doctorId}`}
+                    senderRole="doctor"
+                    userId={appt.doctorId}
+                    peerName={appt.patientName}
+                    isActive={['accepted', 'doctor_on_way', 'arrived', 'in_consultation'].includes(appt.status)}
+                    onClose={() => setActiveChatApptId(null)}
+                  />
+                </div>
+              )}
             </div>
           );
         })}
       </div>
       {showReasonModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
-            <h3 className="text-lg font-semibold">Provide reason</h3>
-            <p className="mt-2 text-sm text-slate-600">Select a reason for this action.</p>
-            <div className="mt-4 space-y-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl p-6 shadow-large border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+            <h3 className="text-lg font-bold">Provide Reason</h3>
+            <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>Select a reason for this action.</p>
+            <div className="mt-4 space-y-3">
               {REASON_OPTIONS.map((opt) => (
-                <label key={opt} className="flex items-center gap-2">
-                  <input type="radio" name="reason" checked={selectedOption === opt} onChange={() => setSelectedOption(opt)} />
-                  <span className="text-sm">{opt}</span>
+                <label key={opt} className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="radio" name="reason" checked={selectedOption === opt} onChange={() => setSelectedOption(opt)} className="h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                  <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{opt}</span>
                 </label>
               ))}
               {selectedOption === 'Other' && (
                 <textarea
                   value={customReason}
                   onChange={(e) => setCustomReason(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  className="mt-2 dd-input resize-none"
                   rows={3}
                   placeholder="Describe reason"
                 />
               )}
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => { setShowReasonModal(false); setPendingAction(null); }} className="rounded-full border px-4 py-2">
+            <div className="mt-6 flex justify-end gap-2.5">
+              <button type="button" onClick={() => { setShowReasonModal(false); setPendingAction(null); }} className="btn-secondary text-xs px-4 py-2">
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmReason}
                 disabled={selectedOption === 'Other' ? customReason.trim().length === 0 : !selectedOption}
-                className={`rounded-full px-4 py-2 text-white ${selectedOption === 'Other' ? (customReason.trim().length === 0 ? 'bg-slate-300' : 'bg-emerald-600') : 'bg-emerald-600'}`}
+                className={`btn-primary text-xs px-4 py-2 ${selectedOption === 'Other' ? (customReason.trim().length === 0 ? 'opacity-50' : '') : ''}`}
               >
                 Confirm
               </button>
@@ -537,6 +678,51 @@ export default function DoctorAppointmentsPage() {
           </div>
         </div>
       )}
-    </section>
+      {pendingOtpActionApptId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl p-6 shadow-large border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+            <h3 className="text-lg font-bold">Enter Consultation OTP</h3>
+            <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+              Please enter the 6-digit OTP code received by the patient to verify their arrival and start the consultation.
+            </p>
+            <div className="mt-4">
+              <input
+                type="text"
+                maxLength={6}
+                value={otpInput}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  setOtpInput(val);
+                }}
+                className="w-full text-center text-3xl tracking-widest font-extrabold rounded-xl border px-3 py-3"
+                style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                placeholder="000000"
+              />
+              {otpError && (
+                <p className="mt-2 text-xs font-semibold text-rose-600">{otpError}</p>
+              )}
+            </div>
+            <div className="mt-6 flex justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={verifyingOtp}
+                onClick={() => setPendingOtpActionApptId(null)}
+                className="btn-secondary text-xs px-4 py-2"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={verifyingOtp || otpInput.length !== 6}
+                onClick={confirmOtp}
+                className="btn-primary text-xs px-4 py-2"
+              >
+                {verifyingOtp ? 'Verifying...' : 'Verify & Start'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

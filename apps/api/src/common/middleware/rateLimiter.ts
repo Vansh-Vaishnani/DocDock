@@ -6,7 +6,14 @@ import { redisClient } from '../config';
 
 const store = redisClient.isOpen
   ? new RedisStore({
-      sendCommand: (...args: string[]) => redisClient.sendCommand(args)
+      sendCommand: async (...args: string[]) => {
+        try {
+          return await redisClient.sendCommand(args);
+        } catch (error) {
+          console.warn('⚠️ Rate limiter Redis store failed, falling back gracefully:', error);
+          return 0; // Return mock value to allow request through safely
+        }
+      }
     })
   : undefined;
 

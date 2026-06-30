@@ -23,6 +23,7 @@ export interface IAppointmentDocument extends mongoose.Document {
   cancellationReason?: string | null;
   paymentId?: mongoose.Types.ObjectId;
   prescriptionId?: mongoose.Types.ObjectId;
+  isEmergency?: boolean;
 }
 
 const appointmentSchema = new Schema<IAppointmentDocument>(
@@ -62,7 +63,8 @@ const appointmentSchema = new Schema<IAppointmentDocument>(
       rejectionReason: { type: String },
     cancellationReason: { type: String },
     paymentId: { type: Schema.Types.ObjectId, ref: 'Payment' },
-    prescriptionId: { type: Schema.Types.ObjectId, ref: 'Prescription' }
+    prescriptionId: { type: Schema.Types.ObjectId, ref: 'Prescription' },
+    isEmergency: { type: Boolean, default: false }
   },
   { timestamps: true }
 );

@@ -112,14 +112,14 @@ export default function AdminAppointmentsPage() {
       <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
       {selectedId && detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-[28px] bg-white p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border p-6 shadow-large" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
             <div className="flex items-start justify-between">
-              <h3 className="text-lg font-semibold">Appointment detail</h3>
-              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-slate-500">✕</button>
+              <h3 className="text-lg font-bold">Appointment Detail</h3>
+              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-xl font-medium" style={{ color: 'var(--text-muted)' }}>✕</button>
             </div>
-            <pre className="mt-4 overflow-x-auto rounded-2xl bg-slate-50 p-4 text-xs text-slate-700">{JSON.stringify(detail, null, 2)}</pre>
-            <p className="mt-3 text-xs text-slate-500">Medical records and prescriptions are read-only for admins.</p>
+            <pre className="mt-4 overflow-x-auto rounded-xl border p-4 text-xs" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>{JSON.stringify(detail, null, 2)}</pre>
+            <p className="mt-3 text-xs" style={{ color: 'var(--text-muted)' }}>Medical records and prescriptions are read-only for admins.</p>
           </div>
         </div>
       )}

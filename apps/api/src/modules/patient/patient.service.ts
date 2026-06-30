@@ -1,10 +1,15 @@
 import mongoose from 'mongoose';
 
 import { ApiError } from '../../common/errors/ApiError';
-
 import { UserModel } from '../auth/auth.repository';
-
 import { PatientModel, IPatientDocument } from './patient.repository';
+import { DoctorModel } from '../doctor/doctor.repository';
+import { AppointmentModel } from '../appointment/appointment.repository';
+import { EmergencyRequestModel } from './emergency.model';
+import { NotificationService } from '../notification/notification.service';
+import { getIO } from '../../sockets/gateway';
+
+const notificationService = new NotificationService();
 
 export interface PatientProfileResponse {
   _id: string;
@@ -221,5 +226,121 @@ export class PatientService {
 
     await patient.save();
     return this.getProfile(userId);
+  }
+
+  async triggerSos(userId: string, coordinates: [number, number]) {
+    const patientUser = await UserModel.findById(userId).select('fullName phone').lean();
+    if (!patientUser) {
+      throw new ApiError('Patient user not found', 404, 'USER_NOT_FOUND');
+    }
+
+    // 1. Find nearest verified and available doctor
+    const nearestDoctor = await DoctorModel.findOne({
+      verificationStatus: 'approved',
+      'availability.isAvailable': true,
+      'availability.vacationMode': false,
+      location: {
+        $nearSphere: {
+          $geometry: {
+            type: 'Point',
+            coordinates: coordinates // [lng, lat]
+          }
+        }
+      }
+    });
+
+    let doctor = nearestDoctor;
+    if (!doctor) {
+      // Fallback: search for any verified doctor
+      doctor = await DoctorModel.findOne({
+        verificationStatus: 'approved',
+        location: {
+          $nearSphere: {
+            $geometry: {
+              type: 'Point',
+              coordinates: coordinates
+            }
+          }
+        }
+      });
+    }
+
+    if (!doctor) {
+      throw new ApiError('No verified doctors are registered in the system', 404, 'DOCTORS_NOT_AVAILABLE');
+    }
+
+    // 2. Create emergency request log
+    const request = await EmergencyRequestModel.create({
+      patientId: new mongoose.Types.ObjectId(userId),
+      location: { type: 'Point', coordinates },
+      assignedDoctorId: doctor._id,
+      status: 'resolved'
+    });
+
+    // 3. Create high-priority Emergency Appointment
+    const appointment = await AppointmentModel.create({
+      patientId: new mongoose.Types.ObjectId(userId),
+      doctorId: doctor._id,
+      scheduledAt: new Date(),
+      address: {
+        label: 'SOS Emergency Location',
+        location: { type: 'Point', coordinates }
+      },
+      status: 'pending',
+      isEmergency: true,
+      notes: 'EMERGENCY SOS AUTO-ASSIGNED'
+    });
+
+    request.appointmentId = appointment._id;
+    await request.save();
+
+    // 4. Notify doctor in real-time
+    try {
+      const doctorUserId = doctor.userId.toString();
+      await notificationService.createNotification({
+        userId: doctorUserId,
+        type: 'emergency_request',
+        title: '🚨 EMERGENCY SOS ASSIGNED',
+        message: 'You have been assigned a high-priority emergency SOS appointment nearby.',
+        channel: 'in_app',
+        metadata: { appointmentId: appointment._id.toString(), requestId: request._id.toString() }
+      });
+
+      const io = getIO();
+      // Emit to doctor's active notifications namespace
+      io.of('/notifications').to(doctorUserId).emit('notification', {
+        type: 'emergency_request',
+        title: '🚨 EMERGENCY SOS ASSIGNED',
+        message: 'You have been assigned a high-priority emergency SOS appointment nearby.'
+      });
+
+      // Emit to doctor's general socket room
+      io.of('/notifications').to(doctorUserId).emit('emergency:assigned', {
+        appointmentId: appointment._id.toString()
+      });
+    } catch (e) {
+      console.error('[SOS Service] Failed to dispatch socket notifications:', e);
+    }
+
+    // 5. Default emergency numbers payload
+    const emergencyContacts = {
+      ambulance: '102',
+      police: '100',
+      emergencyHelpline: '112'
+    };
+
+    const docUser = await UserModel.findById(doctor.userId).select('fullName phone').lean();
+
+    return {
+      success: true,
+      appointmentId: appointment._id.toString(),
+      doctor: {
+        fullName: docUser?.fullName ?? 'Doctor',
+        phone: docUser?.phone ?? '—',
+        clinicName: doctor.clinicName,
+        clinicAddress: doctor.clinicAddress
+      },
+      emergencyContacts
+    };
   }
 }

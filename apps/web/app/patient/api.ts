@@ -176,6 +176,8 @@ export type AppointmentDetail = {
     createdAt: string;
     updatedAt: string;
     rejectionReason?: string | null;
+    otpCode?: string;
+    isEmergency?: boolean;
   };
   doctor: {
     _id?: string;

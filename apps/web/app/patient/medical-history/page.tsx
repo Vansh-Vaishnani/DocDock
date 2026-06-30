@@ -105,75 +105,83 @@ export default function PatientMedicalHistoryPage() {
 
   return (
     <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-2xl font-semibold">Medical history</h2>
-        <p className="mt-2 text-slate-600">Record diagnoses, procedures, and clinical notes for your care team.</p>
+      <div className="dd-card">
+        <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Medical history</h2>
+        <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>Record diagnoses, procedures, and clinical notes for your care team.</p>
 
-        {error && <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+        {error && (
+          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-900 px-4 py-3 text-sm text-rose-700 dark:text-rose-400">
+            {error}
+          </div>
+        )}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Add a note</label>
+            <label className="dd-label">Add a note</label>
             <textarea
               {...register('note')}
               rows={4}
-              className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-500"
+              className="dd-input resize-none"
               placeholder="e.g. Hypertension diagnosed in 2019, ongoing treatment..."
             />
-            {errors.note && <p className="mt-2 text-sm text-rose-600">{errors.note.message}</p>}
+            {errors.note && <p className="mt-1.5 text-xs text-rose-600">{errors.note.message}</p>}
           </div>
           <button
             type="submit"
             disabled={saving}
-            className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-70"
+            className="btn-primary w-full"
           >
             {saving ? 'Saving...' : 'Add entry'}
           </button>
         </form>
       </div>
 
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-xl font-semibold">Your records</h3>
+      <div className="dd-card">
+        <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Your records</h3>
 
-        {loading && <div className="mt-5 rounded-2xl bg-slate-100 p-4 text-sm text-slate-600">Loading medical history...</div>}
+        {loading && (
+          <div className="mt-4 space-y-3">
+            <div className="h-10 skeleton rounded-xl" />
+          </div>
+        )}
 
         {!loading && entries.length === 0 && (
-          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600">
+          <div className="mt-4 rounded-xl border border-dashed p-8 text-center text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
             No medical history entries yet.
           </div>
         )}
 
         {!loading && entries.length > 0 && (
-          <div className="mt-5 space-y-3">
+          <div className="mt-4 space-y-3">
             {entries.map((entry, index) => (
-              <div key={entry._id || `${entry.note}-${index}`} className="rounded-2xl border border-slate-200 p-4">
+              <div key={entry._id || `${entry.note}-${index}`} className="rounded-xl border p-4" style={{ borderColor: 'var(--border-color)' }}>
                 {editingIndex === index ? (
                   <textarea
                     value={editNote}
                     onChange={(e) => setEditNote(e.target.value)}
                     rows={3}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-500"
+                    className="dd-input resize-none"
                   />
                 ) : (
-                  <p className="text-sm text-slate-800">{entry.note}</p>
+                  <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{entry.note}</p>
                 )}
-                <p className="mt-2 text-xs text-slate-500">Added {formatDate(entry.createdAt)}</p>
+                <p className="mt-2 text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>Added {formatDate(entry.createdAt)}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {editingIndex === index ? (
                     <>
-                      <button type="button" onClick={() => saveEdit(index)} disabled={saving} className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
+                      <button type="button" onClick={() => saveEdit(index)} disabled={saving} className="btn-primary text-xs px-3 py-1.5 disabled:opacity-60">
                         Save
                       </button>
-                      <button type="button" onClick={cancelEdit} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                      <button type="button" onClick={cancelEdit} className="btn-secondary text-xs px-3 py-1.5">
                         Cancel
                       </button>
                     </>
                   ) : (
                     <>
-                      <button type="button" onClick={() => startEdit(index)} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                      <button type="button" onClick={() => startEdit(index)} className="btn-secondary text-xs px-3 py-1.5">
                         Edit
                       </button>
-                      <button type="button" onClick={() => handleDelete(index)} disabled={saving} className="rounded-full border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 disabled:opacity-60">
+                      <button type="button" onClick={() => handleDelete(index)} disabled={saving} className="btn-secondary text-xs px-3 py-1.5 text-rose-600 border-rose-200 dark:border-rose-900/50 dark:text-rose-400 disabled:opacity-60">
                         Delete
                       </button>
                     </>

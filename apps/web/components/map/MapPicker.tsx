@@ -90,6 +90,17 @@ export default function MapPicker({
     centerMap(lat, lng, 16);
   };
 
+  const lastPanTime = useRef<number>(0);
+  const handleMouseMove = (lat: number, lng: number) => {
+    const now = Date.now();
+    if (now - lastPanTime.current > 150) {
+      lastPanTime.current = now;
+      if (mapRef.current) {
+        mapRef.current.panTo([lat, lng], { animate: true, duration: 0.6 });
+      }
+    }
+  };
+
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -109,17 +120,20 @@ export default function MapPicker({
 
   const { MapContainer, TileLayer, Marker, Popup, useMapEvents } = leaflet;
 
-  function MapEventsHandler(props: { onClick?: (lat: number, lng: number) => void }) {
+  function MapEventsHandler(props: { onClick?: (lat: number, lng: number) => void; onMouseMove?: (lat: number, lng: number) => void }) {
     useMapEvents({
       click(e: any) {
         props.onClick?.(e.latlng.lat, e.latlng.lng);
+      },
+      mousemove(e: any) {
+        props.onMouseMove?.(e.latlng.lat, e.latlng.lng);
       }
     });
     return null;
   }
 
   return (
-    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
       {showSearch && (
         <div className="border-b border-slate-200 p-4">
           <LocationSearch
@@ -142,13 +156,21 @@ export default function MapPicker({
         }}
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
-        <MapEventsHandler onClick={(lat, lng) => { void handleSelection(lat, lng); }} />
+        <MapEventsHandler 
+          onClick={(lat, lng) => { void handleSelection(lat, lng); }} 
+          onMouseMove={handleMouseMove}
+        />
         {value && (
           <Marker
             position={[value.lat, value.lng]}
             icon={icon}
             draggable
             eventHandlers={{
+              drag: (event: any) => {
+                const lat = event.target.getLatLng().lat;
+                const lng = event.target.getLatLng().lng;
+                mapRef.current?.panTo([lat, lng], { animate: true, duration: 0.1 });
+              },
               dragend: async (event: any) => {
                 const lat = event.target.getLatLng().lat;
                 const lng = event.target.getLatLng().lng;

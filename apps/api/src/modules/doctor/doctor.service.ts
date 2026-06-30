@@ -881,9 +881,11 @@ export class DoctorService {
 
         paymentStatus: payment?.status ?? 'created',
 
-        paymentStatusLabel: payment?.status === 'paid' ? 'Payment Paid' : 'Payment Pending'
+        paymentStatusLabel: payment?.status === 'paid' ? 'Payment Paid' : 'Payment Pending',
 
-        ,
+        patientId: appt.patientId.toString(),
+        doctorId: appt.doctorId.toString(),
+        isEmergency: appt.isEmergency,
 
         prescription: prescription
 

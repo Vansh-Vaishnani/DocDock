@@ -144,7 +144,8 @@ export default function NotificationBell() {
       {/* Bell Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative rounded-full p-2.5 text-slate-700 transition hover:bg-slate-100 hover:text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+        className="relative flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none"
+        style={{ color: 'var(--text-secondary)' }}
         aria-label="View Notifications"
       >
         <svg
@@ -153,7 +154,7 @@ export default function NotificationBell() {
           viewBox="0 0 24 24"
           strokeWidth={2}
           stroke="currentColor"
-          className="h-6 w-6"
+          className="h-5 w-5"
         >
           <path
             strokeLinecap="round"
@@ -163,7 +164,7 @@ export default function NotificationBell() {
         </svg>
 
         {unreadCount > 0 && (
-          <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-white animate-pulse">
+          <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white ring-2 ring-white dark:ring-slate-900 animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -171,18 +172,21 @@ export default function NotificationBell() {
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 sm:w-96 origin-top-right rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.25)] backdrop-blur-xl ring-1 ring-black/5 focus:outline-none transition-all duration-200">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div
+          className="absolute right-0 mt-2 w-80 sm:w-96 origin-top-right rounded-2xl border p-4 shadow-large backdrop-blur-xl animate-slide-up"
+          style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+        >
+          <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'var(--border-color)' }}>
             <div>
-              <h3 className="font-semibold text-slate-900">Notifications</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Notifications</h3>
+              <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                 {isSocketConnected ? (
                   <span className="flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Live Updates
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Live
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span> Polling fallback
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span> Polling
                   </span>
                 )}
               </p>
@@ -190,33 +194,42 @@ export default function NotificationBell() {
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
-                className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition"
+                className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
               >
-                Mark all as read
+                Mark all read
               </button>
             )}
           </div>
 
-          {/* List of Notifications */}
-          <div className="mt-3 max-h-80 overflow-y-auto space-y-2 pr-1">
+          <div className="mt-3 max-h-80 overflow-y-auto space-y-1 pr-0.5">
             {notifications.length === 0 ? (
-              <div className="py-8 text-center">
-                <p className="text-sm font-medium text-slate-500">No notifications yet</p>
-                <p className="mt-1 text-xs text-slate-400">We will notify you when things change.</p>
+              <div className="py-10 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl mx-auto mb-3" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)' }}>
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>All caught up!</p>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>No notifications at this time.</p>
               </div>
             ) : (
               notifications.map((notification) => (
                 <div
                   key={notification._id}
-                  className={`group relative flex gap-3 rounded-2xl p-3 text-left transition ${
-                    notification.isRead
-                      ? 'bg-transparent hover:bg-slate-50'
-                      : 'bg-emerald-50/50 hover:bg-emerald-50 ring-1 ring-emerald-500/10'
-                  }`}
+                  className={`group relative flex gap-3 rounded-xl p-3 text-left transition cursor-default`}
+                  style={{
+                    backgroundColor: !notification.isRead ? 'rgba(16,185,129,0.06)' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-tertiary)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = !notification.isRead ? 'rgba(16,185,129,0.06)' : 'transparent'; }}
                 >
-                  <div className="flex-1 min-w-0">
+                  {!notification.isRead && (
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                  )}
+                  <div className={`flex-1 min-w-0 ${!notification.isRead ? 'pl-2' : ''}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <p className={`text-sm ${notification.isRead ? 'font-medium text-slate-900' : 'font-semibold text-emerald-950'}`}>
+                      <p className="text-xs font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
                         {notification.title}
                       </p>
                       {!notification.isRead && (
@@ -224,14 +237,14 @@ export default function NotificationBell() {
                           onClick={() => void markAsRead(notification._id)}
                           className="text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 opacity-0 group-hover:opacity-100 transition duration-150 shrink-0"
                         >
-                          Mark read
+                          Read
                         </button>
                       )}
                     </div>
-                    <p className="mt-1 text-xs text-slate-600 leading-normal break-words pr-2">
+                    <p className="mt-0.5 text-[11px] leading-relaxed break-words" style={{ color: 'var(--text-secondary)' }}>
                       {notification.message}
                     </p>
-                    <p className="mt-2 text-[10px] font-medium text-slate-400">
+                    <p className="mt-1 text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
                       {new Date(notification.createdAt).toLocaleDateString([], {
                         month: 'short',
                         day: 'numeric',
@@ -240,9 +253,6 @@ export default function NotificationBell() {
                       })}
                     </p>
                   </div>
-                  {!notification.isRead && (
-                    <span className="absolute right-3.5 bottom-3.5 h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
-                  )}
                 </div>
               ))
             )}

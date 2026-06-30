@@ -167,21 +167,31 @@ export default function AdminUsersPage() {
       <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
       {editUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold">Edit user</h3>
-            <div className="mt-4 space-y-3">
-              <input value={editForm.fullName} onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })} className="w-full rounded-2xl border border-slate-300 px-4 py-2 text-sm" placeholder="Full name" />
-              <input value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className="w-full rounded-2xl border border-slate-300 px-4 py-2 text-sm" placeholder="Email" />
-              <input value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="w-full rounded-2xl border border-slate-300 px-4 py-2 text-sm" placeholder="Phone" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl p-6 shadow-large border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+            <h3 className="text-lg font-bold">Edit User</h3>
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="dd-label">Full Name</label>
+                <input value={editForm.fullName} onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })} className="dd-input" placeholder="Full name" />
+              </div>
+              <div>
+                <label className="dd-label">Email Address</label>
+                <input value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className="dd-input" placeholder="Email" />
+              </div>
+              <div>
+                <label className="dd-label">Phone Number</label>
+                <input value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="dd-input" placeholder="Phone" />
+              </div>
             </div>
             <div className="mt-6 flex gap-3">
-              <button type="button" onClick={() => void saveEdit()} className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Save</button>
-              <button type="button" onClick={() => setEditUser(null)} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold">Cancel</button>
+              <button type="button" onClick={() => void saveEdit()} className="btn-primary flex-1 text-xs">Save Changes</button>
+              <button type="button" onClick={() => setEditUser(null)} className="btn-secondary flex-1 text-xs">Cancel</button>
             </div>
           </div>
         </div>
       )}
+
     </section>
   );
 }

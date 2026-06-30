@@ -12,9 +12,23 @@ import { PrescriptionModel } from '../prescription/prescription.repository';
 import { ReviewModel } from '../review/review.repository';
 
 import { AppointmentModel, AppointmentStatus, IAppointmentDocument } from './appointment.repository';
+import crypto from 'crypto';
+import { smsService } from '../../services/sms.service';
+import { AppointmentOtpModel } from './otp.model';
+import { CallLogModel } from './call.model';
+import { voiceService } from '../../services/voice.service';
 
 const notificationService = new NotificationService();
 const paymentService = new PaymentService();
+
+function hashOtp(otp: string): string {
+  return crypto.createHash('sha256').update(otp).digest('hex');
+}
+
+function logOtpEvent(appointmentId: string, event: string, metadata?: any) {
+  // eslint-disable-next-line no-console
+  console.log(`[OTP EVENT] [${new Date().toISOString()}] Appointment: ${appointmentId} - Event: ${event} - Metadata: ${JSON.stringify(metadata || {})}`);
+}
 
 const validTransitions: Record<string, AppointmentStatus[]> = {
   pending: ['accepted', 'rejected', 'auto_rejected', 'cancelled_by_patient'],
@@ -435,12 +449,13 @@ export class AppointmentService {
       }
     }
 
-    const [doctorProfile, patientUser, payment, prescription, review] = await Promise.all([
+    const [doctorProfile, patientUser, payment, prescription, review, otpRecord] = await Promise.all([
       DoctorModel.findById(appointment.doctorId).populate('userId', 'fullName email phone avatar').lean(),
       UserModel.findById(appointment.patientId).select('fullName email phone').lean(),
       PaymentModel.findOne({ appointmentId: appointment._id }).lean(),
       PrescriptionModel.findOne({ appointmentId: appointment._id }).lean(),
-      ReviewModel.findOne({ appointmentId: appointment._id }).lean()
+      ReviewModel.findOne({ appointmentId: appointment._id }).lean(),
+      AppointmentOtpModel.findOne({ appointmentId: appointment._id }).lean()
     ]);
 
     
@@ -661,6 +676,7 @@ export class AppointmentService {
               statusLabel: STATUS_LABELS[appointment.status as AppointmentStatus] ?? appointment.status,
               address: appointment.address,
               notes: appointment.notes,
+              otpCode: otpRecord?.plainTextOtp || null,
               createdAt: ((appointment as { createdAt?: Date }).createdAt?.toISOString?.() ?? new Date().toISOString()),
               updatedAt: ((appointment as { updatedAt?: Date }).updatedAt?.toISOString?.() ?? new Date().toISOString())
             },
@@ -815,7 +831,7 @@ export class AppointmentService {
     status: AppointmentStatus,
     userId: string,
     userRole: 'patient' | 'doctor' | 'admin',
-    options?: { reason?: string }
+    options?: { reason?: string; otp?: string }
   ) {
     const appointment = await AppointmentModel.findById(appointmentId);
     if (!appointment) {
@@ -934,6 +950,63 @@ export class AppointmentService {
           console.error('Refund initiation failed', e);
         }
       }
+    } else if (status === 'in_consultation') {
+      const otpCode = options?.otp;
+      if (!otpCode || otpCode.length !== 6) {
+        throw new ApiError('6-digit OTP code is required to start consultation', 400, 'OTP_REQUIRED');
+      }
+
+      const record = await AppointmentOtpModel.findOne({ appointmentId: appointment._id });
+      if (!record) {
+        throw new ApiError('No OTP request found for this appointment. Please resend OTP.', 400, 'OTP_NOT_FOUND');
+      }
+
+      if (new Date() > record.expiresAt) {
+        throw new ApiError('OTP has expired. Please resend OTP.', 400, 'OTP_EXPIRED');
+      }
+
+      if (record.attempts >= 3) {
+        throw new ApiError('Maximum verification attempts exceeded. Please request a new OTP.', 400, 'OTP_MAX_ATTEMPTS_EXCEEDED');
+      }
+
+      const hashed = hashOtp(otpCode);
+      if (record.otpHash !== hashed) {
+        record.attempts += 1;
+        await record.save();
+        logOtpEvent(appointment._id.toString(), 'OTP_VERIFICATION_FAILED', { attempts: record.attempts });
+        throw new ApiError(`Invalid OTP. ${3 - record.attempts} attempts remaining.`, 400, 'INVALID_OTP');
+      }
+
+      // Success: delete the OTP record
+      await AppointmentOtpModel.deleteOne({ appointmentId: appointment._id });
+      logOtpEvent(appointment._id.toString(), 'OTP_VERIFICATION_SUCCESS');
+
+      appointment.status = 'in_consultation';
+      await appointment.save();
+    } else if (status === 'arrived') {
+      appointment.status = 'arrived';
+      await appointment.save();
+
+      // Generate, hash and send OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+      await AppointmentOtpModel.findOneAndUpdate(
+        { appointmentId: appointment._id },
+        {
+          otpHash: hashOtp(otp),
+          plainTextOtp: otp, // save plain text for easy testing/showcase
+          expiresAt,
+          attempts: 0
+        },
+        { upsert: true, new: true }
+      );
+
+      const patientUser = await UserModel.findById(appointment.patientId).select('phone').lean();
+      if (patientUser?.phone) {
+        await smsService.sendOtpSms(patientUser.phone, otp);
+      }
+      logOtpEvent(appointment._id.toString(), 'OTP_GENERATED', { expiresAt });
     } else {
       appointment.status = status;
       await appointment.save();
@@ -944,6 +1017,132 @@ export class AppointmentService {
     const doctorUserId = (doctor?.userId as mongoose.Types.ObjectId | undefined)?.toString?.() ?? '';
     await notifyStatusChange(appointment as IAppointmentDocument, status, appointment.patientId.toString(), doctorUserId);
     return appointment;
+  }
+
+  async resendOtp(appointmentId: string, userId: string, userRole: string) {
+    const appointment = await AppointmentModel.findById(appointmentId);
+    if (!appointment) {
+      throw new ApiError('Appointment not found', 404, 'APPOINTMENT_NOT_FOUND');
+    }
+    if (appointment.status !== 'arrived') {
+      throw new ApiError('OTP can only be resent when the doctor has arrived.', 400, 'INVALID_STATE');
+    }
+    
+    // Check role access
+    if (userRole === 'patient' && appointment.patientId.toString() !== userId) {
+      throw new ApiError('Forbidden', 403, 'FORBIDDEN');
+    }
+    if (userRole === 'doctor') {
+      const doctor = await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(userId) });
+      if (!doctor || appointment.doctorId.toString() !== doctor._id.toString()) {
+        throw new ApiError('Forbidden', 403, 'FORBIDDEN');
+      }
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await AppointmentOtpModel.findOneAndUpdate(
+      { appointmentId: appointment._id },
+      {
+        otpHash: hashOtp(otp),
+        plainTextOtp: otp,
+        expiresAt,
+        attempts: 0
+      },
+      { upsert: true, new: true }
+    );
+
+    const patientUser = await UserModel.findById(appointment.patientId).select('phone').lean();
+    if (patientUser?.phone) {
+      await smsService.sendOtpSms(patientUser.phone, otp);
+    }
+    logOtpEvent(appointment._id.toString(), 'OTP_RESENT', { expiresAt });
+    return { success: true, message: 'OTP resent successfully.' };
+  }
+
+  async initiateAnonymousCall(appointmentId: string, callerUserId: string, callerRole: 'patient' | 'doctor') {
+    const appointment = await AppointmentModel.findById(appointmentId);
+    if (!appointment) {
+      throw new ApiError('Appointment not found', 404, 'APPOINTMENT_NOT_FOUND');
+    }
+
+    const patientUser = await UserModel.findById(appointment.patientId).select('phone').lean();
+    const doctorProfile = await DoctorModel.findById(appointment.doctorId).populate('userId', 'phone').lean();
+    
+    if (!doctorProfile) {
+      throw new ApiError('Doctor profile not found', 404, 'DOCTOR_NOT_FOUND');
+    }
+    const doctorUser = doctorProfile.userId as { _id: any; phone?: string } | undefined;
+
+    if (!patientUser?.phone || !doctorUser?.phone) {
+      throw new ApiError('Phone numbers are missing for call routing', 400, 'PHONE_NUMBERS_MISSING');
+    }
+
+    let callerPhone = '';
+    let receiverPhone = '';
+    let receiverUserId = '';
+
+    if (callerRole === 'doctor') {
+      const doctor = await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(callerUserId) });
+      if (!doctor || appointment.doctorId.toString() !== doctor._id.toString()) {
+        throw new ApiError('Forbidden', 403, 'FORBIDDEN');
+      }
+      callerPhone = doctorUser.phone;
+      receiverPhone = patientUser.phone;
+      receiverUserId = appointment.patientId.toString();
+    } else {
+      if (appointment.patientId.toString() !== callerUserId) {
+        throw new ApiError('Forbidden', 403, 'FORBIDDEN');
+      }
+      callerPhone = patientUser.phone;
+      receiverPhone = doctorUser.phone;
+      receiverUserId = doctorUser?._id?.toString() || '';
+    }
+
+    // Call bridging via service layer
+    const callSid = await voiceService.bridgeCall(callerPhone, receiverPhone, appointmentId);
+
+    // Save call log
+    const log = await CallLogModel.create({
+      appointmentId: appointment._id,
+      callerId: new mongoose.Types.ObjectId(callerUserId),
+      receiverId: new mongoose.Types.ObjectId(receiverUserId),
+      status: 'calling',
+      twilioCallSid: callSid
+    });
+
+    return log;
+  }
+
+  async getCallHistory(appointmentId: string, userId: string) {
+    const appointment = await AppointmentModel.findById(appointmentId);
+    if (!appointment) {
+      throw new ApiError('Appointment not found', 404, 'APPOINTMENT_NOT_FOUND');
+    }
+    // Check access
+    const isPatient = appointment.patientId.toString() === userId;
+    const doctor = await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(userId) });
+    const isDoctor = doctor && appointment.doctorId.toString() !== doctor._id.toString();
+
+    if (!isPatient && !isDoctor) {
+      throw new ApiError('Forbidden', 403, 'FORBIDDEN');
+    }
+
+    return CallLogModel.find({ appointmentId }).sort({ createdAt: -1 }).lean();
+  }
+
+  async updateCallStatus(appointmentId: string, callLogId: string, status: 'connected' | 'ended' | 'missed', duration?: number) {
+    const log = await CallLogModel.findOne({ _id: callLogId, appointmentId });
+    if (!log) {
+      throw new ApiError('Call log not found', 404, 'CALL_LOG_NOT_FOUND');
+    }
+    log.status = status;
+    if (duration !== undefined) {
+      log.duration = duration;
+    }
+    await log.save();
+    return log;
   }
 }
 
