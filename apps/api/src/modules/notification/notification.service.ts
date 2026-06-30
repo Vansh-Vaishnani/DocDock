@@ -1,4 +1,5 @@
 import { ApiError } from '../../common/errors/ApiError';
+import { getIO } from '../../sockets/gateway';
 
 import { NotificationRepository } from './notification.repository';
 import { IEmailProvider, IPushProvider, ISmsProvider } from './notification.types';
@@ -41,6 +42,14 @@ export class NotificationService {
       throw new ApiError('Notification title and message are required', 400, 'VALIDATION_ERROR');
     }
     const notification = await this.repository.create(payload);
+
+    try {
+      const io = getIO();
+      io.of('/notifications').to(payload.userId).emit('notification', notification);
+    } catch (err) {
+      console.warn('Real-time socket emission skipped (socket server might not be initialized yet):', err);
+    }
+
     if (payload.channel === 'email') {
       await this.emailProvider.sendEmail(payload.userId, payload.title, payload.message);
     }

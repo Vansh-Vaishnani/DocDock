@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
 
 import { useToast } from '../../auth/toast-provider';
 import {
@@ -9,6 +10,19 @@ import {
   fetchPatientAppointments,
   type PatientAppointment
 } from '../api';
+
+const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
+
+const getStoredAccessToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+    if (!raw) return null;
+    return (JSON.parse(raw) as { accessToken?: string }).accessToken || null;
+  } catch {
+    return null;
+  }
+};
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-800',
@@ -30,7 +44,7 @@ export default function PatientAppointmentsPage() {
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const list = await fetchPatientAppointments(filter);
@@ -40,13 +54,57 @@ export default function PatientAppointmentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, showToast]);
 
   useEffect(() => {
     void load();
-    // Removed aggressive polling to avoid UI flicker; refresh only after actions
-    return () => {};
-  }, [filter]);
+  }, [load]);
+
+  // Real-time Socket.IO and 5-second polling fallback effect
+  useEffect(() => {
+    // 1. Polling fallback (refetch every 5 seconds)
+    const interval = setInterval(() => {
+      void load();
+    }, 5000);
+
+    // 2. Real-time Socket.IO updates
+    const token = getStoredAccessToken();
+    if (!token) return () => clearInterval(interval);
+
+    const socket = io(`${SOCKET_BASE}/notifications`, {
+      transports: ['websocket', 'polling'],
+      auth: { token }
+    });
+
+    socket.on('connect', () => {
+      try {
+        const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+        if (raw) {
+          const parsed = JSON.parse(raw) as { user?: { _id?: string } };
+          const userId = parsed.user?._id;
+          if (userId) {
+            socket.emit('join', userId);
+            console.log('Joined patient appointments notification room:', userId);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse docdock-auth:', e);
+      }
+    });
+
+    socket.on('notification', (newNotification: any) => {
+      const statusTypes = ['accepted', 'rejected', 'doctor_on_way', 'arrived', 'in_consultation', 'completed', 'payment_successful', 'refund_processed'];
+      if (statusTypes.includes(newNotification.type)) {
+        console.log('Real-time updates received on patient appointments list:', newNotification.type);
+        void load();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      socket.disconnect();
+    };
+  }, [load]);
 
   const handleCancel = async (appointmentId: string) => {
     setActionId(appointmentId);

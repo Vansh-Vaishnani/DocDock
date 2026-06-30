@@ -19,16 +19,28 @@ interface DoctorCardProps {
     distance?: number | string;
     userId?: { fullName?: string };
   };
+  location?: { lat: number; lng: number } | null;
+  locationLabel?: string | null;
 }
 
 const formatFee = (fee: number) => `₹${fee}`;
 
-export function DoctorCard({ doctor }: DoctorCardProps) {
+export function DoctorCard({ doctor, location, locationLabel }: DoctorCardProps) {
   const name = doctor.userId?.fullName || `Dr. ${doctor.specialization}`;
   const availabilityLabel = doctor.availability?.isAvailable ? 'Available now' : 'On request';
   const distanceValue = typeof doctor.distance === 'number' || typeof doctor.distance === 'string' ? Number(doctor.distance) : NaN;
   const distanceLabel = Number.isFinite(distanceValue) ? formatDistanceKm(distanceValue, true) : '—';
   const eta = Number.isFinite(distanceValue) ? Math.max(5, Math.round((distanceValue / 1000) / 40 * 60)) : undefined; // rough eta assuming 40km/h
+
+  const buildHref = () => {
+    if (!location) return `/find-doctors/${doctor._id}`;
+    const params = new URLSearchParams({
+      lat: location.lat.toString(),
+      lng: location.lng.toString(),
+      label: locationLabel || `Lat ${location.lat.toFixed(4)}, Lng ${location.lng.toFixed(4)}`
+    });
+    return `/find-doctors/${doctor._id}?${params.toString()}`;
+  };
 
   return (
     <article className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
@@ -84,7 +96,7 @@ export function DoctorCard({ doctor }: DoctorCardProps) {
       </div>
       <div className="mt-6 flex items-center justify-between gap-3">
         <div className="text-sm text-slate-600">{distanceLabel}</div>
-        <Link href={`/find-doctors/${doctor._id}`} className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700">
+        <Link href={buildHref()} className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700">
           View profile
         </Link>
       </div>

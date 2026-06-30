@@ -261,3 +261,11 @@ export async function removeDoctorDocument(documentType: 'profilePhoto' | 'gover
   });
   return res.data;
 }
+
+export async function updateTrackingLocation(appointmentId: string, coordinates: [number, number]): Promise<unknown> {
+  const res = await request<ApiEnvelope<unknown>>(`/tracking/${appointmentId}/location`, {
+    method: 'PATCH',
+    body: JSON.stringify({ coordinates })
+  });
+  return res.data;
+}

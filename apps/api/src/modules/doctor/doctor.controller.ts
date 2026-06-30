@@ -101,8 +101,8 @@ export class DoctorController {
     try {
       const { latitude, longitude, radius, specialization, minExperience, maxFee, search, sortBy, availableOnly, page, limit } = req.query;
       const doctors = await service.searchNearby(
-        typeof latitude === 'string' ? Number(latitude) : 0,
-        typeof longitude === 'string' ? Number(longitude) : 0,
+        typeof latitude === 'string' && latitude !== '' ? Number(latitude) : undefined,
+        typeof longitude === 'string' && longitude !== '' ? Number(longitude) : undefined,
         typeof radius === 'string' ? Number(radius) : 10000,
         typeof specialization === 'string' ? specialization : undefined,
         {
@@ -112,7 +112,7 @@ export class DoctorController {
           sortBy: typeof sortBy === 'string' ? sortBy : 'distance',
           availableOnly: typeof availableOnly === 'string' ? availableOnly === 'true' : false,
           page: typeof page === 'string' ? Number(page) : 1,
-          limit: typeof limit === 'string' ? Number(limit) : 9
+          limit: typeof limit === 'string' ? Number(limit) : 50
         }
       );
       sendSuccess(res, { doctors }, 'Nearby doctors fetched');

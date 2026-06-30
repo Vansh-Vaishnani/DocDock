@@ -101,6 +101,7 @@ async function notifyStatusChange(
   const metadata = { appointmentId: appointment._id.toString(), status: newStatus };
 
   const patientNotifications: Partial<Record<AppointmentStatus, { title: string; message: string }>> = {
+    pending: { title: 'Appointment booked', message: 'Your appointment has been successfully booked.' },
     accepted: { title: 'Appointment accepted', message: 'Your doctor has accepted your appointment request.' },
     rejected: { title: 'Appointment declined', message: 'Your appointment request was declined by the doctor.' },
     doctor_on_way: { title: 'Doctor on the way', message: 'Your doctor is on the way to your location.' },
@@ -539,7 +540,11 @@ export class AppointmentService {
                 consultationFee: doctorProfile.consultationFee,
                 email: (doctorProfile.userId as { email?: string } | undefined)?.email,
                 phone: (doctorProfile.userId as { phone?: string } | undefined)?.phone,
-                profilePhotoUrl: (doctorProfile.userId as { avatar?: string } | undefined)?.avatar
+                profilePhotoUrl: (doctorProfile.userId as { avatar?: string } | undefined)?.avatar,
+                clinicName: doctorProfile.clinicName,
+                clinicAddress: doctorProfile.clinicAddress,
+                clinicLocation: doctorProfile.location ? { type: doctorProfile.location.type, coordinates: doctorProfile.location.coordinates } : undefined,
+                location: doctorProfile.location ? { type: doctorProfile.location.type, coordinates: doctorProfile.location.coordinates } : undefined
               }
             : null;
 
@@ -751,6 +756,57 @@ export class AppointmentService {
 
     appointment.status = 'pending';
     await appointment.save();
+
+    // Trigger Notifications after successful payment confirmation
+    try {
+      const doctor = await DoctorModel.findById(appointment.doctorId);
+      const doctorUserId = doctor?.userId?.toString();
+
+      // 1. Patient: Payment successful
+      await notificationService.createNotification({
+        userId: appointment.patientId.toString(),
+        type: 'payment_successful',
+        title: 'Payment successful',
+        message: `Your payment of ₹${payment.amount} for your appointment was successful.`,
+        channel: 'in_app',
+        metadata: { appointmentId: appointment._id.toString(), paymentId: payment._id.toString() }
+      });
+
+      // 2. Patient: Appointment booked
+      await notificationService.createNotification({
+        userId: appointment.patientId.toString(),
+        type: 'appointment_booked',
+        title: 'Appointment booked',
+        message: 'Your appointment has been successfully booked.',
+        channel: 'in_app',
+        metadata: { appointmentId: appointment._id.toString() }
+      });
+
+      if (doctorUserId) {
+        // 3. Doctor: Payment received
+        await notificationService.createNotification({
+          userId: doctorUserId,
+          type: 'payment_received',
+          title: 'Payment received',
+          message: `You received a payment of ₹${payment.amount} for a new appointment.`,
+          channel: 'in_app',
+          metadata: { appointmentId: appointment._id.toString(), paymentId: payment._id.toString() }
+        });
+
+        // 4. Doctor: New appointment request
+        await notificationService.createNotification({
+          userId: doctorUserId,
+          type: 'appointment_pending',
+          title: 'New appointment request',
+          message: 'You have a new appointment request.',
+          channel: 'in_app',
+          metadata: { appointmentId: appointment._id.toString() }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to dispatch confirmAfterPayment notifications:', err);
+    }
+
     return appointment;
   }
 

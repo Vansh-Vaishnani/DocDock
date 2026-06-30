@@ -1,10 +1,37 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
 
 import { useToast } from '../../../auth/toast-provider';
 import { fetchDoctorDetail, fetchDoctors, verifyDoctor, type AdminDoctor } from '../../api';
 import { Pagination, StatusBadge } from '../../_components/admin-ui';
+
+const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
+
+const getStoredAccessToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+    if (!raw) return null;
+    return (JSON.parse(raw) as { accessToken?: string }).accessToken || null;
+  } catch {
+    return null;
+  }
+};
+
+const isPdfUrl = (url?: string): boolean => {
+  if (!url) return false;
+  return url.toLowerCase().includes('.pdf') || url.includes('/raw/upload/');
+};
+
+const getDownloadUrl = (url?: string): string => {
+  if (!url) return '';
+  if (url.includes('/upload/')) {
+    return url.replace('/upload/', '/upload/fl_attachment/');
+  }
+  return url;
+};
 
 export default function AdminDoctorsPage() {
   const { showToast } = useToast();
@@ -33,6 +60,52 @@ export default function AdminDoctorsPage() {
 
   useEffect(() => {
     void loadDoctors();
+  }, [loadDoctors]);
+
+  // Real-time Socket.IO and 5-second polling fallback effect
+  useEffect(() => {
+    // 1. Polling fallback (refetch every 5 seconds)
+    const interval = setInterval(() => {
+      void loadDoctors();
+    }, 5000);
+
+    // 2. Real-time Socket.IO updates
+    const token = getStoredAccessToken();
+    if (!token) return () => clearInterval(interval);
+
+    const socket = io(`${SOCKET_BASE}/notifications`, {
+      transports: ['websocket', 'polling'],
+      auth: { token }
+    });
+
+    socket.on('connect', () => {
+      try {
+        const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+        if (raw) {
+          const parsed = JSON.parse(raw) as { user?: { _id?: string } };
+          const userId = parsed.user?._id;
+          if (userId) {
+            socket.emit('join', userId);
+            console.log('Joined admin pending doctors notification room:', userId);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse docdock-auth:', e);
+      }
+    });
+
+    socket.on('notification', (newNotification: any) => {
+      const statusTypes = ['new_doctor_registration'];
+      if (statusTypes.includes(newNotification.type)) {
+        console.log('Real-time updates received on admin side: new doctor registered.');
+        void loadDoctors();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      socket.disconnect();
+    };
   }, [loadDoctors]);
 
   const openDetail = async (doctorId: string) => {
@@ -151,7 +224,7 @@ export default function AdminDoctorsPage() {
                   <p className="text-xs font-medium text-slate-500">Profile Photo</p>
                   {detail.doctor.profilePhotoUrl ? (
                     <div className="mt-2">
-                      {detail.doctor.profilePhotoUrl.toLowerCase().includes('.pdf') ? (
+                      {isPdfUrl(detail.doctor.profilePhotoUrl) ? (
                         <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-slate-100">
                           <span className="text-xs font-medium text-slate-600">PDF</span>
                         </div>
@@ -160,7 +233,7 @@ export default function AdminDoctorsPage() {
                       )}
                       <div className="mt-2 flex gap-2">
                         <a href={detail.doctor.profilePhotoUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600">Open</a>
-                        <a href={`${detail.doctor.profilePhotoUrl.replace(/\/v\d+/, '/v1')}?fl_attachment`} download className="text-xs font-semibold text-slate-600">Download</a>
+                        <a href={getDownloadUrl(detail.doctor.profilePhotoUrl)} download className="text-xs font-semibold text-slate-600">Download</a>
                       </div>
                     </div>
                   ) : (
@@ -171,7 +244,7 @@ export default function AdminDoctorsPage() {
                   <p className="text-xs font-medium text-slate-500">Government ID</p>
                   {detail.doctor.governmentIdUrl ? (
                     <div className="mt-2">
-                      {detail.doctor.governmentIdUrl.toLowerCase().includes('.pdf') ? (
+                      {isPdfUrl(detail.doctor.governmentIdUrl) ? (
                         <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-slate-100">
                           <span className="text-xs font-medium text-slate-600">PDF</span>
                         </div>
@@ -180,7 +253,7 @@ export default function AdminDoctorsPage() {
                       )}
                       <div className="mt-2 flex gap-2">
                         <a href={detail.doctor.governmentIdUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600">Open</a>
-                        <a href={`${detail.doctor.governmentIdUrl.replace(/\/v\d+/, '/v1')}?fl_attachment`} download className="text-xs font-semibold text-slate-600">Download</a>
+                        <a href={getDownloadUrl(detail.doctor.governmentIdUrl)} download className="text-xs font-semibold text-slate-600">Download</a>
                       </div>
                     </div>
                   ) : (
@@ -191,7 +264,7 @@ export default function AdminDoctorsPage() {
                   <p className="text-xs font-medium text-slate-500">Medical License</p>
                   {detail.doctor.medicalLicenseUrl ? (
                     <div className="mt-2">
-                      {detail.doctor.medicalLicenseUrl.toLowerCase().includes('.pdf') ? (
+                      {isPdfUrl(detail.doctor.medicalLicenseUrl) ? (
                         <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-slate-100">
                           <span className="text-xs font-medium text-slate-600">PDF</span>
                         </div>
@@ -200,7 +273,7 @@ export default function AdminDoctorsPage() {
                       )}
                       <div className="mt-2 flex gap-2">
                         <a href={detail.doctor.medicalLicenseUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600">Open</a>
-                        <a href={`${detail.doctor.medicalLicenseUrl.replace(/\/v\d+/, '/v1')}?fl_attachment`} download className="text-xs font-semibold text-slate-600">Download</a>
+                        <a href={getDownloadUrl(detail.doctor.medicalLicenseUrl)} download className="text-xs font-semibold text-slate-600">Download</a>
                       </div>
                     </div>
                   ) : (

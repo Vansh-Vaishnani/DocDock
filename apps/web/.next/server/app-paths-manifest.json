@@ -1,7 +1,9 @@
 {
   "/find-doctors/page": "app/find-doctors/page.js",
-  "/doctor/availability/page": "app/doctor/availability/page.js",
-  "/patient/profile/page": "app/patient/profile/page.js",
-  "/patient/addresses/page": "app/patient/addresses/page.js",
-  "/admin/(protected)/doctors/page": "app/admin/(protected)/doctors/page.js"
+  "/find-doctors/[id]/page": "app/find-doctors/[id]/page.js",
+  "/auth/register/doctor/page": "app/auth/register/doctor/page.js",
+  "/doctor/dashboard/page": "app/doctor/dashboard/page.js",
+  "/auth/login/page": "app/auth/login/page.js",
+  "/patient/appointments/[appointmentId]/page": "app/patient/appointments/[appointmentId]/page.js",
+  "/doctor/appointments/page": "app/doctor/appointments/page.js"
 }

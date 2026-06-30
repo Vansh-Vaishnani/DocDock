@@ -6,11 +6,22 @@ import Link from 'next/link';
 
 import { useParams } from 'next/navigation';
 
-import { useEffect, useMemo, useState } from 'react';
-
-
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { io } from 'socket.io-client';
 
 const REVIEW_MODAL_KEY_PREFIX = 'docdock-review-modal-dismissed';
+const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
+
+const getStoredAccessToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+    if (!raw) return null;
+    return (JSON.parse(raw) as { accessToken?: string }).accessToken || null;
+  } catch {
+    return null;
+  }
+};
 
 
 
@@ -73,67 +84,44 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
 
 
   // Poll for real doctor location from backend
-
   useEffect(() => {
-
     if (detail.appointment?.status !== 'doctor_on_way') {
-
       setRoutePath([]);
-
       setEtaMinutes(null);
-
       setRemainingDistanceKm(null);
-
       return;
-
     }
 
-
-
-    const pollInterval = window.setInterval(async () => {
-
+    const fetchLocation = async () => {
       try {
-
+        const token = getStoredAccessToken();
         const response = await fetch(`${API_BASE}/tracking/${detail.appointment?._id}/location`, {
-
           headers: {
-
-            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`}
-
+            'Authorization': `Bearer ${token}`
           }
-
-        );
-
+        });
         if (response.ok) {
-
           const data = await response.json();
-
           const doctorCoords = data.data?.doctorCurrentLocation?.coordinates;
-
           if (Array.isArray(doctorCoords) && doctorCoords.length === 2) {
-
             setDoctorPos({ lat: doctorCoords[1], lng: doctorCoords[0] });
-
             setTrackingError(false);
-
           }
-
         }
-
       } catch (error) {
-
         console.error('Failed to fetch doctor location:', error);
-
         setTrackingError(true);
-
       }
+    };
 
+    // Run once immediately
+    void fetchLocation();
+
+    const pollInterval = window.setInterval(() => {
+      void fetchLocation();
     }, 3000); // Poll every 3 seconds
 
-
-
     return () => window.clearInterval(pollInterval);
-
   }, [detail.appointment?.status, detail.appointment?._id]);
 
 
@@ -318,97 +306,98 @@ export default function AppointmentDetailsPage() {
 
 
 
-  useEffect(() => {
+  const load = useCallback(async (mountedRef = { current: true }) => {
+    if (!appointmentId) return;
+    try {
+      const data = await fetchPatientAppointmentDetail(appointmentId);
+      if (!mountedRef.current) return;
 
+      const prevStatus = detail?.appointment?.status;
+      const nextStatus = data.appointment?.status;
+      const prevRefund = detail?.payment?.refundStatus;
+      const nextRefund = data.payment?.refundStatus;
+      const prevPrescription = detail?.prescription?._id;
+      const nextPrescription = data.prescription?._id;
+
+      setDetail((prev) => {
+        if (!prev) return data;
+        if (prevStatus !== nextStatus || prevRefund !== nextRefund || prevPrescription !== nextPrescription) {
+          return data;
+        }
+        return prev;
+      });
+
+      const hasReview = Boolean(data.review);
+      setReviewSubmitted(hasReview);
+      if (data.appointment?.status === 'completed' && !hasReview) {
+        const dismissedKey = `${REVIEW_MODAL_KEY_PREFIX}:${appointmentId}`;
+        const dismissed = typeof window !== 'undefined' ? window.sessionStorage.getItem(dismissedKey) === '1' : false;
+        setShowReviewModal(!dismissed);
+      } else {
+        setShowReviewModal(false);
+      }
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Unable to load appointment details.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [appointmentId, showToast, detail?.appointment?.status, detail?.payment?.refundStatus, detail?.prescription?._id]);
+
+  useEffect(() => {
+    const mountedRef = { current: true };
+    void load(mountedRef);
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [load]);
+
+  // Real-time Socket.IO and 5-second polling fallback effect
+  useEffect(() => {
     if (!appointmentId) return;
 
-    let mounted = true;
+    // 1. Polling fallback (refetch every 5 seconds)
+    const interval = setInterval(() => {
+      void load();
+    }, 5000);
 
-    const load = async () => {
+    // 2. Real-time Socket.IO status updates
+    const token = getStoredAccessToken();
+    if (!token) return () => clearInterval(interval);
 
-      setLoading(true);
+    const socket = io(`${SOCKET_BASE}/notifications`, {
+      transports: ['websocket', 'polling'],
+      auth: { token }
+    });
 
+    socket.on('connect', () => {
       try {
-
-        const data = await fetchPatientAppointmentDetail(appointmentId);
-
-        if (!mounted) return;
-
-        // Only update state when meaningful fields changed to avoid flicker during edits
-
-        const prevStatus = detail?.appointment?.status;
-
-        const nextStatus = data.appointment?.status;
-
-        const prevRefund = detail?.payment?.refundStatus;
-
-        const nextRefund = data.payment?.refundStatus;
-
-        const prevPrescription = detail?.prescription?._id;
-
-        const nextPrescription = data.prescription?._id;
-
-
-
-        setDetail((prev) => {
-
-          if (!prev) return data;
-
-          if (prevStatus !== nextStatus || prevRefund !== nextRefund || prevPrescription !== nextPrescription) {
-
-            return data;
-
+        const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+        if (raw) {
+          const parsed = JSON.parse(raw) as { user?: { _id?: string } };
+          const userId = parsed.user?._id;
+          if (userId) {
+            socket.emit('join', userId);
+            console.log('Joined notification room for real-time status updates:', userId);
           }
-
-          // minor fields unchanged; preserve existing detail to avoid flicker
-
-          return prev;
-
-        });
-
-
-
-        const hasReview = Boolean(data.review);
-
-        setReviewSubmitted(hasReview);
-
-        if (data.appointment?.status === 'completed' && !hasReview) {
-
-          const dismissedKey = `${REVIEW_MODAL_KEY_PREFIX}:${appointmentId}`;
-
-          const dismissed = typeof window !== 'undefined' ? window.sessionStorage.getItem(dismissedKey) === '1' : false;
-
-          setShowReviewModal(!dismissed);
-
-        } else {
-
-          setShowReviewModal(false);
-
         }
-
-      } catch (err: unknown) {
-
-        showToast(err instanceof Error ? err.message : 'Unable to load appointment details.', 'error');
-
-      } finally {
-
-        setLoading(false);
-
+      } catch (e) {
+        console.error('Failed to parse docdock-auth:', e);
       }
+    });
 
-    };
-
-
-
-    void load();
+    socket.on('notification', (newNotification: any) => {
+      const statusTypes = ['accepted', 'rejected', 'doctor_on_way', 'arrived', 'in_consultation', 'completed'];
+      if (statusTypes.includes(newNotification.type)) {
+        console.log('Real-time appointment status update received:', newNotification.type);
+        void load();
+      }
+    });
 
     return () => {
-
-      mounted = false;
-
+      clearInterval(interval);
+      socket.disconnect();
     };
-
-  }, [appointmentId, showToast]);
+  }, [appointmentId, load]);
 
 
 

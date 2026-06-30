@@ -23,20 +23,26 @@ export const isCloudinaryEnabled = (): boolean =>
 
 export async function uploadBase64File(dataUri: string, folder: string): Promise<string> {
   ensureConfigured();
+  const isPdf = dataUri.startsWith('data:application/pdf');
+  const publicId = Math.random().toString(36).substring(2, 15) + "_" + Math.random().toString(36).substring(2, 15) + (isPdf ? ".pdf" : "");
   const result = await cloudinary.uploader.upload(dataUri, {
     folder: `docdock/${folder}`,
-    resource_type: 'auto'
+    resource_type: 'image',
+    public_id: publicId
   });
   return result.secure_url;
 }
 
-export async function uploadFile(file: { buffer: Buffer; originalname?: string }, folder: string): Promise<string> {
+export async function uploadFile(file: { buffer: Buffer; originalname?: string; mimetype?: string }, folder: string): Promise<string> {
   ensureConfigured();
+  const isPdf = file.originalname?.toLowerCase().endsWith('.pdf') || file.mimetype === 'application/pdf';
+  const publicId = Math.random().toString(36).substring(2, 15) + "_" + Math.random().toString(36).substring(2, 15) + (isPdf ? ".pdf" : "");
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder: `docdock/${folder}`,
-        resource_type: 'auto'
+        resource_type: 'image',
+        public_id: publicId
       },
       (error, result) => {
         if (error) {

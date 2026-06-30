@@ -1,10 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
 
 import { useAuth } from '../../auth/auth-context';
 import { fetchDoctorDashboard, fetchDoctorReviews, type DoctorDashboard } from '../api';
+
+const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
+
+const getStoredAccessToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+    if (!raw) return null;
+    return (JSON.parse(raw) as { accessToken?: string }).accessToken || null;
+  } catch {
+    return null;
+  }
+};
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
@@ -23,23 +37,77 @@ export default function DoctorDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const dashboardData = await fetchDoctorDashboard();
-        const doctorId = dashboardData.profile?._id;
-        const reviewData = doctorId ? await fetchDoctorReviews(doctorId) : { reviews: [] };
-        setDashboard(dashboardData);
-        setReviews(reviewData.reviews || []);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Unable to load dashboard.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void load();
+  const load = useCallback(async () => {
+    try {
+      const dashboardData = await fetchDoctorDashboard();
+      const doctorId = dashboardData.profile?._id;
+      const reviewData = doctorId ? await fetchDoctorReviews(doctorId) : { reviews: [] };
+      setDashboard(dashboardData);
+      setReviews(reviewData.reviews || []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to load dashboard.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Real-time Socket.IO and 5-second polling fallback effect
+  useEffect(() => {
+    // 1. Polling fallback (refetch every 5 seconds)
+    const interval = setInterval(() => {
+      void load();
+    }, 5000);
+
+    // 2. Real-time Socket.IO updates
+    const token = getStoredAccessToken();
+    if (!token) return () => clearInterval(interval);
+
+    const socket = io(`${SOCKET_BASE}/notifications`, {
+      transports: ['websocket', 'polling'],
+      auth: { token }
+    });
+
+    socket.on('connect', () => {
+      try {
+        const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+        if (raw) {
+          const parsed = JSON.parse(raw) as { user?: { _id?: string } };
+          const userId = parsed.user?._id;
+          if (userId) {
+            socket.emit('join', userId);
+            console.log('Joined doctor dashboard notification room:', userId);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse docdock-auth:', e);
+      }
+    });
+
+    socket.on('notification', (newNotification: any) => {
+      const statusTypes = [
+        'payment_received',
+        'appointment_pending',
+        'cancelled_by_patient',
+        'completed',
+        'doctor_verified',
+        'admin_rejected_account',
+        'admin_suspended_account'
+      ];
+      if (statusTypes.includes(newNotification.type)) {
+        console.log('Real-time updates received on doctor dashboard stats:', newNotification.type);
+        void load();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      socket.disconnect();
+    };
+  }, [load]);
 
   const stats = dashboard?.stats;
   const profile = dashboard?.profile;

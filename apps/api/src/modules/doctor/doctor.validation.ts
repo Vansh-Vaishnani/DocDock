@@ -26,9 +26,9 @@ export const nearbyDoctorsSchema = z.object({
 
   query: z.object({
 
-    latitude: z.string().transform(Number),
+    latitude: z.string().optional().transform((val) => (val ? Number(val) : undefined)),
 
-    longitude: z.string().transform(Number),
+    longitude: z.string().optional().transform((val) => (val ? Number(val) : undefined)),
 
     radius: z.string().optional().transform((val) => (val ? Number(val) : 10000)),
 

@@ -141,6 +141,8 @@ function DoctorDetailsPageContent() {
   const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
 
   const [selectedLocationLabel, setSelectedLocationLabel] = useState('');
+  const [latParam, setLatParam] = useState<number | null>(null);
+  const [lngParam, setLngParam] = useState<number | null>(null);
 
 
 
@@ -199,15 +201,16 @@ function DoctorDetailsPageContent() {
 
 
   useEffect(() => {
-
     const labelParam = searchParams?.get('label');
-
     if (labelParam) {
-
       setSelectedLocationLabel(labelParam);
-
     }
-
+    const lat = searchParams?.get('lat');
+    const lng = searchParams?.get('lng');
+    if (lat && lng) {
+      setLatParam(Number(lat));
+      setLngParam(Number(lng));
+    }
   }, [searchParams]);
 
 
@@ -236,15 +239,11 @@ function DoctorDetailsPageContent() {
 
     }
 
-    if (!selectedSlot || !selectedAddress) {
-
-      showToast('Please select a date, time slot, and an address.', 'error');
-
+    const hasLocation = latParam !== null && lngParam !== null;
+    if (!selectedSlot || (!selectedAddress && !hasLocation)) {
+      showToast('Please select a date, time slot, and an address or location.', 'error');
       return;
-
     }
-
-
 
     setBooking(true);
 
@@ -262,7 +261,15 @@ function DoctorDetailsPageContent() {
 
         appointmentTime: new Date(selectedSlot).toTimeString().slice(0, 5),
 
-        addressId: selectedAddress._id,
+        addressId: selectedAddress?._id,
+
+        location: hasLocation ? {
+          label: selectedLocationLabel || 'Selected Location',
+          location: {
+            type: 'Point',
+            coordinates: [lngParam!, latParam!]
+          }
+        } : undefined,
 
         notes: notes.trim() || undefined
 
@@ -696,7 +703,7 @@ function DoctorDetailsPageContent() {
 
                 type="button"
 
-                disabled={booking || !selectedSlot || !selectedAddress}
+                disabled={booking || !selectedSlot || (!selectedAddress && (latParam === null || lngParam === null))}
 
                 onClick={() => void handleBook()}
 

@@ -1,3 +1,26 @@
+const COMMON_SPECIALIZATIONS = [
+  'General Physician',
+  'Cardiology',
+  'Dermatology',
+  'Pediatrics',
+  'Neurology',
+  'Orthopedics',
+  'Ophthalmology',
+  'Gynecology',
+  'Psychiatry',
+  'Oncology',
+  'Gastroenterology',
+  'Endocrinology',
+  'Pulmonology',
+  'Nephrology',
+  'ENT Specialist',
+  'Urology',
+  'Dentistry',
+  'General Surgery',
+  'Rheumatology',
+  'Allergy & Immunology'
+];
+
 interface DoctorFiltersProps {
 
   values: {
@@ -70,15 +93,11 @@ export function DoctorFilters({ values, onChange, onApply, onReset }: DoctorFilt
 
             <option value="">All specialties</option>
 
-            <option value="Cardiology">Cardiology</option>
-
-            <option value="Dermatology">Dermatology</option>
-
-            <option value="General Medicine">General Medicine</option>
-
-            <option value="Pediatrics">Pediatrics</option>
-
-            <option value="Neurology">Neurology</option>
+            {COMMON_SPECIALIZATIONS.map((spec) => (
+              <option key={spec} value={spec}>
+                {spec}
+              </option>
+            ))}
 
           </select>
 

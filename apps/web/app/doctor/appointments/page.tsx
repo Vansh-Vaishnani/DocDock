@@ -1,9 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
 
 import { useToast } from '../../auth/toast-provider';
-import { createOrUpdatePrescription, fetchDoctorAppointments, fetchDoctorProfile, updateAppointmentStatus, type DoctorAppointment } from '../api';
+import { createOrUpdatePrescription, fetchDoctorAppointments, fetchDoctorProfile, updateAppointmentStatus, updateTrackingLocation, type DoctorAppointment } from '../api';
+
+const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
+
+const getStoredAccessToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+    if (!raw) return null;
+    return (JSON.parse(raw) as { accessToken?: string }).accessToken || null;
+  } catch {
+    return null;
+  }
+};
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
@@ -82,25 +96,159 @@ export default function DoctorAppointmentsPage() {
   const [customReason, setCustomReason] = useState<string>('');
   const REASON_OPTIONS = ['Doctor unavailable', 'Emergency', 'Outside service area', 'Other'];
   const [prescriptionDrafts, setPrescriptionDrafts] = useState<Record<string, PrescriptionDraft>>({});
+  const simStepsRef = useRef<Record<string, number>>({});
+  const [doctorCoords, setDoctorCoords] = useState<[number, number] | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [list, profile] = await Promise.all([fetchDoctorAppointments(filter), fetchDoctorProfile()]);
       setAppointments(list);
       setVerified(profile.verificationStatus === 'approved');
+      if (profile.location?.coordinates) {
+        setDoctorCoords(profile.location.coordinates);
+      }
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Unable to load appointments.', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, showToast]);
 
   useEffect(() => {
     void load();
-    // Removed periodic polling to prevent flicker; page will refresh after actions only
-    return () => {};
-  }, [filter]);
+  }, [load]);
+
+  // Real-time Socket.IO and 5-second polling fallback effect
+  useEffect(() => {
+    // 1. Polling fallback (refetch every 5 seconds)
+    const interval = setInterval(() => {
+      void load();
+    }, 5000);
+
+    // 2. Real-time Socket.IO status updates
+    const token = getStoredAccessToken();
+    if (!token) return () => clearInterval(interval);
+
+    const socket = io(`${SOCKET_BASE}/notifications`, {
+      transports: ['websocket', 'polling'],
+      auth: { token }
+    });
+
+    socket.on('connect', () => {
+      try {
+        const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+        if (raw) {
+          const parsed = JSON.parse(raw) as { user?: { _id?: string } };
+          const userId = parsed.user?._id;
+          if (userId) {
+            socket.emit('join', userId);
+            console.log('Joined doctor appointments notification room:', userId);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse docdock-auth:', e);
+      }
+    });
+
+    socket.on('notification', (newNotification: any) => {
+      const statusTypes = [
+        'payment_received',
+        'appointment_pending',
+        'cancelled_by_patient',
+        'completed',
+        'doctor_verified',
+        'admin_rejected_account',
+        'admin_suspended_account'
+      ];
+      if (statusTypes.includes(newNotification.type)) {
+        console.log('Real-time appointment update received on doctor side:', newNotification.type);
+        void load();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      socket.disconnect();
+    };
+  }, [load]);
+
+  // Background tracking hook for active doctor_on_way appointments
+  useEffect(() => {
+    const activeAppts = appointments.filter((a) => a.status === 'doctor_on_way');
+    if (activeAppts.length === 0) return;
+
+    const isBypass = process.env.NEXT_PUBLIC_BYPASS_LOCATION === 'true';
+    const intervalTime = isBypass ? 2000 : 10000;
+
+    const trackers = activeAppts.map((appt) => {
+      const patientCoords = appt.address?.location?.coordinates;
+      if (!patientCoords) return null;
+
+      // Doctor starting position: doctor's clinic coordinates or fallback offset
+      const startLng = doctorCoords ? doctorCoords[0] : patientCoords[0] - 0.01;
+      const startLat = doctorCoords ? doctorCoords[1] : patientCoords[1] + 0.01;
+
+      if (simStepsRef.current[appt._id] === undefined) {
+        simStepsRef.current[appt._id] = 0;
+      }
+
+      const totalSteps = 20;
+
+      const runTracking = async () => {
+        let coordsToSend: [number, number];
+
+        if (isBypass) {
+          // Simulation mode: interpolate coordinates
+          const currentStep = Math.min(simStepsRef.current[appt._id] + 1, totalSteps);
+          simStepsRef.current[appt._id] = currentStep;
+
+          const ratio = currentStep / totalSteps;
+          const nextLng = startLng + (patientCoords[0] - startLng) * ratio;
+          const nextLat = startLat + (patientCoords[1] - startLat) * ratio;
+          coordsToSend = [nextLng, nextLat];
+        } else {
+          // Real GPS mode: get browser location
+          try {
+            const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 5000,
+                maximumAge: 0
+              });
+            });
+            coordsToSend = [pos.coords.longitude, pos.coords.latitude];
+          } catch (err) {
+            console.error('Failed to get real GPS location:', err);
+            return;
+          }
+        }
+
+        try {
+          await updateTrackingLocation(appt._id, coordsToSend);
+          console.log(`Updated location for appt ${appt._id} to:`, coordsToSend);
+        } catch (err) {
+          console.error('Failed to update tracking location on backend:', err);
+        }
+      };
+
+      // Run once immediately
+      void runTracking();
+
+      const timer = setInterval(() => {
+        void runTracking();
+      }, intervalTime);
+
+      return {
+        timer,
+        cleanup: () => clearInterval(timer)
+      };
+    });
+
+    return () => {
+      trackers.forEach((t) => t?.cleanup());
+    };
+  }, [appointments, doctorCoords]);
 
   const handleStatus = async (appointmentId: string, status: string) => {
     if (!verified) {

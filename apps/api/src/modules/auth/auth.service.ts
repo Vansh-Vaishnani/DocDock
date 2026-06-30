@@ -8,6 +8,7 @@ import { sendPasswordResetEmail, isEmailServiceEnabled } from '../../services/em
 
 import { DoctorModel } from '../doctor/doctor.repository';
 import { PatientModel } from '../patient/patient.repository';
+import { NotificationService } from '../notification/notification.service';
 
 import { UserModel, IUserDocument } from './auth.repository';
 
@@ -15,6 +16,8 @@ export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
 }
+
+const notificationService = new NotificationService();
 
 export class AuthService {
   async register(payload: { fullName: string; email: string; phone: string; password: string; role: 'patient' | 'doctor' }): Promise<Partial<IUserDocument>> {
@@ -58,6 +61,22 @@ export class AuthService {
         averageRating: 0,
         reviewCount: 0
       });
+
+      // Notify all admins of the new doctor registration
+      try {
+        const admins = await UserModel.find({ role: 'admin', isDeleted: false });
+        for (const admin of admins) {
+          await notificationService.createNotification({
+            userId: admin._id.toString(),
+            type: 'new_doctor_registration',
+            title: 'New doctor registration pending verification',
+            message: `Doctor ${payload.fullName} has registered and is pending verification.`,
+            channel: 'in_app'
+          });
+        }
+      } catch (err) {
+        console.error('Failed to notify admins of new doctor registration:', err);
+      }
     }
 
     return {

@@ -1,3 +1,5 @@
+import { DoctorModel } from '../doctor/doctor.repository';
+import { AppointmentModel } from '../appointment/appointment.repository';
 import { TrackingModel, ITrackingDocument } from './tracking.model';
 
 export class TrackingRepository {
@@ -6,7 +8,28 @@ export class TrackingRepository {
     if (session) {
       return session;
     }
-    return TrackingModel.create({ appointmentId, doctorId, patientId, status: 'idle' });
+    const [doctor, appointment] = await Promise.all([
+      DoctorModel.findById(doctorId),
+      AppointmentModel.findById(appointmentId)
+    ]);
+    const doctorCoords = doctor?.location?.coordinates || [72.5714, 23.0225];
+    const patientCoords = appointment?.address?.location?.coordinates || [72.5714, 23.0225];
+
+    return TrackingModel.create({
+      appointmentId,
+      doctorId,
+      patientId,
+      status: 'idle',
+      doctorCurrentLocation: {
+        type: 'Point',
+        coordinates: doctorCoords,
+        updatedAt: new Date()
+      },
+      patientLocation: {
+        type: 'Point',
+        coordinates: patientCoords
+      }
+    });
   }
 
   async getByAppointmentId(appointmentId: string): Promise<ITrackingDocument | null> {

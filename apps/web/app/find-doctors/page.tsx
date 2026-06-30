@@ -71,7 +71,6 @@ function FindDoctorsPageContent() {
   const query = useQuery({
     queryKey: ['find-doctors', appliedFilters, location?.lat, location?.lng],
     queryFn: () => fetchDoctors({ ...appliedFilters, latitude: location?.lat, longitude: location?.lng }),
-    enabled: Boolean(location),
     staleTime: 30_000
   });
 
@@ -309,7 +308,7 @@ function FindDoctorsPageContent() {
                       onClick={() => handleDoctorCardClick(doctor)}
                       className={`cursor-pointer transition hover:shadow-lg ${selectedDoctorId === doctor._id ? 'ring-2 ring-emerald-500 rounded-3xl' : ''}`}
                     >
-                      <DoctorCard doctor={doctor} />
+                      <DoctorCard doctor={doctor} location={location} locationLabel={locationLabel} />
                       <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
                         <span>Distance: {distanceLabel}</span>
                       </div>

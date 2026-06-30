@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { type ReactNode, useMemo } from 'react';
 
 import { useAuth } from '../../auth/auth-context';
+import NotificationBell from '@/components/NotificationBell';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard' },
@@ -77,11 +78,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
         </aside>
 
         <div className="flex min-w-0 flex-col gap-6">
-          <header className="rounded-[28px] border border-slate-200/80 bg-white/90 px-5 py-4 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.28)] backdrop-blur sm:px-6">
+          <header className="relative z-30 rounded-[28px] border border-slate-200/80 bg-white/90 px-5 py-4 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.28)] backdrop-blur sm:px-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-600">{activeItem.label}</p>
                 <p className="mt-1 text-sm text-slate-500">Monitor platform health, users, and transactions.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <NotificationBell />
               </div>
             </div>
           </header>

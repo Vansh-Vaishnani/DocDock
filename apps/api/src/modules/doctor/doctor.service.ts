@@ -13,20 +13,17 @@ import { isCloudinaryEnabled, uploadBase64File, uploadFile } from '../../service
 
 
 import { AuthService } from '../auth/auth.service';
-
 import { UserModel } from '../auth/auth.repository';
-
 import { AppointmentModel } from '../appointment/appointment.repository';
-
 import { PaymentModel } from '../payment/payment.repository';
-
 import { PrescriptionModel } from '../prescription/prescription.repository';
-
-
+import { NotificationService } from '../notification/notification.service';
 
 import { DoctorModel, IDoctorDocument, defaultAvailability } from './doctor.repository';
 
 
+
+const notificationService = new NotificationService();
 
 export interface DoctorProfileResponse {
 
@@ -495,6 +492,22 @@ export class DoctorService {
     user.lastLogin = new Date();
 
     await user.save();
+
+    // Notify all admins of the new doctor registration
+    try {
+      const admins = await UserModel.find({ role: 'admin', isDeleted: false });
+      for (const admin of admins) {
+        await notificationService.createNotification({
+          userId: admin._id.toString(),
+          type: 'new_doctor_registration',
+          title: 'New doctor registration pending verification',
+          message: `Doctor ${payload.fullName} has registered and is pending verification.`,
+          channel: 'in_app'
+        });
+      }
+    } catch (err) {
+      console.error('Failed to notify admins of new doctor registration:', err);
+    }
 
 
 
@@ -1160,113 +1173,74 @@ export class DoctorService {
 
   }
 
-
-
   async searchNearby(
-
-    lat: number,
-
-    lng: number,
-
+    lat?: number,
+    lng?: number,
     radiusMeters = 10000,
-
     specialization?: string,
-
     options: {
-
       minExperience?: number;
-
       maxFee?: number;
-
       search?: string;
-
       availableOnly?: boolean;
-
       sortBy?: string;
-
       page?: number;
-
       limit?: number;
-
     } = {}
-
   ): Promise<Array<Record<string, unknown>>> {
-
     const match: mongoose.FilterQuery<IDoctorDocument> = { verificationStatus: 'approved' };
 
-
-
     if (options.availableOnly) {
-
       match['availability.isAvailable'] = true;
-
       match['availability.vacationMode'] = { $ne: true };
-
     }
 
-
-
-    if (specialization) match.specialization = specialization;
+    if (specialization) {
+      const stem = getSpecializationStem(specialization);
+      match.specialization = { $regex: stem, $options: 'i' };
+    }
 
     if (typeof options.minExperience === 'number' && !Number.isNaN(options.minExperience)) {
-
       match.experience = { $gte: options.minExperience };
-
     }
 
     if (typeof options.maxFee === 'number' && !Number.isNaN(options.maxFee)) {
-
       match.consultationFee = { $lte: options.maxFee };
-
     }
 
     if (options.search) {
+      // Find matching users by fullName to support search by doctor name
+      const users = await UserModel.find({ fullName: { $regex: options.search, $options: 'i' } }).select('_id');
+      const matchedUserIds = users.map((u) => u._id);
 
       match.$or = [
-
         { specialization: { $regex: options.search, $options: 'i' } },
-
-        { bio: { $regex: options.search, $options: 'i' } },
-
-        { qualifications: { $elemMatch: { $regex: options.search, $options: 'i' } } }
-
+        { userId: { $in: matchedUserIds } }
       ];
-
     }
 
-
-
-    const query = DoctorModel.find({
-
-      ...match,
-
-      location: {
-
-        $nearSphere: {
-
-          $geometry: { type: 'Point', coordinates: [lng, lat] },
-
-          $maxDistance: radiusMeters
-
+    let query;
+    if (lat !== undefined && lng !== undefined) {
+      query = DoctorModel.find({
+        ...match,
+        location: {
+          $nearSphere: {
+            $geometry: { type: 'Point', coordinates: [lng, lat] },
+            $maxDistance: radiusMeters
+          }
         }
+      });
+    } else {
+      query = DoctorModel.find(match);
+    }
 
-      }
-
-    }).populate('userId', 'fullName avatar').lean();
-
-
+    query = query.populate('userId', 'fullName avatar').lean();
 
     if (options.sortBy === 'rating') query.sort({ averageRating: -1, reviewCount: -1 });
-
     else if (options.sortBy === 'fee') query.sort({ consultationFee: 1, averageRating: -1 });
 
-
-
     const page = typeof options.page === 'number' && options.page > 0 ? options.page : 1;
-
     const limit = typeof options.limit === 'number' && options.limit > 0 ? options.limit : 9;
-
-
 
     const doctors = await query.skip((page - 1) * limit).limit(limit);
 
@@ -1416,5 +1390,28 @@ export class DoctorService {
 
   }
 
+}
+
+function getSpecializationStem(spec: string): string {
+  const lower = spec.toLowerCase();
+  if (lower.includes('cardio')) return 'cardio';
+  if (lower.includes('dermat')) return 'dermat';
+  if (lower.includes('general physician') || lower.includes('general medicine')) return 'general';
+  if (lower.includes('pediatr')) return 'pediatr';
+  if (lower.includes('neurol')) return 'neurol';
+  if (lower.includes('ortho')) return 'ortho';
+  if (lower.includes('ophthal')) return 'ophthal';
+  if (lower.includes('gyneco')) return 'gyneco';
+  if (lower.includes('psych')) return 'psych';
+  if (lower.includes('onco')) return 'onco';
+  if (lower.includes('gastro')) return 'gastro';
+  if (lower.includes('endocrin')) return 'endocrin';
+  if (lower.includes('pulmon')) return 'pulmon';
+  if (lower.includes('nephro')) return 'nephro';
+  if (lower.includes('ent')) return 'ent';
+  if (lower.includes('urol')) return 'urol';
+  if (lower.includes('dent')) return 'dent';
+  if (lower.includes('surg')) return 'surg';
+  return spec;
 }
 

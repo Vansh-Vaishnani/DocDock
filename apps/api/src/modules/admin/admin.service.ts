@@ -7,6 +7,7 @@ import { PatientModel } from '../patient/patient.repository';
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { PaymentModel } from '../payment/payment.repository';
 import { ReviewModel } from '../review/review.repository';
+import { NotificationService } from '../notification/notification.service';
 
 import { AdminModel, AuditLogModel, PlatformSettingsModel } from './admin.repository';
 
@@ -28,6 +29,8 @@ const endOfToday = (): Date => {
   d.setHours(23, 59, 59, 999);
   return d;
 };
+
+const notificationService = new NotificationService();
 
 export class AdminService {
   async getDashboardOverview() {
@@ -209,6 +212,37 @@ export class AdminService {
 
     await doctor.save();
     await user.save();
+
+    // Trigger doctor notification based on verification action
+    try {
+      if (action === 'approve') {
+        await notificationService.createNotification({
+          userId: doctor.userId.toString(),
+          type: 'doctor_verified',
+          title: 'Admin approved account',
+          message: 'Your doctor account has been approved and verified by the admin.',
+          channel: 'in_app'
+        });
+      } else if (action === 'reject') {
+        await notificationService.createNotification({
+          userId: doctor.userId.toString(),
+          type: 'admin_rejected_account',
+          title: 'Admin rejected account',
+          message: `Your doctor account registration was rejected. Reason: ${reason}`,
+          channel: 'in_app'
+        });
+      } else if (action === 'suspend') {
+        await notificationService.createNotification({
+          userId: doctor.userId.toString(),
+          type: 'admin_suspended_account',
+          title: 'Admin suspended account',
+          message: `Your doctor account has been suspended. Reason: ${reason ?? 'No reason provided'}`,
+          channel: 'in_app'
+        });
+      }
+    } catch (err) {
+      console.error('Failed to send verification notification to doctor:', err);
+    }
 
     return { doctor: doctor.toObject(), user: { _id: user._id, isActive: user.isActive, verificationStatus: user.verificationStatus } };
   }
