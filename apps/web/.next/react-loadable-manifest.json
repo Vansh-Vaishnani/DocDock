@@ -1,34 +1,34 @@
 {
   "app\\find-doctors\\page.tsx -> react-leaflet": {
-    "id": "app\\find-doctors\\page.tsx -> react-leaflet",
+    "id": 1813,
     "files": [
-      "static/chunks/_app-pages-browser_node_modules_react-leaflet_lib_index_js.js"
+      "static/chunks/1813.6222d554d62a4cd7.js"
     ]
   },
   "app\\patient\\appointments\\[appointmentId]\\page.tsx -> react-leaflet": {
-    "id": "app\\patient\\appointments\\[appointmentId]\\page.tsx -> react-leaflet",
+    "id": 1813,
     "files": [
-      "static/chunks/_app-pages-browser_node_modules_react-leaflet_lib_index_js.js"
+      "static/chunks/1813.6222d554d62a4cd7.js"
     ]
   },
   "components\\map\\LeafletMap.tsx -> leaflet": {
-    "id": "components\\map\\LeafletMap.tsx -> leaflet",
+    "id": 7851,
     "files": []
   },
   "components\\map\\LeafletMap.tsx -> react-leaflet": {
-    "id": "components\\map\\LeafletMap.tsx -> react-leaflet",
+    "id": 1813,
     "files": [
-      "static/chunks/_app-pages-browser_node_modules_react-leaflet_lib_index_js.js"
+      "static/chunks/1813.6222d554d62a4cd7.js"
     ]
   },
   "components\\map\\MapPicker.tsx -> leaflet": {
-    "id": "components\\map\\MapPicker.tsx -> leaflet",
+    "id": 7851,
     "files": []
   },
   "components\\map\\MapPicker.tsx -> react-leaflet": {
-    "id": "components\\map\\MapPicker.tsx -> react-leaflet",
+    "id": 1813,
     "files": [
-      "static/chunks/_app-pages-browser_node_modules_react-leaflet_lib_index_js.js"
+      "static/chunks/1813.6222d554d62a4cd7.js"
     ]
   }
 }
