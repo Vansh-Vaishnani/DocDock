@@ -123,12 +123,10 @@ function DoctorDetailsPageContent() {
 
 
   const [selectedDate, setSelectedDate] = useState('');
-
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
-
   const [notes, setNotes] = useState('');
+  const [selectedMode, setSelectedMode] = useState<string | null>(null);
 
   const [addresses, setAddresses] = useState<PatientAddress[]>([]);
 
@@ -227,7 +225,22 @@ function DoctorDetailsPageContent() {
 
   const selectedAddress = addresses.find((a) => a._id === selectedAddressId);
 
+  const supportedModes = useMemo(() => {
+    const doc = query.data;
+    if (!doc) return [];
+    if (Array.isArray(doc.consultationModes) && doc.consultationModes.length > 0) {
+      return doc.consultationModes;
+    }
+    if (doc.consultationType === 'both') return ['clinic', 'home'];
+    if (doc.consultationType === 'home') return ['home'];
+    return ['clinic'];
+  }, [query.data]);
 
+  useEffect(() => {
+    if (supportedModes.length > 0 && !selectedMode) {
+      setSelectedMode(supportedModes[0]);
+    }
+  }, [supportedModes, selectedMode]);
 
   const handleBook = async () => {
 
@@ -239,9 +252,10 @@ function DoctorDetailsPageContent() {
 
     }
 
+    const isOnline = selectedMode === 'online';
     const hasLocation = latParam !== null && lngParam !== null;
-    if (!selectedSlot || (!selectedAddress && !hasLocation)) {
-      showToast('Please select a date, time slot, and an address or location.', 'error');
+    if (!selectedSlot || (!isOnline && !selectedAddress && !hasLocation)) {
+      showToast(isOnline ? 'Please select a date and time slot.' : 'Please select a date, time slot, and an address or location.', 'error');
       return;
     }
 
@@ -261,9 +275,9 @@ function DoctorDetailsPageContent() {
 
         appointmentTime: new Date(selectedSlot).toTimeString().slice(0, 5),
 
-        addressId: selectedAddress?._id,
+        addressId: isOnline ? undefined : selectedAddress?._id,
 
-        location: hasLocation ? {
+        location: (!isOnline && hasLocation) ? {
           label: selectedLocationLabel || 'Selected Location',
           location: {
             type: 'Point',
@@ -271,7 +285,8 @@ function DoctorDetailsPageContent() {
           }
         } : undefined,
 
-        notes: notes.trim() || undefined
+        notes: notes.trim() || undefined,
+        consultationMode: selectedMode || 'clinic'
 
       });
 
@@ -540,6 +555,44 @@ function DoctorDetailsPageContent() {
             <div className="mt-6 space-y-6">
 
               <div>
+                <p className="text-sm font-medium text-slate-700">Consultation mode</p>
+                <div className="mt-2.5 grid gap-3 sm:grid-cols-3">
+                  {[
+                    { value: 'clinic', label: 'Clinic Consultation', desc: 'Visit the doctor\'s clinic' },
+                    { value: 'home', label: 'Home Visit', desc: 'Doctor travels to your location' },
+                    { value: 'online', label: 'Online Video', desc: 'Secure WebRTC video consultation' }
+                  ].map((mode) => {
+                    const isSupported = supportedModes.includes(mode.value);
+                    const isSelected = selectedMode === mode.value;
+                    return (
+                      <div
+                        key={mode.value}
+                        onClick={() => {
+                          if (isSupported) {
+                            setSelectedMode(mode.value);
+                          }
+                        }}
+                        className={`relative rounded-2xl border p-4 cursor-pointer transition-all ${
+                          !isSupported ? 'opacity-40 cursor-not-allowed border-dashed bg-slate-50 dark:bg-slate-900/20' :
+                          isSelected ? 'border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/20 ring-1 ring-emerald-500' :
+                          'border-slate-200 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900'
+                        }`}
+                        title={!isSupported ? 'Doctor does not provide this consultation type.' : ''}
+                      >
+                        <p className="font-semibold text-sm" style={{ color: isSelected ? '#10b981' : 'var(--text-primary)' }}>{mode.label}</p>
+                        <p className="mt-1 text-[11px] leading-tight" style={{ color: 'var(--text-muted)' }}>{mode.desc}</p>
+                        {!isSupported && (
+                          <div className="absolute inset-x-0 bottom-2 text-center text-[10px] text-rose-500 font-semibold">
+                            Not supported
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
 
                 <label htmlFor="appointment-date" className="block text-sm font-medium text-slate-700">
 
@@ -625,39 +678,25 @@ function DoctorDetailsPageContent() {
 
 
 
-              <div>
-
-                <p className="text-sm font-medium text-slate-700">Visit address</p>
-
-                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-
-                  <div className="flex items-center justify-between">
-
-                    <div>
-
-                      <p className="font-semibold text-slate-900">Booking location</p>
-
-                      <p className="mt-1">{selectedLocationLabel || 'No location selected'}</p>
-
+              {selectedMode !== 'online' && (
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Visit address</p>
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-900">Booking location</p>
+                        <p className="mt-1">{selectedLocationLabel || 'No location selected'}</p>
+                      </div>
+                      <Link
+                        href="/find-doctors"
+                        className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        Change Location
+                      </Link>
                     </div>
-
-                    <Link
-
-                      href="/find-doctors"
-
-                      className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-
-                    >
-
-                      Change Location
-
-                    </Link>
-
                   </div>
-
                 </div>
-
-              </div>
+              )}
 
 
 

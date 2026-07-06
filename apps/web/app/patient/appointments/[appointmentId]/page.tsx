@@ -29,6 +29,7 @@ import { useToast } from '../../../auth/toast-provider';
 
 import { fetchPatientAppointmentDetail, submitReview, type AppointmentDetail } from '../../api';
 import ChatSection from '../../../../components/ChatSection';
+import VideoConsultation from '../../../../components/VideoConsultation';
 
 import LeafletMap, { createSvgIcon } from '@/components/map/LeafletMap';
 
@@ -302,62 +303,27 @@ export default function AppointmentDetailsPage() {
   const [resendingOtp, setResendingOtp] = useState(false);
 
   const [showChat, setShowChat] = useState(false);
-  const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'connected' | 'ended' | 'missed'>('idle');
-  const [activeCallLogId, setActiveCallLogId] = useState<string | null>(null);
+  const [showVideoCall, setShowVideoCall] = useState(false);
 
-  const handleCall = async () => {
-    if (!appointmentId) return;
-    setCallStatus('calling');
-    try {
-      const token = getStoredAccessToken();
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const res = await fetch(`${API_BASE}/appointments/${appointmentId}/call`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!res.ok) {
-        throw new Error('Failed to initiate call');
-      }
-      const data = await res.json();
-      setActiveCallLogId(data.data._id);
-      
-      // Simulate calling sequence
-      setTimeout(async () => {
-        setCallStatus('connected');
-        try {
-          await fetch(`${API_BASE}/appointments/${appointmentId}/calls/${data.data._id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ status: 'connected' })
-          });
-        } catch {}
-      }, 3000);
+  const handleVideoCall = () => {
+    setShowVideoCall(true);
+  };
 
-      setTimeout(async () => {
-        setCallStatus('ended');
-        try {
-          await fetch(`${API_BASE}/appointments/${appointmentId}/calls/${data.data._id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ status: 'ended', duration: 7 })
-          });
-        } catch {}
-        setTimeout(() => setCallStatus('idle'), 3000);
-      }, 10000);
-    } catch (err) {
-      setCallStatus('missed');
-      showToast('Could not bridge call.', 'error');
-      setTimeout(() => setCallStatus('idle'), 3000);
+  const handleCall = () => {
+    if (!appointmentId || !detail) return;
+    const doctorUserId = (detail.doctor as any)?.userId?._id || (detail.doctor as any)?.userId;
+    const doctorName = (detail.doctor as any)?.userId?.fullName || 'Doctor';
+    if (!doctorUserId) {
+      showToast('Unable to find doctor contact info.', 'error');
+      return;
     }
+    window.dispatchEvent(new CustomEvent('docdock:initiate-call', {
+      detail: {
+        appointmentId,
+        calleeId: doctorUserId,
+        calleeName: doctorName
+      }
+    }));
   };
 
   const handleResendOtp = async () => {
@@ -632,25 +598,29 @@ export default function AppointmentDetailsPage() {
                       onClick={() => setShowChat((prev) => !prev)}
                       className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
                     >
-                      {showChat ? '💬 Close Chat' : '💬 Open Chat'}
+                      {showChat ? 'Close Chat' : 'Open Chat'}
                     </button>
-                    <button
-                      type="button"
-                      disabled={callStatus !== 'idle'}
-                      onClick={handleCall}
-                      className={`rounded-full px-4 py-2 text-xs font-semibold text-white shadow-sm transition ${
-                        callStatus === 'idle' ? 'bg-indigo-600 hover:bg-indigo-700' :
-                        callStatus === 'calling' ? 'bg-amber-500 animate-pulse' :
-                        callStatus === 'connected' ? 'bg-emerald-600' :
-                        callStatus === 'missed' ? 'bg-rose-600' : 'bg-slate-500'
-                      }`}
-                    >
-                      {callStatus === 'idle' && '📞 Call Doctor'}
-                      {callStatus === 'calling' && '📞 Calling...'}
-                      {callStatus === 'connected' && '📞 Connected'}
-                      {callStatus === 'ended' && '📞 Ended'}
-                      {callStatus === 'missed' && '📞 Missed'}
-                    </button>
+                    {/* Show Video Call button for online appointments in in_consultation */}
+                    {(detail.appointment as any)?.consultationMode === 'online' &&
+                      detail.appointment?.status === 'in_consultation' && (
+                      <button
+                        type="button"
+                        onClick={handleVideoCall}
+                        className="rounded-full bg-violet-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 transition"
+                      >
+                        Join Video Call
+                      </button>
+                    )}
+                    {/* Audio call for physical appointments */}
+                    {(detail.appointment as any)?.consultationMode !== 'online' && (
+                      <button
+                        type="button"
+                        onClick={handleCall}
+                        className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition"
+                      >
+                        Call Doctor
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1198,6 +1168,16 @@ export default function AppointmentDetailsPage() {
         )}
 
       </section>
+
+      {showVideoCall && detail && (
+        <VideoConsultation
+          appointmentId={appointmentId as string}
+          peerId={(detail.doctor as any)?.userId?._id || (detail.doctor as any)?.userId || ''}
+          peerName={detail.doctor?.fullName || 'Doctor'}
+          isCaller={false}
+          onClose={() => setShowVideoCall(false)}
+        />
+      )}
 
     </div>
 

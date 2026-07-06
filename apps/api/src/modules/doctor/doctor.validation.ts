@@ -88,7 +88,8 @@ export const doctorProfileSchema = z.object({
 
     serviceRadius: z.number().optional(),
 
-    consultationType: z.enum(['home', 'clinic', 'both']).optional()
+    consultationType: z.enum(['home', 'clinic', 'both']).optional(),
+    consultationModes: z.array(z.enum(['clinic', 'home', 'online'])).min(1).optional()
 
   })
 
@@ -137,6 +138,7 @@ export const doctorRegisterSchema = z.object({
     serviceRadius: z.number().optional(),
 
     consultationType: z.enum(['home', 'clinic', 'both']).optional(),
+    consultationModes: z.array(z.enum(['clinic', 'home', 'online'])).min(1).optional(),
 
     profilePhoto: z.string().optional(),
 
@@ -189,6 +191,7 @@ export const updateDoctorProfileSchema = z.object({
     serviceRadius: z.number().optional(),
 
     consultationType: z.enum(['home', 'clinic', 'both']).optional(),
+    consultationModes: z.array(z.enum(['clinic', 'home', 'online'])).min(1).optional(),
 
     profilePhoto: z.string().optional(),
 

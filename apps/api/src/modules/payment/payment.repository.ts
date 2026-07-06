@@ -15,6 +15,7 @@ export interface IPaymentDocument extends mongoose.Document {
     addressId?: string;
     address?: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
     notes?: string;
+    consultationMode?: string;
   };
   refundId?: string;
   refundStatus?: 'initiated' | 'completed' | 'failed';
@@ -49,7 +50,8 @@ const paymentSchema = new Schema<IPaymentDocument>(
           coordinates: { type: [Number], required: false }
         }
       },
-      notes: { type: String, required: false }
+      notes: { type: String, required: false },
+      consultationMode: { type: String, required: false }
     }
     ,
     refundId: { type: String, required: false },

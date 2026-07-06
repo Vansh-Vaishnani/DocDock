@@ -32,7 +32,7 @@ function logOtpEvent(appointmentId: string, event: string, metadata?: any) {
 
 const validTransitions: Record<string, AppointmentStatus[]> = {
   pending: ['accepted', 'rejected', 'auto_rejected', 'cancelled_by_patient'],
-  accepted: ['doctor_on_way', 'cancelled_by_doctor'],
+  accepted: ['doctor_on_way', 'in_consultation', 'cancelled_by_doctor'],
   doctor_on_way: ['arrived', 'cancelled_by_doctor'],
   arrived: ['in_consultation', 'cancelled_by_doctor'],
   in_consultation: ['completed'],
@@ -40,7 +40,8 @@ const validTransitions: Record<string, AppointmentStatus[]> = {
   rejected: [],
   auto_rejected: [],
   cancelled_by_patient: [],
-  cancelled_by_doctor: []
+  cancelled_by_doctor: [],
+  doctor_no_show: []
 };
 
 const STATUS_LABELS: Record<AppointmentStatus, string> = {
@@ -53,7 +54,8 @@ const STATUS_LABELS: Record<AppointmentStatus, string> = {
   in_consultation: 'Consultation Started',
   completed: 'Completed',
   cancelled_by_patient: 'Cancelled by Patient',
-  cancelled_by_doctor: 'Cancelled by Doctor'
+  cancelled_by_doctor: 'Cancelled by Doctor',
+  doctor_no_show: 'Doctor No Show'
 };
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
@@ -328,11 +330,25 @@ export class AppointmentService {
     patientId: string;
     doctorId: string;
     scheduledAt: string;
-    address: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
+    address?: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
     notes?: string;
+    consultationMode?: 'clinic' | 'home' | 'online';
   }): Promise<IAppointmentDocument> {
-    if (!payload.address.label.trim()) {
-      throw new ApiError('Address label is required', 400, 'VALIDATION_ERROR');
+    const consultationMode = payload.consultationMode || 'clinic';
+    let resolvedAddress = payload.address;
+
+    if (!resolvedAddress) {
+      if (consultationMode === 'home') {
+        throw new ApiError('Appointment address is required for home visits', 400, 'VALIDATION_ERROR');
+      }
+      resolvedAddress = {
+        label: consultationMode === 'online' ? 'Online Consultation' : 'Clinic Consultation',
+        location: { type: 'Point' as const, coordinates: [0, 0] as [number, number] }
+      };
+    } else {
+      if (!resolvedAddress.label.trim()) {
+        throw new ApiError('Address label is required', 400, 'VALIDATION_ERROR');
+      }
     }
 
     const doctor = await DoctorModel.findById(payload.doctorId);
@@ -364,9 +380,10 @@ export class AppointmentService {
       patientId: new mongoose.Types.ObjectId(payload.patientId),
       doctorId: new mongoose.Types.ObjectId(payload.doctorId),
       scheduledAt,
-      address: payload.address,
+      address: resolvedAddress,
       status: 'pending',
-      notes: payload.notes
+      notes: payload.notes,
+      consultationMode
     });
 
     await notifyStatusChange(appointment, 'pending', payload.patientId, doctor.userId.toString());
@@ -427,7 +444,8 @@ export class AppointmentService {
         ,
         rejectionReason: (appt as any).rejectionReason ?? null,
         paymentStatus: payment?.status ?? null,
-        refundStatus: (payment as any)?.refundStatus ?? null
+        refundStatus: (payment as any)?.refundStatus ?? null,
+        consultationMode: appt.consultationMode
       };
     });
   }
@@ -667,7 +685,55 @@ export class AppointmentService {
           }
 
           // Normal flow
-          const currentStepIndex = statusOrder.indexOf(appointment.status as AppointmentStatus);
+          const mode = (appointment as any).consultationMode || 'clinic';
+          let steps: Array<{ key: string; label: string; completed: boolean; active: boolean }> = [];
+
+          if (mode === 'home') {
+            const statusOrder: AppointmentStatus[] = ['pending', 'accepted', 'doctor_on_way', 'arrived', 'in_consultation', 'completed'];
+            const currentStepIndex = statusOrder.indexOf(appointment.status as AppointmentStatus);
+            steps = statusOrder.map((step, index) => ({
+              key: step,
+              label: STATUS_LABELS[step] ?? step,
+              completed: currentStepIndex >= 0 && index <= currentStepIndex,
+              active: currentStepIndex >= 0 && index === currentStepIndex
+            }));
+          } else if (mode === 'clinic') {
+            // clinic workflow: Booked -> Accepted -> Appointment Slip Generated -> Consultation Started -> Completed
+            const statusOrder: AppointmentStatus[] = ['pending', 'accepted', 'in_consultation', 'completed'];
+            const currentStepIndex = statusOrder.indexOf(appointment.status as AppointmentStatus);
+            steps = [
+              { key: 'pending', label: STATUS_LABELS['pending'], completed: currentStepIndex >= 0, active: appointment.status === 'pending' },
+              { key: 'accepted', label: STATUS_LABELS['accepted'], completed: currentStepIndex >= 1, active: appointment.status === 'accepted' },
+              { 
+                key: 'appointment_slip', 
+                label: 'Appointment Slip Generated', 
+                completed: currentStepIndex >= 1, 
+                active: false 
+              },
+              { key: 'in_consultation', label: STATUS_LABELS['in_consultation'], completed: currentStepIndex >= 2, active: appointment.status === 'in_consultation' },
+              { key: 'completed', label: STATUS_LABELS['completed'], completed: currentStepIndex >= 3, active: appointment.status === 'completed' }
+            ];
+            if (appointment.status === 'accepted') {
+              steps[1].active = true;
+            }
+          } else {
+            // online workflow: Booked -> Accepted -> Waiting for Doctor -> Video Consultation -> Completed
+            const statusOrder: AppointmentStatus[] = ['pending', 'accepted', 'in_consultation', 'completed'];
+            const currentStepIndex = statusOrder.indexOf(appointment.status as AppointmentStatus);
+            steps = [
+              { key: 'pending', label: STATUS_LABELS['pending'], completed: currentStepIndex >= 0, active: appointment.status === 'pending' },
+              { key: 'accepted', label: STATUS_LABELS['accepted'], completed: currentStepIndex >= 1, active: false },
+              { 
+                key: 'waiting_for_doctor', 
+                label: 'Waiting for Doctor', 
+                completed: currentStepIndex >= 2, 
+                active: appointment.status === 'accepted' 
+              },
+              { key: 'in_consultation', label: 'Video Consultation', completed: currentStepIndex >= 2, active: appointment.status === 'in_consultation' },
+              { key: 'completed', label: STATUS_LABELS['completed'], completed: currentStepIndex >= 3, active: appointment.status === 'completed' }
+            ];
+          }
+
           return {
             appointment: {
               _id: appointment._id.toString(),
@@ -677,6 +743,7 @@ export class AppointmentService {
               address: appointment.address,
               notes: appointment.notes,
               otpCode: otpRecord?.plainTextOtp || null,
+              consultationMode: appointment.consultationMode,
               createdAt: ((appointment as { createdAt?: Date }).createdAt?.toISOString?.() ?? new Date().toISOString()),
               updatedAt: ((appointment as { updatedAt?: Date }).updatedAt?.toISOString?.() ?? new Date().toISOString())
             },
@@ -703,12 +770,7 @@ export class AppointmentService {
               : null,
             timeline: {
               currentStatus: appointment.status,
-              steps: statusOrder.map((step, index) => ({
-                key: step,
-                label: STATUS_LABELS[step] ?? step,
-                completed: currentStepIndex >= 0 && index <= currentStepIndex,
-                active: currentStepIndex >= 0 && index === currentStepIndex
-              }))
+              steps
             }
           };
   }
@@ -722,6 +784,7 @@ export class AppointmentService {
       addressId?: string;
       address?: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
       notes?: string;
+      consultationMode?: string;
     },
     patientId?: string
   ) {
@@ -757,7 +820,8 @@ export class AppointmentService {
         scheduledAt,
         address: bookingPayload.address,
         status: 'pending',
-        notes: bookingPayload.notes
+        notes: bookingPayload.notes,
+        consultationMode: bookingPayload.consultationMode || 'clinic'
       });
     }
 
@@ -945,68 +1009,77 @@ export class AppointmentService {
             });
           }
         } catch (e) {
-          // log and continue
-          // eslint-disable-next-line no-console
           console.error('Refund initiation failed', e);
         }
       }
+    } else if (status === 'doctor_on_way' || status === 'arrived') {
+      if (appointment.consultationMode !== 'home') {
+        throw new ApiError(`Status transition to '${status}' is only allowed for home visit consultations`, 400, 'INVALID_TRANSITION');
+      }
+      if (status === 'arrived') {
+        appointment.status = 'arrived';
+        await appointment.save();
+
+        // Generate, hash and send OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        await AppointmentOtpModel.findOneAndUpdate(
+          { appointmentId: appointment._id },
+          {
+            otpHash: hashOtp(otp),
+            plainTextOtp: otp, // save plain text for easy testing/showcase
+            expiresAt,
+            attempts: 0
+          },
+          { upsert: true, new: true }
+        );
+
+        const patientUser = await UserModel.findById(appointment.patientId).select('phone').lean();
+        if (patientUser?.phone) {
+          await smsService.sendOtpSms(patientUser.phone, otp);
+        }
+        logOtpEvent(appointment._id.toString(), 'OTP_GENERATED', { expiresAt });
+      } else {
+        appointment.status = status;
+        await appointment.save();
+      }
     } else if (status === 'in_consultation') {
-      const otpCode = options?.otp;
-      if (!otpCode || otpCode.length !== 6) {
-        throw new ApiError('6-digit OTP code is required to start consultation', 400, 'OTP_REQUIRED');
-      }
+      const mode = appointment.consultationMode || 'clinic';
+      if (mode === 'home') {
+        const otpCode = options?.otp;
+        if (!otpCode || otpCode.length !== 6) {
+          throw new ApiError('6-digit OTP code is required to start consultation', 400, 'OTP_REQUIRED');
+        }
 
-      const record = await AppointmentOtpModel.findOne({ appointmentId: appointment._id });
-      if (!record) {
-        throw new ApiError('No OTP request found for this appointment. Please resend OTP.', 400, 'OTP_NOT_FOUND');
-      }
+        const record = await AppointmentOtpModel.findOne({ appointmentId: appointment._id });
+        if (!record) {
+          throw new ApiError('No OTP request found for this appointment. Please resend OTP.', 400, 'OTP_NOT_FOUND');
+        }
 
-      if (new Date() > record.expiresAt) {
-        throw new ApiError('OTP has expired. Please resend OTP.', 400, 'OTP_EXPIRED');
-      }
+        if (new Date() > record.expiresAt) {
+          throw new ApiError('OTP has expired. Please resend OTP.', 400, 'OTP_EXPIRED');
+        }
 
-      if (record.attempts >= 3) {
-        throw new ApiError('Maximum verification attempts exceeded. Please request a new OTP.', 400, 'OTP_MAX_ATTEMPTS_EXCEEDED');
-      }
+        if (record.attempts >= 3) {
+          throw new ApiError('Maximum verification attempts exceeded. Please request a new OTP.', 400, 'OTP_MAX_ATTEMPTS_EXCEEDED');
+        }
 
-      const hashed = hashOtp(otpCode);
-      if (record.otpHash !== hashed) {
-        record.attempts += 1;
-        await record.save();
-        logOtpEvent(appointment._id.toString(), 'OTP_VERIFICATION_FAILED', { attempts: record.attempts });
-        throw new ApiError(`Invalid OTP. ${3 - record.attempts} attempts remaining.`, 400, 'INVALID_OTP');
-      }
+        const hashed = hashOtp(otpCode);
+        if (record.otpHash !== hashed) {
+          record.attempts += 1;
+          await record.save();
+          logOtpEvent(appointment._id.toString(), 'OTP_VERIFICATION_FAILED', { attempts: record.attempts });
+          throw new ApiError(`Invalid OTP. ${3 - record.attempts} attempts remaining.`, 400, 'INVALID_OTP');
+        }
 
-      // Success: delete the OTP record
-      await AppointmentOtpModel.deleteOne({ appointmentId: appointment._id });
-      logOtpEvent(appointment._id.toString(), 'OTP_VERIFICATION_SUCCESS');
+        // Success: delete the OTP record
+        await AppointmentOtpModel.deleteOne({ appointmentId: appointment._id });
+        logOtpEvent(appointment._id.toString(), 'OTP_VERIFICATION_SUCCESS');
+      }
 
       appointment.status = 'in_consultation';
       await appointment.save();
-    } else if (status === 'arrived') {
-      appointment.status = 'arrived';
-      await appointment.save();
-
-      // Generate, hash and send OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-      await AppointmentOtpModel.findOneAndUpdate(
-        { appointmentId: appointment._id },
-        {
-          otpHash: hashOtp(otp),
-          plainTextOtp: otp, // save plain text for easy testing/showcase
-          expiresAt,
-          attempts: 0
-        },
-        { upsert: true, new: true }
-      );
-
-      const patientUser = await UserModel.findById(appointment.patientId).select('phone').lean();
-      if (patientUser?.phone) {
-        await smsService.sendOtpSms(patientUser.phone, otp);
-      }
-      logOtpEvent(appointment._id.toString(), 'OTP_GENERATED', { expiresAt });
     } else {
       appointment.status = status;
       await appointment.save();
@@ -1143,6 +1216,67 @@ export class AppointmentService {
     }
     await log.save();
     return log;
+  }
+
+  async checkOnlineTimeouts() {
+    try {
+      const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+      const expiredAppointments = await AppointmentModel.find({
+        consultationMode: 'online',
+        status: { $in: ['accepted', 'pending'] },
+        scheduledAt: { $lt: thirtyMinutesAgo }
+      });
+
+      if (expiredAppointments.length === 0) return;
+
+      console.log(`[Timeout Check] Found ${expiredAppointments.length} expired online appointments.`);
+
+      for (const appt of expiredAppointments) {
+        appt.status = 'doctor_no_show';
+        await appt.save();
+
+        console.log(`[Timeout Check] Cancelled appointment ${appt._id} due to doctor no show.`);
+
+        const payment = await PaymentModel.findOne({ appointmentId: appt._id });
+        if (payment && payment.status === 'paid' && payment.razorpayPaymentId) {
+          try {
+            console.log(`[Timeout Check] Initiating refund for payment ${payment._id} (Razorpay ID: ${payment.razorpayPaymentId})`);
+            await paymentService.initiateRefund(payment.razorpayPaymentId, payment.amount);
+          } catch (refundErr) {
+            console.error(`[Timeout Check] Refund failed for appointment ${appt._id}:`, refundErr);
+          }
+        }
+
+        try {
+          await notificationService.createNotification({
+            userId: appt.patientId.toString(),
+            type: 'appointment_cancelled',
+            title: 'Appointment Cancelled - Doctor No Show',
+            message: `Your online video consultation was cancelled as the doctor did not join. A full refund has been initiated.`,
+            channel: 'in_app'
+          });
+        } catch (notifErr) {
+          console.error('[Timeout Check] Failed to notify patient:', notifErr);
+        }
+
+        try {
+          const doctorProfile = await DoctorModel.findById(appt.doctorId).lean();
+          if (doctorProfile) {
+            await notificationService.createNotification({
+              userId: doctorProfile.userId.toString(),
+              type: 'appointment_cancelled',
+              title: 'Appointment Cancelled - No Show',
+              message: `Your online video consultation was cancelled as you did not start the consultation in time.`,
+              channel: 'in_app'
+            });
+          }
+        } catch (notifErr) {
+          console.error('[Timeout Check] Failed to notify doctor:', notifErr);
+        }
+      }
+    } catch (err) {
+      console.error('[Timeout Check] Error checking online timeouts:', err);
+    }
   }
 }
 

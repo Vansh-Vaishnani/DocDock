@@ -70,15 +70,14 @@ export interface DoctorProfileResponse {
   availability: IDoctorDocument['availability'];
 
   verificationStatus: 'pending' | 'approved' | 'rejected';
-
   verificationNote?: string;
-
   averageRating: number;
-
   reviewCount: number;
-
   profileCompletionPercent: number;
-
+  consultationType?: string;
+  consultationModes?: string[];
+  clinicAddress?: string;
+  serviceRadius?: number;
 }
 
 
@@ -130,24 +129,19 @@ const formatProfile = (
   clinicName: doctor.clinicName,
 
   profilePhotoUrl: doctor.profilePhotoUrl,
-
   governmentIdUrl: doctor.governmentIdUrl,
-
   medicalLicenseUrl: doctor.medicalLicenseUrl,
-
   location: doctor.location,
-
   availability: doctor.availability,
-
   verificationStatus: doctor.verificationStatus,
-
   verificationNote: doctor.verificationNote,
-
   averageRating: doctor.averageRating,
-
   reviewCount: doctor.reviewCount,
-
-  profileCompletionPercent: calculateProfileCompletion(doctor, user)
+  profileCompletionPercent: calculateProfileCompletion(doctor, user),
+  consultationType: doctor.consultationType || 'clinic',
+  consultationModes: doctor.consultationModes && doctor.consultationModes.length > 0 ? doctor.consultationModes : ['clinic'],
+  clinicAddress: doctor.clinicAddress || '',
+  serviceRadius: doctor.serviceRadius ?? 10
 
 });
 
@@ -360,17 +354,14 @@ export class DoctorService {
     languages: string[];
 
     clinicName: string;
-
     bio: string;
-
     location?: { type: 'Point'; coordinates: [number, number] };
-
     profilePhoto?: string;
-
     governmentId?: string;
-
     medicalLicense?: string;
-
+    clinicAddress?: string;
+    serviceRadius?: number;
+    consultationModes?: string[];
   }) {
 
     const existingEmail = await UserModel.findOne({ email: payload.email.toLowerCase() });
@@ -439,32 +430,28 @@ export class DoctorService {
 
 
 
+    const modes = payload.consultationModes && payload.consultationModes.length > 0 ? payload.consultationModes : ['clinic'];
+    const hasClinic = modes.includes('clinic');
+    const hasHome = modes.includes('home');
+    const legacyType = (hasClinic && hasHome) ? 'both' : hasHome ? 'home' : 'clinic';
+
     const doctor = await DoctorModel.create({
-
       userId: user._id,
-
       licenseNumber: payload.licenseNumber,
-
       specialization: payload.specialization,
-
       qualifications: [payload.qualification],
-
       medicalDegree: payload.medicalDegree,
-
       experience: payload.experience,
-
       bio: payload.bio,
-
       languages: payload.languages,
-
       consultationFee: payload.consultationFee,
-
       gender: payload.gender,
-
       dateOfBirth: new Date(payload.dateOfBirth),
-
       clinicName: payload.clinicName,
-
+      clinicAddress: payload.clinicAddress || '',
+      serviceRadius: payload.serviceRadius ?? 10,
+      consultationType: legacyType,
+      consultationModes: modes,
       profilePhotoUrl,
 
       governmentIdUrl,
@@ -596,15 +583,13 @@ export class DoctorService {
       dateOfBirth: string;
 
       clinicName: string;
-
       location: { type: 'Point'; coordinates: [number, number] };
-
       profilePhoto: string;
-
       governmentId: string;
-
       medicalLicense: string;
-
+      clinicAddress: string;
+      serviceRadius: number;
+      consultationModes: string[];
     }>
 
   ): Promise<DoctorProfileResponse> {
@@ -682,6 +667,20 @@ export class DoctorService {
     if (payload.clinicName) doctor.clinicName = payload.clinicName;
 
     if (payload.location) doctor.location = payload.location;
+    if (payload.clinicAddress !== undefined) doctor.clinicAddress = payload.clinicAddress;
+    if (typeof payload.serviceRadius === 'number') doctor.serviceRadius = payload.serviceRadius;
+    if (payload.consultationModes) {
+      doctor.consultationModes = payload.consultationModes;
+      const hasClinic = payload.consultationModes.includes('clinic');
+      const hasHome = payload.consultationModes.includes('home');
+      if (hasClinic && hasHome) {
+        doctor.consultationType = 'both';
+      } else if (hasHome) {
+        doctor.consultationType = 'home';
+      } else {
+        doctor.consultationType = 'clinic';
+      }
+    }
 
 
 
@@ -886,6 +885,7 @@ export class DoctorService {
         patientId: appt.patientId.toString(),
         doctorId: appt.doctorId.toString(),
         isEmergency: appt.isEmergency,
+        consultationMode: appt.consultationMode,
 
         prescription: prescription
 

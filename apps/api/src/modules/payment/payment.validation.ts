@@ -18,9 +18,16 @@ export const createPaymentSchema = z.object({
     appointmentTime: z.string().min(1),
     addressId: z.string().min(1).optional(),
     location: temporaryLocationSchema.optional(),
-    notes: z.string().max(500).optional()
-  }).refine((value) => Boolean(value.addressId || value.location), {
-    message: 'Either addressId or location is required',
+    notes: z.string().max(500).optional(),
+    consultationMode: z.enum(['clinic', 'home', 'online']).optional()
+  }).refine((value) => {
+    const mode = value.consultationMode || 'clinic';
+    if (mode === 'home') {
+      return Boolean(value.addressId || value.location);
+    }
+    return true;
+  }, {
+    message: 'Either addressId or location is required for home consultations',
     path: ['addressId']
   })
 });

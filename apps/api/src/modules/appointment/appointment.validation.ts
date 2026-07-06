@@ -21,8 +21,9 @@ export const createAppointmentSchema = z.object({
         type: z.literal('Point'),
         coordinates: z.tuple([z.number(), z.number()])
       })
-    }),
-    notes: z.string().optional()
+    }).optional(),
+    notes: z.string().optional(),
+    consultationMode: z.enum(['clinic', 'home', 'online']).optional()
   })
 });
 

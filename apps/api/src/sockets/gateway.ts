@@ -85,6 +85,46 @@ export const initializeSocketServer = (server: HttpServer): SocketIOServer => {
         console.log(`Socket joined notification room: ${userId}`);
       }
     });
+
+    socket.on('call:initiate', (payload: { appointmentId: string; callerId: string; callerName: string; calleeId: string; callType: 'audio' | 'video' }) => {
+      console.log(`[Socket Call] Initiate: ${payload.callerName} calling ${payload.calleeId} for appt ${payload.appointmentId} (${payload.callType})`);
+      socket.to(payload.calleeId).emit('call:incoming', {
+        appointmentId: payload.appointmentId,
+        callerId: payload.callerId,
+        callerName: payload.callerName,
+        callType: payload.callType
+      });
+    });
+
+    socket.on('call:accept', (payload: { appointmentId: string; calleeId: string; callerId: string }) => {
+      console.log(`[Socket Call] Accept: ${payload.calleeId} accepted call from ${payload.callerId}`);
+      socket.to(payload.callerId).emit('call:accepted', {
+        appointmentId: payload.appointmentId,
+        calleeId: payload.calleeId
+      });
+    });
+
+    socket.on('call:reject', (payload: { appointmentId: string; callerId: string }) => {
+      console.log(`[Socket Call] Reject: call for appt ${payload.appointmentId} rejected by callee`);
+      socket.to(payload.callerId).emit('call:rejected', {
+        appointmentId: payload.appointmentId
+      });
+    });
+
+    socket.on('call:hangup', (payload: { appointmentId: string; targetId: string }) => {
+      console.log(`[Socket Call] Hangup: call for appt ${payload.appointmentId} ended`);
+      socket.to(payload.targetId).emit('call:hungup', {
+        appointmentId: payload.appointmentId
+      });
+    });
+
+    socket.on('webrtc:signal', (payload: { appointmentId: string; to: string; signalData: any }) => {
+      socket.to(payload.to).emit('webrtc:signal', {
+        appointmentId: payload.appointmentId,
+        signalData: payload.signalData,
+        from: socket.id
+      });
+    });
   });
 
   return io;

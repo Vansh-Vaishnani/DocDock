@@ -6,6 +6,7 @@ import { io } from 'socket.io-client';
 import { useToast } from '../../auth/toast-provider';
 import { createOrUpdatePrescription, fetchDoctorAppointments, fetchDoctorProfile, updateAppointmentStatus, updateTrackingLocation, type DoctorAppointment } from '../api';
 import ChatSection from '../../../components/ChatSection';
+import VideoConsultation from '../../../components/VideoConsultation';
 
 const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
 
@@ -53,8 +54,11 @@ type PrescriptionDraft = {
   advice: string;
 };
 
-function getActions(status: string, verified: boolean, paymentStatus?: string): ActionButton[] {
-  if (!verified || paymentStatus !== 'paid') return [];
+function getActions(appt: DoctorAppointment, verified: boolean): ActionButton[] {
+  if (!verified || appt.paymentStatus !== 'paid') return [];
+
+  const status = appt.status;
+  const mode = (appt as any).consultationMode || 'clinic';
 
   switch (status) {
     case 'pending':
@@ -63,10 +67,18 @@ function getActions(status: string, verified: boolean, paymentStatus?: string): 
         { label: 'Reject', status: 'rejected', variant: 'danger' }
       ];
     case 'accepted':
-      return [
-        { label: 'On The Way', status: 'doctor_on_way', variant: 'primary' },
-        { label: 'Cancel', status: 'cancelled_by_doctor', variant: 'danger' }
-      ];
+      if (mode === 'home') {
+        return [
+          { label: 'On The Way', status: 'doctor_on_way', variant: 'primary' },
+          { label: 'Cancel', status: 'cancelled_by_doctor', variant: 'danger' }
+        ];
+      } else {
+        // Clinic or online goes directly to starting consultation
+        return [
+          { label: 'Start Consultation', status: 'in_consultation', variant: 'primary' },
+          { label: 'Cancel', status: 'cancelled_by_doctor', variant: 'danger' }
+        ];
+      }
     case 'doctor_on_way':
       return [
         { label: 'Arrived', status: 'arrived', variant: 'primary' },
@@ -106,63 +118,22 @@ export default function DoctorAppointmentsPage() {
   const [otpError, setOtpError] = useState<string | null>(null);
 
   const [activeChatApptId, setActiveChatApptId] = useState<string | null>(null);
-  const [callStatusMap, setCallStatusMap] = useState<Record<string, 'idle' | 'calling' | 'connected' | 'ended' | 'missed'>>({});
+  const [videoCallAppt, setVideoCallAppt] = useState<DoctorAppointment | null>(null);
 
-  const handleCallPatient = async (appointmentId: string) => {
-    setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'calling' }));
-    try {
-      const token = getStoredAccessToken();
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const res = await fetch(`${API_BASE}/appointments/${appointmentId}/call`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!res.ok) {
-        throw new Error('Failed to initiate call');
-      }
-      const data = await res.json();
-      
-      // Simulate calling sequence
-      setTimeout(async () => {
-        setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'connected' }));
-        try {
-          await fetch(`${API_BASE}/appointments/${appointmentId}/calls/${data.data._id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ status: 'connected' })
-          });
-        } catch {}
-      }, 3000);
-
-      setTimeout(async () => {
-        setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'ended' }));
-        try {
-          await fetch(`${API_BASE}/appointments/${appointmentId}/calls/${data.data._id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ status: 'ended', duration: 8 })
-          });
-        } catch {}
-        setTimeout(() => {
-          setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'idle' }));
-        }, 3000);
-      }, 10000);
-    } catch (err) {
-      setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'missed' }));
-      showToast('Could not bridge call.', 'error');
-      setTimeout(() => {
-        setCallStatusMap((prev) => ({ ...prev, [appointmentId]: 'idle' }));
-      }, 3000);
+  const handleCallPatient = (appointmentId: string, appointment: any) => {
+    const patientUserId = appointment?.patientId || appointment?.patient?._id;
+    const patientName = appointment?.patient?.fullName || appointment?.patientName || 'Patient';
+    if (!patientUserId) {
+      showToast('Unable to find patient contact info.', 'error');
+      return;
     }
+    window.dispatchEvent(new CustomEvent('docdock:initiate-call', {
+      detail: {
+        appointmentId,
+        calleeId: patientUserId,
+        calleeName: patientName
+      }
+    }));
   };
 
   const confirmOtp = async () => {
@@ -354,10 +325,20 @@ export default function DoctorAppointmentsPage() {
       }
 
       if (status === 'in_consultation') {
-        setPendingOtpActionApptId(appointmentId);
-        setOtpInput('');
-        setOtpError(null);
-        return;
+        const appt = appointments.find((a) => a._id === appointmentId);
+        const mode = (appt as any)?.consultationMode || 'clinic';
+        if (mode === 'home') {
+          setPendingOtpActionApptId(appointmentId);
+          setOtpInput('');
+          setOtpError(null);
+          return;
+        } else {
+          // Clinic or online transitions directly!
+          await updateAppointmentStatus(appointmentId, status);
+          showToast('Consultation started.', 'success');
+          await load();
+          return;
+        }
       }
 
       await updateAppointmentStatus(appointmentId, status);
@@ -458,7 +439,7 @@ export default function DoctorAppointmentsPage() {
 
       <div className="mt-6 space-y-3">
         {appointments.map((appt) => {
-          const actions = getActions(appt.status, verified, appt.paymentStatus);
+          const actions = getActions(appt, verified);
           const draft = prescriptionDrafts[appt._id] ?? {
             diagnosis: '',
             chiefComplaints: '',
@@ -514,25 +495,28 @@ export default function DoctorAppointmentsPage() {
                         onClick={() => setActiveChatApptId((prev) => (prev === appt._id ? null : appt._id))}
                         className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
                       >
-                        {activeChatApptId === appt._id ? '💬 Close Chat' : '💬 Open Chat'}
+                        {activeChatApptId === appt._id ? 'Close Chat' : 'Open Chat'}
                       </button>
-                      <button
-                        type="button"
-                        disabled={callStatusMap[appt._id] && callStatusMap[appt._id] !== 'idle'}
-                        onClick={() => handleCallPatient(appt._id)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition ${
-                          (callStatusMap[appt._id] ?? 'idle') === 'idle' ? 'bg-indigo-600 hover:bg-indigo-700' :
-                          callStatusMap[appt._id] === 'calling' ? 'bg-amber-500 animate-pulse' :
-                          callStatusMap[appt._id] === 'connected' ? 'bg-emerald-600' :
-                          callStatusMap[appt._id] === 'missed' ? 'bg-rose-600' : 'bg-slate-500'
-                        }`}
-                      >
-                        {(callStatusMap[appt._id] ?? 'idle') === 'idle' && '📞 Call Patient'}
-                        {callStatusMap[appt._id] === 'calling' && '📞 Calling...'}
-                        {callStatusMap[appt._id] === 'connected' && '📞 Connected'}
-                        {callStatusMap[appt._id] === 'ended' && '📞 Ended'}
-                        {callStatusMap[appt._id] === 'missed' && '📞 Missed'}
-                      </button>
+                      {/* Video call for online consultations */}
+                      {(appt as any).consultationMode === 'online' && appt.status === 'in_consultation' && (
+                        <button
+                          type="button"
+                          onClick={() => setVideoCallAppt(appt)}
+                          className="rounded-full bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 transition"
+                        >
+                          Start Video Call
+                        </button>
+                      )}
+                      {/* Audio call for physical appointments */}
+                      {(appt as any).consultationMode !== 'online' && (
+                        <button
+                          type="button"
+                          onClick={() => handleCallPatient(appt._id, appt)}
+                          className="rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition"
+                        >
+                          Call Patient
+                        </button>
+                      )}
                     </div>
                   )}
                   {!actions.length && appt.paymentStatus !== 'paid' && (
@@ -722,6 +706,16 @@ export default function DoctorAppointmentsPage() {
             </div>
           </div>
         </div>
+      )}
+      {/* Video Consultation Overlay */}
+      {videoCallAppt && (
+        <VideoConsultation
+          appointmentId={videoCallAppt._id}
+          peerId={(videoCallAppt as any).patientUserId || (videoCallAppt as any).patientId || ''}
+          peerName={videoCallAppt.patientName || 'Patient'}
+          isCaller={true}
+          onClose={() => setVideoCallAppt(null)}
+        />
       )}
     </div>
   );

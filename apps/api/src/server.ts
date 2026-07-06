@@ -22,6 +22,7 @@ import { registerGlobalMiddleware } from './common/middleware/globalMiddleware';
 import { initializeSocketServer } from './sockets/gateway';
 import { initializeServices } from './common/utils/initialization';
 import { getInitializationStatus } from './common/utils/initialization';
+import { AppointmentService } from './modules/appointment/appointment.service';
 import './jobs/workers';
 
 const app = express();
@@ -109,6 +110,14 @@ const start = async (): Promise<void> => {
       console.log(`\n🎉 DocDock API listening on http://localhost:${config.port}`);
       console.log(`📚 API Documentation: http://localhost:${config.port}/api/v1/docs`);
       console.log(`❤️  Health Check: http://localhost:${config.port}/api/v1/health\n`);
+
+      // Start background online appointment timeout checker (every 60 seconds)
+      const appointmentService = new AppointmentService();
+      setInterval(() => {
+        appointmentService.checkOnlineTimeouts().catch((err) => {
+          console.error('[Timeout Check Job] Error during execution:', err);
+        });
+      }, 60000);
     });
   } catch (error) {
     console.error('🚨 Failed to start server:', error);

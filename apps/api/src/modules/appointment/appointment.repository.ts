@@ -10,7 +10,8 @@ export type AppointmentStatus =
   | 'in_consultation'
   | 'completed'
   | 'cancelled_by_patient'
-  | 'cancelled_by_doctor';
+  | 'cancelled_by_doctor'
+  | 'doctor_no_show';
 
 export interface IAppointmentDocument extends mongoose.Document {
   patientId: mongoose.Types.ObjectId;
@@ -24,6 +25,7 @@ export interface IAppointmentDocument extends mongoose.Document {
   paymentId?: mongoose.Types.ObjectId;
   prescriptionId?: mongoose.Types.ObjectId;
   isEmergency?: boolean;
+  consultationMode: 'clinic' | 'home' | 'online';
 }
 
 const appointmentSchema = new Schema<IAppointmentDocument>(
@@ -55,16 +57,18 @@ const appointmentSchema = new Schema<IAppointmentDocument>(
         'in_consultation',
         'completed',
         'cancelled_by_patient',
-        'cancelled_by_doctor'
+        'cancelled_by_doctor',
+        'doctor_no_show'
       ],
       default: 'pending'
     },
     notes: { type: String },
-      rejectionReason: { type: String },
+    rejectionReason: { type: String },
     cancellationReason: { type: String },
     paymentId: { type: Schema.Types.ObjectId, ref: 'Payment' },
     prescriptionId: { type: Schema.Types.ObjectId, ref: 'Prescription' },
-    isEmergency: { type: Boolean, default: false }
+    isEmergency: { type: Boolean, default: false },
+    consultationMode: { type: String, enum: ['clinic', 'home', 'online'], default: 'clinic' }
   },
   { timestamps: true }
 );

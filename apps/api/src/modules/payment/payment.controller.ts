@@ -22,11 +22,28 @@ export class PaymentController {
       addressId?: string;
       location?: { label: string; location: { type: 'Point'; coordinates: [number, number] } };
       notes?: string;
+      consultationMode?: string;
     }
   ) {
     const patientProfile = await PatientModel.findOne({ userId: new mongoose.Types.ObjectId(userId) });
     if (!patientProfile) {
       throw new ApiError('Patient profile not found', 404, 'PATIENT_NOT_FOUND');
+    }
+
+    // For online/clinic consultations, bypass physical address requirements
+    if (body.consultationMode === 'online' || body.consultationMode === 'clinic') {
+      return {
+        doctorId: body.doctorId,
+        appointmentDate: body.appointmentDate,
+        appointmentTime: body.appointmentTime,
+        addressId: undefined,
+        notes: body.notes,
+        consultationMode: body.consultationMode,
+        address: {
+          label: body.consultationMode === 'online' ? 'Online Consultation' : 'Clinic Consultation',
+          location: { type: 'Point' as const, coordinates: [0, 0] as [number, number] }
+        }
+      };
     }
 
     let resolvedAddress: { label: string; location: { type: 'Point'; coordinates: [number, number] } } | undefined;
@@ -52,6 +69,7 @@ export class PaymentController {
       appointmentTime: body.appointmentTime,
       addressId: body.addressId,
       notes: body.notes,
+      consultationMode: body.consultationMode || 'clinic',
       address: resolvedAddress
     };
   }

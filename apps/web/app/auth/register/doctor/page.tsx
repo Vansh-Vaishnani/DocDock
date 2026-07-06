@@ -43,9 +43,15 @@ export default function DoctorRegisterPage() {
   const [governmentIdUrl, setGovernmentIdUrl] = useState<string | null>(null);
   const [medicalLicenseUrl, setMedicalLicenseUrl] = useState<string | null>(null);
 
+  const [consultationModes, setConsultationModes] = useState<string[]>(['clinic']);
+
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (values: FormValues) => {
+    if (consultationModes.length === 0) {
+      showToast('Select at least one consultation mode.', 'error');
+      return;
+    }
     setError(null);
     setIsSubmitting(true);
     try {
@@ -54,7 +60,8 @@ export default function DoctorRegisterPage() {
         languages: values.languages.split(',').map((l) => l.trim()).filter(Boolean),
         profilePhoto: profilePhotoUrl || undefined,
         governmentId: governmentIdUrl || undefined,
-        medicalLicense: medicalLicenseUrl || undefined
+        medicalLicense: medicalLicenseUrl || undefined,
+        consultationModes
       };
       const response = await registerDoctor(payload);
       handleOAuthCallback({
@@ -216,6 +223,37 @@ export default function DoctorRegisterPage() {
               <label className="dd-label">Consultation Fee (₹) <span className="text-rose-500">*</span></label>
               <input type="number" {...register('consultationFee')} className="dd-input" placeholder="e.g. 500" />
               {errors.consultationFee && <p className="mt-1 text-xs text-rose-600">{errors.consultationFee.message}</p>}
+            </div>
+
+            {/* Consultation Modes Checkboxes */}
+            <div className="md:col-span-2">
+              <label className="dd-label">Available Consultation Modes <span className="text-rose-500">*</span></label>
+              <div className="flex flex-wrap gap-3 mt-1.5">
+                {[
+                  { value: 'clinic', label: 'Clinic Consultation' },
+                  { value: 'home', label: 'Home Visit' },
+                  { value: 'online', label: 'Online Video Consultation' }
+                ].map((mode) => {
+                  const checked = consultationModes.includes(mode.value);
+                  return (
+                    <label key={mode.value} className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/40" style={{ backgroundColor: 'var(--input-bg)', borderColor: checked ? '#10b981' : 'var(--input-border)', color: 'var(--text-secondary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setConsultationModes([...consultationModes, mode.value]);
+                          } else {
+                            setConsultationModes(consultationModes.filter((m) => m !== mode.value));
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 accent-emerald-600 focus:ring-emerald-500"
+                      />
+                      {mode.label}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Languages */}

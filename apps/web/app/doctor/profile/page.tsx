@@ -42,7 +42,7 @@ export default function DoctorProfilePage() {
   const [clinicLatLng, setClinicLatLng] = useState<{ lat: number; lng: number } | null>(null);
   const [mapKey, setMapKey] = useState(0);
   const [serviceRadius, setServiceRadius] = useState<number>(10);
-  const [consultationType, setConsultationType] = useState<'home' | 'clinic' | 'both'>('clinic');
+  const [consultationModes, setConsultationModes] = useState<string[]>(['clinic']);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
@@ -72,25 +72,29 @@ export default function DoctorProfilePage() {
         }
         setClinicAddress((result as any).clinicAddress || '');
         setServiceRadius((result as any).serviceRadius ?? 10);
-        setConsultationType(((result as any).consultationType as any) || 'clinic');
+        setConsultationModes((result as any).consultationModes || ['clinic']);
       })
       .catch((err: unknown) => showToast(err instanceof Error ? err.message : 'Unable to load profile.', 'error'))
       .finally(() => setLoading(false));
   }, [reset, showToast]);
 
   const onSubmit = async (values: FormValues) => {
+    if (consultationModes.length === 0) {
+      showToast('Select at least one consultation mode.', 'error');
+      return;
+    }
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
         ...values,
         languages: values.languages.split(',').map((l) => l.trim()).filter(Boolean),
-        qualification: values.qualification
+        qualification: values.qualification,
+        consultationModes
       };
       if (clinicLatLng) {
         payload.location = { type: 'Point', coordinates: [clinicLatLng.lng, clinicLatLng.lat] };
         payload.clinicAddress = clinicAddress;
         payload.serviceRadius = serviceRadius;
-        payload.consultationType = consultationType;
       }
       const updated = await updateDoctorProfile(payload);
       setProfile(updated);
@@ -226,16 +230,37 @@ export default function DoctorProfilePage() {
               </button>
             )}
             <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="dd-label">Consultation type</label>
-                <select value={consultationType} onChange={(e) => setConsultationType(e.target.value as any)} className="dd-input">
-                  <option value="clinic">Clinic</option>
-                  <option value="home">Home visit</option>
-                  <option value="both">Both</option>
-                </select>
+              <div className="md:col-span-2">
+                <label className="dd-label">Consultation modes</label>
+                <div className="flex flex-wrap gap-3 mt-1">
+                  {[
+                    { value: 'clinic', label: 'Clinic Consultation' },
+                    { value: 'home', label: 'Home Visit' },
+                    { value: 'online', label: 'Online Video Consultation' }
+                  ].map((mode) => {
+                    const checked = consultationModes.includes(mode.value);
+                    return (
+                      <label key={mode.value} className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/40" style={{ backgroundColor: 'var(--input-bg)', borderColor: checked ? '#10b981' : 'var(--input-border)', color: 'var(--text-secondary)' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setConsultationModes([...consultationModes, mode.value]);
+                            } else {
+                              setConsultationModes(consultationModes.filter((m) => m !== mode.value));
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 accent-emerald-600 focus:ring-emerald-500"
+                        />
+                        {mode.label}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
-              <div>
-                <label className="dd-label">Service radius (km)</label>
+              <div className="md:col-span-2">
+                <label className="dd-label">Service radius (km) — for home visits</label>
                 <input type="number" value={serviceRadius} onChange={(e) => setServiceRadius(Number(e.target.value))} className="dd-input" />
               </div>
             </div>
