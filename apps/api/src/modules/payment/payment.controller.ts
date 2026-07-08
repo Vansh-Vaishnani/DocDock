@@ -109,7 +109,7 @@ export class PaymentController {
 
   async handleWebhook(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      const rawBody = (req as any).rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
       const signature = req.headers['x-razorpay-signature'];
       const valid = await service.verifySignature(rawBody, typeof signature === 'string' ? signature : '');
       if (!valid) {

@@ -19,43 +19,24 @@ export type GeocodeSuggestion = {
 
 
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
-
   try {
-
     const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
-
     const data = await response.json();
-
     return data?.display_name || '';
-
   } catch {
-
     return '';
-
   }
-
 }
 
-
-
 export async function searchGeocode(query: string): Promise<GeocodeSuggestion[]> {
-
   if (!query.trim()) return [];
-
   try {
-
     const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(query)}`);
-
     const data = await response.json();
-
     return Array.isArray(data) ? data : [];
-
   } catch {
-
     return [];
-
   }
-
 }
 
 

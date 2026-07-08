@@ -282,18 +282,19 @@ function FindDoctorsPageContent() {
                       <Marker 
                         key={doctor._id} 
                         {...({ position: [lat, lng], icon: createSvgIcon('#f59e0b', 30) } as any)}
-                        eventHandlers={{
-                          click: () => handleMarkerClick(doctor)
-                        }}
                       >
                         <Popup>
-                          <div className="min-w-[220px] text-sm">
+                          <div 
+                            className="min-w-[220px] text-sm cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => handleMarkerClick(doctor)}
+                          >
                             <p className="font-semibold text-slate-900">{doctor.userId?.fullName || `Dr. ${doctor.specialization}`}</p>
                             <p className="mt-1 font-medium text-slate-800">{doctor.clinicName || 'Clinic'}</p>
                             <p className="mt-1 text-slate-600">{doctor.clinicAddress || 'Clinic address available on request'}</p>
                             <p className="mt-2 font-semibold text-emerald-700">₹{doctor.consultationFee} Consultation</p>
                             <p className="mt-1 text-slate-600">Distance: {distanceLabel}</p>
                             <p className="mt-1 text-slate-600">{doctor.availability?.isAvailable ? 'Available Now' : 'On request'}</p>
+                            <p className="mt-2 text-xs font-semibold text-emerald-600 underline">Click card to highlight doctor</p>
                           </div>
                         </Popup>
                       </Marker>

@@ -206,12 +206,10 @@ export default function DoctorProfilePage() {
           <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>Search a place, use your current location, or tap anywhere on the map to set the clinic address.</p>
           <div className="mt-3 space-y-3">
             <MapPicker
-              key={mapKey}
               value={clinicLatLng ?? null}
               onChange={(lat: number, lng: number, label?: string) => {
                 setClinicLatLng({ lat, lng });
                 if (label) setClinicAddress(label);
-                setMapKey((prev) => prev + 1);
               }}
               minHeight={320}
               placeholder="Search clinic address"

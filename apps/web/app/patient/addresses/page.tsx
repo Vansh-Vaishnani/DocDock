@@ -30,7 +30,6 @@ export default function PatientAddressesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editLabel, setEditLabel] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedAddressLabel, setSelectedAddressLabel] = useState('');
@@ -62,6 +61,13 @@ export default function PatientAddressesPage() {
     void loadAddresses();
   }, []);
 
+  const cancelEdit = () => {
+    setEditingId(null);
+    reset({ label: '', isDefault: false });
+    setSelectedLocation(null);
+    setSelectedAddressLabel('');
+  };
+
   const onSubmit = async (values: FormValues) => {
     setError(null);
     try {
@@ -71,20 +77,28 @@ export default function PatientAddressesPage() {
       }
       const payload = {
         label: values.label.trim(),
+        addressLine: selectedAddressLabel,
         location: {
           type: 'Point' as const,
           coordinates: [selectedLocation.lng, selectedLocation.lat] as [number, number]
         },
         isDefault: values.isDefault || false
       };
-      const response = await addAddress(payload);
-      setAddresses(response.data.addresses);
-      reset({ label: '', isDefault: false });
-      setSelectedLocation(null);
-      setSelectedAddressLabel('');
-      showToast('Address added successfully.', 'success');
+      if (editingId) {
+        const response = await updatePatientAddress(editingId, payload);
+        setAddresses(response.addresses);
+        cancelEdit();
+        showToast('Address updated successfully.', 'success');
+      } else {
+        const response = await addAddress(payload);
+        setAddresses(response.data.addresses);
+        reset({ label: '', isDefault: false });
+        setSelectedLocation(null);
+        setSelectedAddressLabel('');
+        showToast('Address added successfully.', 'success');
+      }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unable to add address.';
+      const message = err instanceof Error ? err.message : 'Unable to save address.';
       setError(message);
       showToast(message, 'error');
     }
@@ -96,6 +110,9 @@ export default function PatientAddressesPage() {
       const profile = await deletePatientAddress(addressId);
       setAddresses(profile.addresses);
       showToast('Address deleted.', 'success');
+      if (editingId === addressId) {
+        cancelEdit();
+      }
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Unable to delete address.', 'error');
     } finally {
@@ -119,29 +136,14 @@ export default function PatientAddressesPage() {
   const startEdit = (address: PatientAddress) => {
     if (!address._id) return;
     setEditingId(address._id);
-    setEditLabel(address.label);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditLabel('');
-  };
-
-  const saveEdit = async (addressId: string) => {
-    if (!editLabel.trim()) {
-      showToast('Address name is required.', 'error');
-      return;
-    }
-    setActionId(addressId);
-    try {
-      const profile = await updatePatientAddress(addressId, { label: editLabel.trim() });
-      setAddresses(profile.addresses);
-      cancelEdit();
-      showToast('Address updated.', 'success');
-    } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Unable to update address.', 'error');
-    } finally {
-      setActionId(null);
+    reset({
+      label: address.label,
+      isDefault: address.isDefault
+    });
+    setSelectedAddressLabel(address.addressLine || '');
+    if (address.location?.coordinates) {
+      const [lng, lat] = address.location.coordinates;
+      setSelectedLocation({ lat, lng });
     }
   };
 
@@ -152,7 +154,9 @@ export default function PatientAddressesPage() {
       <div className="dd-card">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Saved delivery locations</h2>
+            <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              {editingId ? 'Edit delivery location' : 'Saved delivery locations'}
+            </h2>
             <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>Search a place, use your current location, or tap the map to save a home visit address.</p>
           </div>
           {defaultAddress && <div className="rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">Default: {defaultAddress.label}</div>}
@@ -200,9 +204,16 @@ export default function PatientAddressesPage() {
             )}
           </div>
 
-          <button type="submit" className="btn-primary w-full py-3 text-sm">
-            Save address
-          </button>
+          <div className="flex gap-3">
+            <button type="submit" className="btn-primary flex-1 py-3 text-sm">
+              {editingId ? 'Update address' : 'Save address'}
+            </button>
+            {editingId && (
+              <button type="button" onClick={cancelEdit} className="btn-secondary py-3 text-sm px-6">
+                Cancel
+              </button>
+            )}
+          </div>
         </form>
       </div>
 
@@ -229,35 +240,22 @@ export default function PatientAddressesPage() {
               <div key={address._id || address.label} className="rounded-xl border p-4" style={{ borderColor: 'var(--border-color)' }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    {editingId === address._id ? (
-                      <input
-                        value={editLabel}
-                        onChange={(e) => setEditLabel(e.target.value)}
-                        className="dd-input"
-                      />
-                    ) : (
-                      <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{address.label}</p>
-                    )}
-                    <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{selectedAddressLabel || 'Saved location'}</p>
+                    <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{address.label}</p>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      {address.addressLine || 'Saved location'}
+                    </p>
                   </div>
                   {address.isDefault && <span className="shrink-0 status-badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">Default</span>}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {editingId === address._id ? (
-                    <>
-                      <button type="button" onClick={() => address._id && saveEdit(address._id)} disabled={actionId === address._id} className="btn-primary text-xs px-3 py-1.5 disabled:opacity-60">Save</button>
-                      <button type="button" onClick={cancelEdit} className="btn-secondary text-xs px-3 py-1.5">Cancel</button>
-                    </>
-                  ) : (
-                    <>
-                      <button type="button" onClick={() => startEdit(address)} className="btn-secondary text-xs px-3 py-1.5">Edit</button>
-                      {!address.isDefault && address._id && (
-                        <button type="button" onClick={() => { if (address._id) { void handleSetDefault(address._id); } }} disabled={actionId === address._id} className="btn-secondary text-xs px-3 py-1.5 text-emerald-600 border-emerald-200 dark:border-emerald-900/50 dark:text-emerald-400 disabled:opacity-60">Set default</button>
-                      )}
-                      {address._id && (
-                        <button type="button" onClick={() => { if (address._id) { void handleDelete(address._id); } }} disabled={actionId === address._id} className="btn-secondary text-xs px-3 py-1.5 text-rose-600 border-rose-200 dark:border-rose-900/50 dark:text-rose-400 disabled:opacity-60">Delete</button>
-                      )}
-                    </>
+                  <button type="button" onClick={() => startEdit(address)} className={`btn-secondary text-xs px-3 py-1.5 ${editingId === address._id ? 'border-emerald-500 text-emerald-500 font-semibold' : ''}`}>
+                    {editingId === address._id ? 'Editing...' : 'Edit'}
+                  </button>
+                  {!address.isDefault && address._id && (
+                    <button type="button" onClick={() => { if (address._id) { void handleSetDefault(address._id); } }} disabled={actionId === address._id} className="btn-secondary text-xs px-3 py-1.5 text-emerald-600 border-emerald-200 dark:border-emerald-900/50 dark:text-emerald-400 disabled:opacity-60">Set default</button>
+                  )}
+                  {address._id && (
+                    <button type="button" onClick={() => { if (address._id) { void handleDelete(address._id); } }} disabled={actionId === address._id} className="btn-secondary text-xs px-3 py-1.5 text-rose-600 border-rose-200 dark:border-rose-900/50 dark:text-rose-400 disabled:opacity-60">Delete</button>
                   )}
                 </div>
               </div>

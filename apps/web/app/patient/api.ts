@@ -54,6 +54,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export type PatientAddress = {
   _id?: string;
   label: string;
+  addressLine?: string;
   location: { type: 'Point'; coordinates: [number, number] };
   isDefault: boolean;
 };
@@ -93,6 +94,7 @@ export type UpdatePatientProfilePayload = {
 
 export type UpdateAddressPayload = {
   label?: string;
+  addressLine?: string;
   location?: { type: 'Point'; coordinates: [number, number] };
   isDefault?: boolean;
 };

@@ -8,6 +8,7 @@ export interface IPatientDocument extends mongoose.Document {
   addresses: Array<{
     _id?: mongoose.Types.ObjectId;
     label: string;
+    addressLine?: string;
     location: { type: 'Point'; coordinates: [number, number] };
     isDefault: boolean;
   }>;
@@ -27,6 +28,7 @@ const patientSchema = new Schema<IPatientDocument>(
     addresses: [
       {
         label: { type: String, required: true },
+        addressLine: { type: String },
         location: {
           type: {
             type: String,

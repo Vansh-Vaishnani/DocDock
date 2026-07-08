@@ -93,7 +93,7 @@ export default function VideoConsultation({
         ? (JSON.parse(localStorage.getItem('docdock-auth') || sessionStorage.getItem('docdock-auth') || '{}') as any)?.accessToken
         : null;
 
-    const SOCKET_BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
+    const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
     const socket = io(`${SOCKET_BASE}/notifications`, {
       transports: ['websocket', 'polling'],
       auth: { token }

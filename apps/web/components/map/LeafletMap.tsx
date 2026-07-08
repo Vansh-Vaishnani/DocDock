@@ -120,12 +120,25 @@ export default function LeafletMap({
     );
   }
 
-  const { MapContainer, TileLayer, Marker, Popup, useMapEvents } = leaflet;
+  const { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } = leaflet as any;
 
-  function MapEventsHandler(props: { onClick?: (lat: number, lng: number) => void }) {
+  function MapInstanceTracker({ onReady }: { onReady: (map: any) => void }) {
+    const map = useMap();
+    useEffect(() => {
+      if (map) {
+        onReady(map);
+      }
+    }, [map, onReady]);
+    return null;
+  }
+
+  function MapEventsHandler(props: { onClick?: (lat: number, lng: number) => void; onDblClick?: (lat: number, lng: number) => void }) {
     useMapEvents({
       click(e: any) {
         props.onClick?.(e.latlng.lat, e.latlng.lng);
+      },
+      dblclick(e: any) {
+        props.onDblClick?.(e.latlng.lat, e.latlng.lng);
       }
     });
     return null;
@@ -146,17 +159,21 @@ export default function LeafletMap({
       <MapContainer
         center={value ? [value.lat, value.lng] : [12.9716, 77.5946]}
         zoom={value ? 16 : 11}
+        doubleClickZoom={false}
         style={{ height: minHeight, width: '100%', borderRadius: 12 }}
-        whenCreated={(m: any) => {
-          mapRef.current = m;
-          setMapReady(true);
-        }}
       >
+        <MapInstanceTracker onReady={(m) => { mapRef.current = m; setMapReady(true); }} />
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
-        <MapEventsHandler onClick={async (lat, lng) => {
-          const label = await doReverse(lat, lng);
-          onChange?.(lat, lng, label);
-        }} />
+        <MapEventsHandler 
+          onClick={async (lat, lng) => {
+            const label = await doReverse(lat, lng);
+            onChange?.(lat, lng, label);
+          }} 
+          onDblClick={async (lat, lng) => {
+            const label = await doReverse(lat, lng);
+            onChange?.(lat, lng, label);
+          }} 
+        />
 
         {value && (
           <Marker position={[value.lat, value.lng]} icon={icon} draggable eventHandlers={{

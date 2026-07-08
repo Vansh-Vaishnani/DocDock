@@ -8,6 +8,7 @@ const locationSchema = z.object({
 export const addAddressSchema = z.object({
   body: z.object({
     label: z.string().min(3),
+    addressLine: z.string().optional(),
     location: locationSchema,
     isDefault: z.boolean().optional().default(false)
   })
@@ -19,6 +20,7 @@ export const updateAddressSchema = z.object({
   }),
   body: z.object({
     label: z.string().min(3).optional(),
+    addressLine: z.string().optional(),
     location: locationSchema.optional(),
     isDefault: z.boolean().optional()
   })

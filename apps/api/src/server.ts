@@ -57,6 +57,54 @@ app.get('/api/v1/docs/swagger.json', (req, res) => {
   res.json(swaggerSpec);
 });
 
+app.get('/api/v1/maps/search', async (req, res, next) => {
+  try {
+    const query = req.query.q;
+    if (!query) {
+      return res.json([]);
+    }
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(String(query))}`,
+      {
+        headers: {
+          'User-Agent': 'DocDock/1.0 (vanshvaishnani@gmail.com)'
+        }
+      }
+    );
+    if (!response.ok) {
+      return res.json([]);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/api/v1/maps/reverse', async (req, res, next) => {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      return res.json({ display_name: '' });
+    }
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+      {
+        headers: {
+          'User-Agent': 'DocDock/1.0 (vanshvaishnani@gmail.com)'
+        }
+      }
+    );
+    if (!response.ok) {
+      return res.json({ display_name: '' });
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/doctors', doctorRoutes);
 app.use('/api/v1/patients', authenticate, patientRoutes);

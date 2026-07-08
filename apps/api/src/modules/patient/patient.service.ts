@@ -23,6 +23,7 @@ export interface PatientProfileResponse {
   addresses: Array<{
     _id?: string;
     label: string;
+    addressLine?: string;
     location: { type: 'Point'; coordinates: [number, number] };
     isDefault: boolean;
   }>;
@@ -44,6 +45,7 @@ const formatProfile = (patient: IPatientDocument, user: { fullName: string; emai
   addresses: (patient.addresses ?? []).map((address) => ({
     _id: address._id?.toString(),
     label: address.label,
+    addressLine: address.addressLine,
     location: address.location,
     isDefault: address.isDefault
   }))

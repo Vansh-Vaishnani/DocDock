@@ -184,38 +184,34 @@ export class AppointmentService {
       return [];
     }
 
-    const parsedDate = new Date(`${date}T00:00:00`);
+    // Helper to get Date components in IST (UTC+5:30)
+    const getISTParts = (d: Date) => {
+      const istDate = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+      return {
+        year: istDate.getUTCFullYear(),
+        month: istDate.getUTCMonth() + 1,
+        date: istDate.getUTCDate(),
+        hours: istDate.getUTCHours(),
+        minutes: istDate.getUTCMinutes(),
+        day: istDate.getUTCDay()
+      };
+    };
+
+    const parsedDate = new Date(`${date}T00:00:00+05:30`);
     if (Number.isNaN(parsedDate.getTime())) {
       throw new ApiError('Invalid date', 400, 'VALIDATION_ERROR');
     }
-    // If the client requested slots for today's date, generate dynamic 1-hour slots
-    // for the next 24 hours starting from the next full hour. Otherwise, fall back
-    // to the legacy per-day slot generation using configured morning/evening windows.
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
-      now.getDate()
-    ).padStart(2, '0')}`;
 
-    // Helper to check if a given time (minutes since midnight) is within a slot range
-    const isWithinRange = (timeMinutes: number, rangeStart: string, rangeEnd: string, breakTime?: { start: string; end: string }) => {
-      const startM = parseTimeToMinutes(rangeStart);
-      const endM = parseTimeToMinutes(rangeEnd);
-      if (timeMinutes < startM || timeMinutes >= endM) return false;
-      if (breakTime) {
-        const bStart = parseTimeToMinutes(breakTime.start);
-        const bEnd = parseTimeToMinutes(breakTime.end);
-        if (timeMinutes >= bStart && timeMinutes < bEnd) return false;
-      }
-      return true;
-    };
+    const now = new Date();
+    const nowIST = getISTParts(now);
+    const todayStr = `${nowIST.year}-${String(nowIST.month).padStart(2, '0')}-${String(nowIST.date).padStart(2, '0')}`;
 
     if (date === todayStr) {
-      // Build 24 hourly slots for the calendar date (00:00 - 23:00)
-      const startOfDay = new Date(`${date}T00:00:00`);
+      // Build 24 hourly slots for the calendar date in IST (00:00 - 23:00)
+      const startOfDay = new Date(`${date}T00:00:00+05:30`);
       const slots: Date[] = [];
       for (let h = 0; h < 24; h++) {
-        const slot = new Date(startOfDay);
-        slot.setHours(h, 0, 0, 0);
+        const slot = new Date(startOfDay.getTime() + h * 60 * 60 * 1000);
         slots.push(slot);
       }
 
@@ -236,19 +232,19 @@ export class AppointmentService {
       // Count bookings per day to respect maxAppointmentsPerDay
       const bookingsPerDay = new Map<string, number>();
       existing.forEach((a) => {
-        const d = new Date(a.scheduledAt);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const dIST = getISTParts(new Date(a.scheduledAt));
+        const key = `${dIST.year}-${String(dIST.month).padStart(2, '0')}-${String(dIST.date).padStart(2, '0')}`;
         bookingsPerDay.set(key, (bookingsPerDay.get(key) ?? 0) + 1);
       });
 
       const result: string[] = [];
-      const nowHour = now.getHours();
       for (const slot of slots) {
-        // For today: show only slots whose start hour is >= current hour
-        if (slot.toDateString() === now.toDateString() && slot.getHours() < nowHour) continue;
+        const slotIST = getISTParts(slot);
+        // For today: show only slots whose start hour is >= current hour in IST
+        if (slotIST.hours < nowIST.hours) continue;
 
-        const dayKey = `${slot.getFullYear()}-${String(slot.getMonth() + 1).padStart(2, '0')}-${String(slot.getDate()).padStart(2, '0')}`;
-        const dayName = DAY_NAMES[slot.getDay()];
+        const dayKey = `${slotIST.year}-${String(slotIST.month).padStart(2, '0')}-${String(slotIST.date).padStart(2, '0')}`;
+        const dayName = DAY_NAMES[slotIST.day];
         if (!doctor.availability.workingDays.includes(dayName)) continue;
 
         // Respect per-day max appointments
@@ -258,7 +254,7 @@ export class AppointmentService {
         if (doctor.availability.breakTime) {
           const startM = parseTimeToMinutes(doctor.availability.breakTime.start);
           const endM = parseTimeToMinutes(doctor.availability.breakTime.end);
-          const slotMinutes = slot.getHours() * 60 + slot.getMinutes();
+          const slotMinutes = slotIST.hours * 60 + slotIST.minutes;
           if (slotMinutes >= startM && slotMinutes < endM) continue;
         }
 
@@ -269,23 +265,27 @@ export class AppointmentService {
 
       return result;
     }
+
     // For any non-today date (tomorrow or future), generate 24 hourly slots for that calendar date
-    const dayName = DAY_NAMES[parsedDate.getDay()];
+    const parsedDateIST = getISTParts(parsedDate);
+    const dayName = DAY_NAMES[parsedDateIST.day];
     if (!doctor.availability.workingDays.includes(dayName)) {
       return [];
     }
 
-    const startOfDay = new Date(`${date}T00:00:00`);
+    const startOfDay = new Date(`${date}T00:00:00+05:30`);
     const slots: Date[] = [];
     for (let h = 0; h < 24; h++) {
-      const slot = new Date(startOfDay);
-      slot.setHours(h, 0, 0, 0);
+      const slot = new Date(startOfDay.getTime() + h * 60 * 60 * 1000);
       slots.push(slot);
     }
 
+    const windowStart = slots[0];
+    const windowEnd = new Date(slots[slots.length - 1].getTime() + 60 * 60 * 1000 - 1);
+
     const bookedCount = await AppointmentModel.countDocuments({
       doctorId: doctor._id,
-      scheduledAt: { $gte: startOfDay, $lte: new Date(`${date}T23:59:59.999`) },
+      scheduledAt: { $gte: windowStart, $lte: windowEnd },
       status: { $nin: ['cancelled_by_patient', 'cancelled_by_doctor', 'rejected', 'auto_rejected'] }
     });
 
@@ -293,7 +293,7 @@ export class AppointmentService {
 
     const existing = await AppointmentModel.find({
       doctorId: doctor._id,
-      scheduledAt: { $gte: startOfDay, $lte: new Date(`${date}T23:59:59.999`) },
+      scheduledAt: { $gte: windowStart, $lte: windowEnd },
       status: { $nin: ['cancelled_by_patient', 'cancelled_by_doctor', 'rejected', 'auto_rejected'] }
     })
       .select('scheduledAt')
@@ -303,11 +303,13 @@ export class AppointmentService {
 
     const result: string[] = [];
     for (const slot of slots) {
-      const dayKey = `${slot.getFullYear()}-${String(slot.getMonth() + 1).padStart(2, '0')}-${String(slot.getDate()).padStart(2, '0')}`;
+      const slotIST = getISTParts(slot);
+      const dayKey = `${slotIST.year}-${String(slotIST.month).padStart(2, '0')}-${String(slotIST.date).padStart(2, '0')}`;
+      
       // Respect per-day max appointments
       if ((existing.filter((a) => {
-        const d = new Date(a.scheduledAt);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const dIST = getISTParts(new Date(a.scheduledAt));
+        const key = `${dIST.year}-${String(dIST.month).padStart(2, '0')}-${String(dIST.date).padStart(2, '0')}`;
         return key === dayKey;
       }).length) >= doctor.availability.maxAppointmentsPerDay) continue;
 
@@ -315,7 +317,7 @@ export class AppointmentService {
       if (doctor.availability.breakTime) {
         const startM = parseTimeToMinutes(doctor.availability.breakTime.start);
         const endM = parseTimeToMinutes(doctor.availability.breakTime.end);
-        const slotMinutes = slot.getHours() * 60 + slot.getMinutes();
+        const slotMinutes = slotIST.hours * 60 + slotIST.minutes;
         if (slotMinutes >= startM && slotMinutes < endM) continue;
       }
 
@@ -799,7 +801,7 @@ export class AppointmentService {
         throw new ApiError('Doctor not available for booking', 404, 'DOCTOR_NOT_AVAILABLE');
       }
 
-      const scheduledAt = new Date(`${bookingPayload.appointmentDate}T${bookingPayload.appointmentTime}:00`);
+      const scheduledAt = new Date(`${bookingPayload.appointmentDate}T${bookingPayload.appointmentTime}:00+05:30`);
       if (Number.isNaN(scheduledAt.getTime())) {
         throw new ApiError('Invalid scheduled time', 400, 'VALIDATION_ERROR');
       }
@@ -1220,11 +1222,11 @@ export class AppointmentService {
 
   async checkOnlineTimeouts() {
     try {
-      const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+      const twoHoursAgo = new Date(Date.now() - 120 * 60 * 1000);
       const expiredAppointments = await AppointmentModel.find({
         consultationMode: 'online',
         status: { $in: ['accepted', 'pending'] },
-        scheduledAt: { $lt: thirtyMinutesAgo }
+        scheduledAt: { $lt: twoHoursAgo }
       });
 
       if (expiredAppointments.length === 0) return;

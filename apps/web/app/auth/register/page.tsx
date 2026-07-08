@@ -68,6 +68,19 @@ export default function RegisterPage() {
     return `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'}/auth/google?redirect=${encodeURIComponent(current)}`;
   }, []);
 
+  const [isWarming, setIsWarming] = useState(false);
+
+  const handleGoogleLogin = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isWarming) return;
+    setIsWarming(true);
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'}/health`).catch(() => {});
+    } finally {
+      window.location.href = oauthUrl;
+    }
+  };
+
   const password = watch('password') || '';
   const passwordStrength = password.length === 0 ? 0 : password.length < 8 ? 1 : password.length < 12 ? 2 : 3;
   const strengthLabel = ['', 'Weak', 'Good', 'Strong'];
@@ -75,6 +88,15 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      {isWarming && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="dd-card max-w-xs p-6 text-center shadow-xl animate-scale-in flex flex-col items-center gap-4" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Connecting to secure servers...</p>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Waking up authentication servers. This may take a few seconds on first load.</p>
+          </div>
+        </div>
+      )}
       {/* ── Left branding panel ────────────────── */}
       <div
         className="hidden lg:flex lg:w-[42%] flex-col justify-between p-10 xl:p-14"
@@ -168,8 +190,9 @@ export default function RegisterPage() {
             </div>
 
             {/* Google OAuth */}
-            <a
-              href={oauthUrl}
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
               className="flex w-full items-center justify-center gap-3 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all hover:bg-slate-50 dark:hover:bg-slate-800 mb-5"
               style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
             >
@@ -180,7 +203,7 @@ export default function RegisterPage() {
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
               </svg>
               Continue with Google
-            </a>
+            </button>
 
             <div className="mb-5 flex items-center gap-3">
               <div className="h-px flex-1" style={{ backgroundColor: 'var(--border-color)' }} />

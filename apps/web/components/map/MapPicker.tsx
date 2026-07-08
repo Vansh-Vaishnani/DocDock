@@ -66,14 +66,9 @@ export default function MapPicker({
     }).catch(() => setIcon(undefined));
   }, []);
 
-  const centerMap = (lat: number, lng: number, zoom = 16) => {
-    if (!mapRef.current || !mapReady) return;
-    try {
-      mapRef.current.flyTo([lat, lng], zoom, { duration: 1.1, easeLinearity: 0.25 });
-    } catch {
-      try {
-        mapRef.current.setView([lat, lng], zoom);
-      } catch {}
+  const centerMap = (lat: number, lng: number, zoomLevel?: number) => {
+    if (mapRef.current && mapReady) {
+      mapRef.current.flyTo([lat, lng], zoomLevel || 16, { animate: true, duration: 0.8 });
     }
   };
 
@@ -88,17 +83,6 @@ export default function MapPicker({
     setSearchText(resolvedLabel);
     onChange?.(lat, lng, resolvedLabel);
     centerMap(lat, lng, 16);
-  };
-
-  const lastPanTime = useRef<number>(0);
-  const handleMouseMove = (lat: number, lng: number) => {
-    const now = Date.now();
-    if (now - lastPanTime.current > 150) {
-      lastPanTime.current = now;
-      if (mapRef.current) {
-        mapRef.current.panTo([lat, lng], { animate: true, duration: 0.6 });
-      }
-    }
   };
 
   const handleUseCurrentLocation = () => {
@@ -118,15 +102,25 @@ export default function MapPicker({
     return <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-6 text-center text-sm text-slate-600">Loading map...</div>;
   }
 
-  const { MapContainer, TileLayer, Marker, Popup, useMapEvents } = leaflet;
+  const { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } = leaflet as any;
 
-  function MapEventsHandler(props: { onClick?: (lat: number, lng: number) => void; onMouseMove?: (lat: number, lng: number) => void }) {
+  function MapInstanceTracker({ onReady }: { onReady: (map: any) => void }) {
+    const map = useMap();
+    useEffect(() => {
+      if (map) {
+        onReady(map);
+      }
+    }, [map, onReady]);
+    return null;
+  }
+
+  function MapEventsHandler(props: { onClick?: (lat: number, lng: number) => void; onDblClick?: (lat: number, lng: number) => void }) {
     useMapEvents({
       click(e: any) {
         props.onClick?.(e.latlng.lat, e.latlng.lng);
       },
-      mousemove(e: any) {
-        props.onMouseMove?.(e.latlng.lat, e.latlng.lng);
+      dblclick(e: any) {
+        props.onDblClick?.(e.latlng.lat, e.latlng.lng);
       }
     });
     return null;
@@ -149,16 +143,17 @@ export default function MapPicker({
       <MapContainer
         center={value ? [value.lat, value.lng] : initialCenter}
         zoom={value ? 16 : initialZoom}
+        doubleClickZoom={false}
         style={{ height: minHeight, width: '100%' }}
-        whenCreated={(mapInstance: any) => {
+      >
+        <MapInstanceTracker onReady={(mapInstance: any) => {
           mapRef.current = mapInstance;
           setMapReady(true);
-        }}
-      >
+        }} />
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
         <MapEventsHandler 
           onClick={(lat, lng) => { void handleSelection(lat, lng); }} 
-          onMouseMove={handleMouseMove}
+          onDblClick={(lat, lng) => { void handleSelection(lat, lng); }} 
         />
         {value && (
           <Marker
@@ -166,11 +161,6 @@ export default function MapPicker({
             icon={icon}
             draggable
             eventHandlers={{
-              drag: (event: any) => {
-                const lat = event.target.getLatLng().lat;
-                const lng = event.target.getLatLng().lng;
-                mapRef.current?.panTo([lat, lng], { animate: true, duration: 0.1 });
-              },
               dragend: async (event: any) => {
                 const lat = event.target.getLatLng().lat;
                 const lng = event.target.getLatLng().lng;

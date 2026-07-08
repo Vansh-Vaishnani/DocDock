@@ -8,7 +8,7 @@ import { createOrUpdatePrescription, fetchDoctorAppointments, fetchDoctorProfile
 import ChatSection from '../../../components/ChatSection';
 import VideoConsultation from '../../../components/VideoConsultation';
 
-const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
+const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
 
 const getStoredAccessToken = (): string | null => {
   if (typeof window === 'undefined') return null;
