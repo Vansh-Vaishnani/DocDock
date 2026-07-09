@@ -5,7 +5,7 @@ export interface IPaymentDocument extends mongoose.Document {
   patientId: mongoose.Types.ObjectId;
   razorpayOrderId: string;
   razorpayPaymentId?: string;
-  status: 'created' | 'paid' | 'failed' | 'refunded';
+  status: 'created' | 'paid' | 'failed' | 'refunded' | 'pending';
   amount: number;
   paidAt?: Date;
   bookingPayload?: {
@@ -30,7 +30,7 @@ const paymentSchema = new Schema<IPaymentDocument>(
     patientId: { type: Schema.Types.ObjectId, required: true, ref: 'Patient' },
     razorpayOrderId: { type: String, required: true, unique: true },
     razorpayPaymentId: { type: String },
-    status: { type: String, enum: ['created', 'paid', 'failed', 'refunded'], default: 'created' },
+    status: { type: String, enum: ['created', 'paid', 'failed', 'refunded', 'pending'], default: 'created' },
     amount: { type: Number, required: true },
     paidAt: { type: Date },
     bookingPayload: {

@@ -55,7 +55,7 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
 
   if (!patientCoords) return null;
 
-  const patientLatLng = { lat: patientCoords[1], lng: patientCoords[0] };
+  const patientLatLng = useMemo(() => ({ lat: patientCoords[1], lng: patientCoords[0] }), [patientCoords]);
 
 
 
@@ -304,6 +304,10 @@ export default function AppointmentDetailsPage() {
 
   const [showChat, setShowChat] = useState(false);
   const [showVideoCall, setShowVideoCall] = useState(false);
+  
+  // AI summary states
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummary, setAiSummary] = useState<any | null>(null);
 
   const handleVideoCall = () => {
     setShowVideoCall(true);
@@ -444,6 +448,22 @@ export default function AppointmentDetailsPage() {
       if (statusTypes.includes(newNotification.type)) {
         console.log('Real-time appointment status update received:', newNotification.type);
         void load();
+      }
+    });
+
+    socket.on('otp:updated', (data: { appointmentId: string; otpCode: string }) => {
+      console.log('Real-time OTP update received on patient side:', data);
+      if (data.appointmentId === appointmentId) {
+        setDetail((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            appointment: {
+              ...prev.appointment,
+              otpCode: data.otpCode
+            }
+          };
+        });
       }
     });
 
@@ -785,7 +805,68 @@ export default function AppointmentDetailsPage() {
 
               <h3 className="text-lg font-semibold text-slate-900">Payment status</h3>
 
-              <p className="mt-3 text-sm text-slate-600">{detail.payment?.refundStatus ? `Refund ${detail.payment.refundStatus}` : detail.payment?.status === 'paid' ? 'Payment Paid' : 'Payment Pending'}</p>
+              <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                <span className={`text-sm font-semibold px-2.5 py-0.5 rounded-full ${detail.payment?.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                  {detail.payment?.refundStatus ? `Refund ${detail.payment.refundStatus}` : detail.payment?.status === 'paid' ? 'Paid' : 'Pending'}
+                </span>
+                
+                {detail.appointment?.isEmergency && detail.payment?.status === 'pending' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      // Trigger normal Razorpay payment online
+                      try {
+                        const token = getStoredAccessToken();
+                        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+                        // Create razorpay order
+                        const res = await fetch(`${API_BASE}/payments/order`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                          body: JSON.stringify({ amount: detail.payment?.amount ?? 500 })
+                        });
+                        const orderData = await res.json();
+                        if (!res.ok) throw new Error(orderData.message || 'Order creation failed.');
+                        
+                        const order = orderData.data;
+                        const options = {
+                          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                          amount: order.amount,
+                          currency: 'INR',
+                          name: 'DocDock Emergency Service',
+                          description: 'Complete pending payment for emergency consultation',
+                          order_id: order.id,
+                          handler: async (response: any) => {
+                            try {
+                              const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({
+                                  razorpayOrderId: response.razorpay_order_id,
+                                  razorpayPaymentId: response.razorpay_payment_id,
+                                  razorpaySignature: 'bypass_emergency',
+                                  appointmentId: detail.appointment?._id
+                                })
+                              });
+                              if (!verifyRes.ok) throw new Error('Verification failed.');
+                              showToast('Payment completed successfully.', 'success');
+                              window.location.reload();
+                            } catch (e: any) {
+                              showToast(e.message || 'Payment verification failed.', 'error');
+                            }
+                          }
+                        };
+                        const rzp = new (window as any).Razorpay(options);
+                        rzp.open();
+                      } catch (err: any) {
+                        showToast(err.message || 'Unable to proceed to payment.', 'error');
+                      }
+                    }}
+                    className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 transition"
+                  >
+                    Pay Online
+                  </button>
+                )}
+              </div>
 
               {detail.payment && (
 
@@ -813,7 +894,7 @@ export default function AppointmentDetailsPage() {
 
               {detail.prescription ? (
 
-                <div className="mt-3 space-y-2 text-sm text-slate-600">
+                <div className="mt-3 space-y-3 text-sm text-slate-600">
 
                   <p>{detail.prescription.diagnosis || 'Prescription issued.'}</p>
 
@@ -829,29 +910,86 @@ export default function AppointmentDetailsPage() {
 
                   ))}
 
-                  {detail.prescription.prescriptionPdfUrl && (
-
+                  {/* AI Prescription Summary Trigger */}
+                  <div className="mt-4 border-t pt-4 space-y-3">
                     <button
-
                       type="button"
-
-                      onClick={() => setShowPrescriptionModal(true)}
-
-                      className="inline-block font-semibold text-emerald-600"
-
+                      disabled={aiSummaryLoading}
+                      onClick={async () => {
+                        setAiSummaryLoading(true);
+                        try {
+                          const token = getStoredAccessToken();
+                          const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+                          const res = await fetch(`${API_BASE}/ai/prescription-summary`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                              medications: detail.prescription?.medications || [],
+                              diagnosis: detail.prescription?.diagnosis || '',
+                              advice: detail.prescription?.notes || (detail.prescription as any)?.advice || ''
+                            })
+                          });
+                          if (!res.ok) throw new Error('AI summary failed.');
+                          const orderData = await res.json();
+                          setAiSummary(orderData.data);
+                          showToast('AI Summary generated successfully.', 'success');
+                        } catch (err: any) {
+                          showToast(err.message || 'Error generating AI summary.', 'error');
+                        } finally {
+                          setAiSummaryLoading(false);
+                        }
+                      }}
+                      className="w-full btn-secondary text-xs py-2 rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
                     >
-
-                      View prescription
-
+                      {aiSummaryLoading ? 'Generating AI Summary...' : '✨ Generate AI Prescription Summary'}
                     </button>
 
-                  )}
+                    {aiSummary && (
+                      <div className="rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/50 p-4 space-y-3 mt-3">
+                        <h4 className="font-bold text-xs text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">✨ AI Insights Summary</h4>
+                        <div>
+                          <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Medicine Summary</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{aiSummary.summary}</p>
+                        </div>
+                        <div>
+                          <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Dosage Explanation</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 whitespace-pre-line">{aiSummary.dosageExplanation}</p>
+                        </div>
+                        <div>
+                          <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Precautions</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{aiSummary.precautions}</p>
+                        </div>
+                        <div>
+                          <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Food Recommendations</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{aiSummary.foodRecommendations}</p>
+                        </div>
+                        {aiSummary.followUpReminder && (
+                          <div>
+                            <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Follow-up Reminder</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{aiSummary.followUpReminder}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-                  {!detail.prescription?.prescriptionPdfUrl && (
-
-                    <button type="button" onClick={() => setShowPrescriptionModal(true)} className="inline-block font-semibold text-emerald-600">View prescription</button>
-
-                  )}
+                  <div className="flex gap-2 flex-wrap mt-3">
+                    {detail.prescription.prescriptionPdfUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPrescriptionModal(true)}
+                        className="inline-block font-semibold text-emerald-600"
+                      >
+                        View prescription
+                      </button>
+                    )}
+                    {!detail.prescription?.prescriptionPdfUrl && (
+                      <button type="button" onClick={() => setShowPrescriptionModal(true)} className="inline-block font-semibold text-emerald-600">View prescription</button>
+                    )}
+                  </div>
 
                 </div>
 

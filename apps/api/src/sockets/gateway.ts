@@ -45,6 +45,21 @@ export const initializeSocketServer = (server: HttpServer): SocketIOServer => {
     socket.on('message:send', (payload: { roomId: string; message: any }) => {
       if (payload.roomId) {
         io.of('/chat').to(payload.roomId).emit('message:receive', payload.message);
+
+        try {
+          const parts = payload.roomId.split(':');
+          if (parts.length >= 3) {
+            const [appointmentId, patientId, doctorId] = parts;
+            const recipientId = payload.message.senderRole === 'patient' ? doctorId : patientId;
+            io.of('/notifications').to(recipientId).emit('chat:message_received', {
+              roomId: payload.roomId,
+              appointmentId,
+              message: payload.message
+            });
+          }
+        } catch (err) {
+          console.error('[Socket Chat] Failed to send chat notification:', err);
+        }
       }
     });
 
@@ -111,11 +126,14 @@ export const initializeSocketServer = (server: HttpServer): SocketIOServer => {
       });
     });
 
-    socket.on('call:hangup', (payload: { appointmentId: string; targetId: string }) => {
+    socket.on('call:hangup', (payload: { appointmentId: string; to?: string; targetId?: string }) => {
+      const target = payload.to || payload.targetId;
       console.log(`[Socket Call] Hangup: call for appt ${payload.appointmentId} ended`);
-      socket.to(payload.targetId).emit('call:hungup', {
-        appointmentId: payload.appointmentId
-      });
+      if (target) {
+        socket.to(target).emit('call:hungup', {
+          appointmentId: payload.appointmentId
+        });
+      }
     });
 
     socket.on('webrtc:signal', (payload: { appointmentId: string; to: string; signalData: any }) => {

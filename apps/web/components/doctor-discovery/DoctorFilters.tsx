@@ -1,4 +1,4 @@
-const COMMON_SPECIALIZATIONS = [
+export const COMMON_SPECIALIZATIONS = [
   'General Physician',
   'Cardiology',
   'Dermatology',
@@ -78,29 +78,35 @@ export function DoctorFilters({ values, onChange, onApply, onReset }: DoctorFilt
 
 
         <label className="text-sm font-medium text-slate-700">
-
           <span className="mb-2 block">Specialty</span>
-
           <select
-
-            value={values.specialization}
-
-            onChange={(event) => onChange({ specialization: event.target.value })}
-
+            value={COMMON_SPECIALIZATIONS.includes(values.specialization) || values.specialization === "" ? values.specialization : "Other"}
+            onChange={(event) => {
+              const val = event.target.value;
+              if (val === "Other") {
+                onChange({ specialization: "Other" });
+              } else {
+                onChange({ specialization: val });
+              }
+            }}
             className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-slate-500"
-
           >
-
             <option value="">All specialties</option>
-
             {COMMON_SPECIALIZATIONS.map((spec) => (
               <option key={spec} value={spec}>
                 {spec}
               </option>
             ))}
-
+            <option value="Other">Other</option>
           </select>
-
+          { (values.specialization === "Other" || (!COMMON_SPECIALIZATIONS.includes(values.specialization) && values.specialization !== "")) && (
+            <input
+              value={values.specialization === "Other" ? "" : values.specialization}
+              onChange={(event) => onChange({ specialization: event.target.value })}
+              placeholder="Enter custom specialization"
+              className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 outline-none ring-0 focus:border-slate-500 text-sm"
+            />
+          )}
         </label>
 
 

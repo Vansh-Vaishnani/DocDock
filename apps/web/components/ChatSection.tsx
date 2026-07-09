@@ -111,6 +111,9 @@ export default function ChatSection({
     socket.on('connect', () => {
       socket.emit('join', { roomId, userId });
       socket.emit('message:read', { roomId, userId });
+      window.dispatchEvent(new CustomEvent('docdock:read_messages', {
+        detail: { appointmentId }
+      }));
     });
 
     socket.on('user:online', (payload: { userId: string }) => {
@@ -266,7 +269,7 @@ export default function ChatSection({
   };
 
   return (
-    <div className="flex flex-col h-[550px] w-full rounded-3xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+    <div className="flex flex-col h-[420px] sm:h-[550px] w-full rounded-3xl border border-slate-200 bg-white shadow-lg overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-4">
         <div>

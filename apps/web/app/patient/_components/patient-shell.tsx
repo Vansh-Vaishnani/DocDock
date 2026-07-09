@@ -2,11 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState, useEffect, useCallback } from 'react';
+import { io } from 'socket.io-client';
+import { fetchPatientAppointments } from '../api';
 
 import { useAuth } from '../../auth/auth-context';
 import NotificationBell from '@/components/NotificationBell';
 import { DarkModeToggle } from '../../theme-context';
+import { AIAssistantChat } from '@/components/ai/AIAssistantChat';
 
 // ─── Icons ───────────────────────────────────────────────────
 function Icon({ path, size = 18 }: { path: string; size?: number }) {
@@ -28,10 +31,14 @@ const ICONS: Record<string, string> = {
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9',
   menu: 'M3 12h18M3 6h18M3 18h18',
   close: 'M18 6L6 18M6 6l12 12',
+  ai_symptom: 'M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44L2.18 12a2.5 2.5 0 0 1 2.32-3.66H7v-4A2.5 2.5 0 0 1 9.5 2z M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44L21.82 12a2.5 2.5 0 0 0-2.32-3.66H17v-4A2.5 2.5 0 0 0 14.5 2z',
+  ai_chat: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
 };
 
 const navItems = [
   { href: '/patient/dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { href: '/patient/ai-symptom-checker', label: 'AI Symptom Checker', icon: 'ai_symptom' },
+  { href: '/patient/ai-assistant', label: 'AI Assistant Chat', icon: 'ai_chat' },
   { href: '/patient/appointments', label: 'Appointments', icon: 'appointments' },
   { href: '/patient/profile', label: 'Profile', icon: 'profile' },
   { href: '/patient/addresses', label: 'Addresses', icon: 'addresses' },
@@ -76,24 +83,29 @@ function Avatar({ name, role }: { name: string; role: string }) {
   );
 }
 
-// ─── Sidebar Nav Item ─────────────────────────────────────────
-function NavItem({ href, label, icon, isActive, onClick }: {
+function NavItem({ href, label, icon, isActive, onClick, badgeCount }: {
   href: string;
   label: string;
   icon: string;
   isActive: boolean;
   onClick?: () => void;
+  badgeCount?: number;
 }) {
   return (
     <Link
       href={href}
       onClick={onClick}
-      className={`nav-link ${isActive ? 'active' : ''}`}
+      className={`nav-link ${isActive ? 'active' : ''} relative`}
     >
       <span className="flex-shrink-0">
         <Icon path={ICONS[icon]} size={17} />
       </span>
       <span className="flex-1 truncate">{label}</span>
+      {badgeCount !== undefined && badgeCount > 0 && (
+        <span className="ml-2 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">
+          {badgeCount}
+        </span>
+      )}
       {isActive && (
         <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-white opacity-80" />
       )}
@@ -106,6 +118,80 @@ export function PatientShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showAIDrawer, setShowAIDrawer] = useState(false);
+  const [appointmentUnreadCounts, setAppointmentUnreadCounts] = useState<Record<string, number>>({});
+
+  const totalUnread = useMemo(() => {
+    return Object.values(appointmentUnreadCounts).reduce((acc, curr) => acc + curr, 0);
+  }, [appointmentUnreadCounts]);
+
+  const loadUnreadCounts = useCallback(async () => {
+    try {
+      const appointmentsList = await fetchPatientAppointments('all');
+      const counts: Record<string, number> = {};
+      appointmentsList.forEach((appt: any) => {
+        counts[appt._id] = appt.unreadMessageCount || 0;
+      });
+      setAppointmentUnreadCounts(counts);
+    } catch (err) {
+      console.error('Failed to load initial unread counts:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadUnreadCounts();
+  }, [loadUnreadCounts]);
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+    if (!raw) return;
+    let token = '';
+    let userId = '';
+    try {
+      const parsed = JSON.parse(raw);
+      token = parsed.accessToken || '';
+      userId = parsed.user?._id || '';
+    } catch (e) {
+      return;
+    }
+    if (!token || !userId) return;
+
+    const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
+    const socket = io(`${SOCKET_BASE}/notifications`, {
+      transports: ['websocket', 'polling'],
+      auth: { token }
+    });
+
+    socket.on('connect', () => {
+      socket.emit('join', userId);
+    });
+
+    socket.on('chat:message_received', (data: { roomId: string; appointmentId: string; message: any }) => {
+      if (pathname.includes(`/patient/appointments/${data.appointmentId}`)) {
+        return;
+      }
+      setAppointmentUnreadCounts((prev) => ({
+        ...prev,
+        [data.appointmentId]: (prev[data.appointmentId] || 0) + 1
+      }));
+    });
+
+    const handleReadMessages = (e: Event) => {
+      const { appointmentId } = (e as CustomEvent).detail || {};
+      if (appointmentId) {
+        setAppointmentUnreadCounts((prev) => ({
+          ...prev,
+          [appointmentId]: 0
+        }));
+      }
+    };
+    window.addEventListener('docdock:read_messages', handleReadMessages);
+
+    return () => {
+      socket.disconnect();
+      window.removeEventListener('docdock:read_messages', handleReadMessages);
+    };
+  }, [pathname]);
 
   const activeItem = useMemo(() => {
     return navItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ?? navItems[0];
@@ -138,6 +224,7 @@ export function PatientShell({ children }: { children: ReactNode }) {
             icon={item.icon}
             isActive={activeItem.href === item.href}
             onClick={() => setMobileOpen(false)}
+            badgeCount={item.href === '/patient/appointments' ? totalUnread : undefined}
           />
         ))}
       </nav>
@@ -209,10 +296,13 @@ export function PatientShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg lg:hidden transition-all hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="flex h-8 w-8 items-center justify-center rounded-lg lg:hidden transition-all hover:bg-slate-100 dark:hover:bg-slate-800 relative"
               aria-label="Toggle menu"
             >
               <Icon path={mobileOpen ? ICONS.close : ICONS.menu} size={18} />
+              {totalUnread > 0 && !mobileOpen && (
+                <span className="absolute -top-1 -right-1 flex h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white animate-pulse" />
+              )}
             </button>
             <div className="hidden sm:block">
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{activeItem.label}</p>
@@ -226,6 +316,9 @@ export function PatientShell({ children }: { children: ReactNode }) {
 
           {/* Right: actions */}
           <div className="flex items-center gap-1.5">
+            <Link href="/patient/ai-assistant" className="lg:hidden flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-400">
+              ✨ AI Assistant
+            </Link>
             <DarkModeToggle />
             <NotificationBell />
           </div>
@@ -235,6 +328,45 @@ export function PatientShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Floating AI Assistant Button (Desktop only) */}
+      <button
+        onClick={() => setShowAIDrawer(!showAIDrawer)}
+        className="hidden lg:flex fixed bottom-6 right-6 z-50 h-14 w-14 items-center justify-center rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 group"
+        aria-label="Ask AI Assistant"
+      >
+        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-bold animate-bounce">New</span>
+        <span className="h-6 w-6 group-hover:rotate-12 transition-transform duration-300 flex items-center justify-center text-lg">✨</span>
+      </button>
+
+      {/* Slide-out AI Panel (Desktop only) */}
+      {showAIDrawer && (
+        <>
+          <div
+            className="hidden lg:block fixed inset-0 z-40 bg-black/10 backdrop-blur-[1px]"
+            onClick={() => setShowAIDrawer(false)}
+          />
+          <div
+            className="hidden lg:flex fixed top-0 right-0 z-50 h-full w-[400px] flex-col border-l bg-white shadow-2xl p-4"
+            style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
+          >
+            <div className="flex items-center justify-between border-b pb-3 mb-4" style={{ borderColor: 'var(--border-color)' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">✨</span>
+                <h3 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>DocDock AI Assistant</h3>
+              </div>
+              <button
+                onClick={() => setShowAIDrawer(false)}
+                className="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <Icon path={ICONS.close} size={18} />
+              </button>
+            </div>
+            <AIAssistantChat containerHeight="flex-1" showTitleCard={false} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

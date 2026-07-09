@@ -17,6 +17,8 @@ import { smsService } from '../../services/sms.service';
 import { AppointmentOtpModel } from './otp.model';
 import { CallLogModel } from './call.model';
 import { voiceService } from '../../services/voice.service';
+import { getIO } from '../../sockets/gateway';
+import { ChatMessageModel } from '../chat/chat.model';
 
 const notificationService = new NotificationService();
 const paymentService = new PaymentService();
@@ -429,9 +431,21 @@ export class AppointmentService {
       ])
     );
 
+    const unreadMessages = await ChatMessageModel.find({
+      roomId: { $in: appointments.map((a) => `${a._id}:${userId}:${a.doctorId}`) },
+      senderRole: 'doctor',
+      isRead: false
+    }).lean();
+
+    const countMap: Record<string, number> = {};
+    unreadMessages.forEach((msg) => {
+      countMap[msg.roomId] = (countMap[msg.roomId] || 0) + 1;
+    });
+
     return appointments.map((appt) => {
       const doctor = doctorMap.get(appt.doctorId.toString());
       const payment = paymentMap.get(appt._id.toString());
+      const rId = `${appt._id}:${userId}:${appt.doctorId}`;
       return {
         _id: appt._id,
         scheduledAt: appt.scheduledAt,
@@ -442,12 +456,13 @@ export class AppointmentService {
         doctorId: appt.doctorId,
         doctorName: doctor?.doctorName ?? 'Doctor',
         specialization: doctor?.specialization ?? '',
-        consultationFee: doctor?.consultationFee ?? 0
-        ,
+        consultationFee: doctor?.consultationFee ?? 0,
         rejectionReason: (appt as any).rejectionReason ?? null,
         paymentStatus: payment?.status ?? null,
         refundStatus: (payment as any)?.refundStatus ?? null,
-        consultationMode: appt.consultationMode
+        consultationMode: appt.consultationMode,
+        unreadMessageCount: countMap[rId] || 0,
+        isEmergency: appt.isEmergency || false
       };
     });
   }
@@ -832,8 +847,10 @@ export class AppointmentService {
     }
 
     const payment = await PaymentModel.findOne({ appointmentId: appointment._id });
-    if (!payment || payment.status !== 'paid') {
-      throw new ApiError('Appointment payment is still pending', 400, 'PAYMENT_REQUIRED');
+    if (!appointment.isEmergency) {
+      if (!payment || payment.status !== 'paid') {
+        throw new ApiError('Appointment payment is still pending', 400, 'PAYMENT_REQUIRED');
+      }
     }
 
     appointment.status = 'pending';
@@ -844,14 +861,17 @@ export class AppointmentService {
       const doctor = await DoctorModel.findById(appointment.doctorId);
       const doctorUserId = doctor?.userId?.toString();
 
+      const payAmount = payment?.amount ?? 500;
+      const payId = payment?._id?.toString() ?? 'emergency';
+
       // 1. Patient: Payment successful
       await notificationService.createNotification({
         userId: appointment.patientId.toString(),
         type: 'payment_successful',
         title: 'Payment successful',
-        message: `Your payment of ₹${payment.amount} for your appointment was successful.`,
+        message: `Your payment of ₹${payAmount} for your appointment was successful.`,
         channel: 'in_app',
-        metadata: { appointmentId: appointment._id.toString(), paymentId: payment._id.toString() }
+        metadata: { appointmentId: appointment._id.toString(), paymentId: payId }
       });
 
       // 2. Patient: Appointment booked
@@ -870,9 +890,9 @@ export class AppointmentService {
           userId: doctorUserId,
           type: 'payment_received',
           title: 'Payment received',
-          message: `You received a payment of ₹${payment.amount} for a new appointment.`,
+          message: `You received a payment of ₹${payAmount} for a new appointment.`,
           channel: 'in_app',
-          metadata: { appointmentId: appointment._id.toString(), paymentId: payment._id.toString() }
+          metadata: { appointmentId: appointment._id.toString(), paymentId: payId }
         });
 
         // 4. Doctor: New appointment request
@@ -1042,6 +1062,24 @@ export class AppointmentService {
           await smsService.sendOtpSms(patientUser.phone, otp);
         }
         logOtpEvent(appointment._id.toString(), 'OTP_GENERATED', { expiresAt });
+
+        try {
+          const io = getIO();
+          io.of('/notifications').to(appointment.patientId.toString()).emit('otp:updated', {
+            appointmentId: appointment._id.toString(),
+            otpCode: otp
+          });
+          const doc = await DoctorModel.findById(appointment.doctorId).lean();
+          const docUserId = doc?.userId?.toString();
+          if (docUserId) {
+            io.of('/notifications').to(docUserId).emit('otp:updated', {
+              appointmentId: appointment._id.toString(),
+              otpCode: otp
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to emit otp:updated:', e);
+        }
       } else {
         appointment.status = status;
         await appointment.save();
@@ -1133,6 +1171,25 @@ export class AppointmentService {
       await smsService.sendOtpSms(patientUser.phone, otp);
     }
     logOtpEvent(appointment._id.toString(), 'OTP_RESENT', { expiresAt });
+
+    try {
+      const io = getIO();
+      io.of('/notifications').to(appointment.patientId.toString()).emit('otp:updated', {
+        appointmentId: appointment._id.toString(),
+        otpCode: otp
+      });
+      const doc = await DoctorModel.findById(appointment.doctorId).lean();
+      const docUserId = doc?.userId?.toString();
+      if (docUserId) {
+        io.of('/notifications').to(docUserId).emit('otp:updated', {
+          appointmentId: appointment._id.toString(),
+          otpCode: otp
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to emit otp:updated:', e);
+    }
+
     return { success: true, message: 'OTP resent successfully.' };
   }
 
@@ -1279,6 +1336,30 @@ export class AppointmentService {
     } catch (err) {
       console.error('[Timeout Check] Error checking online timeouts:', err);
     }
+  }
+
+  async collectCashPayment(appointmentId: string, userId: string) {
+    const appointment = await AppointmentModel.findById(appointmentId);
+    if (!appointment) {
+      throw new ApiError('Appointment not found', 404, 'APPOINTMENT_NOT_FOUND');
+    }
+    
+    // Check doctor access
+    const doctor = await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(userId) });
+    if (!doctor || appointment.doctorId.toString() !== doctor._id.toString()) {
+      throw new ApiError('Forbidden', 403, 'FORBIDDEN');
+    }
+
+    const payment = await PaymentModel.findOne({ appointmentId: appointment._id });
+    if (!payment) {
+      throw new ApiError('Payment record not found', 404, 'PAYMENT_NOT_FOUND');
+    }
+
+    payment.status = 'paid';
+    payment.paidAt = new Date();
+    await payment.save();
+
+    return { success: true, paymentStatus: 'paid' };
   }
 }
 

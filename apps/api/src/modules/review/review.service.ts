@@ -63,7 +63,7 @@ export class ReviewService {
       .sort({ [sort]: order === 'asc' ? 1 : -1 })
       .skip((page - 1) * limit)
       .limit(limit)
-      .populate('patientId', 'fullName avatar')
+      .populate('patientId', 'userId')
       .populate('appointmentId', 'scheduledAt');
 
     const enrichedReviews = await Promise.all(
@@ -71,10 +71,22 @@ export class ReviewService {
         const reviewObj = review.toObject();
         const patient = reviewObj.patientId as any;
         const appointment = reviewObj.appointmentId as any;
+        
+        let patientName = 'Patient';
+        let patientPhoto = null;
+        
+        if (patient && patient.userId) {
+          const user = await UserModel.findById(patient.userId).select('fullName avatar').lean();
+          if (user) {
+            patientName = user.fullName;
+            patientPhoto = user.avatar || null;
+          }
+        }
+        
         return {
           ...reviewObj,
-          patientName: patient?.fullName || 'Patient',
-          patientPhoto: patient?.avatar || null,
+          patientName,
+          patientPhoto,
           appointmentDate: appointment?.scheduledAt || reviewObj.createdAt
         };
       })

@@ -73,7 +73,7 @@ export default function LeafletMap({
   useEffect(() => {
     if (!mapRef.current || !mapReady || !value) return;
     try { mapRef.current.flyTo([value.lat, value.lng], 16); } catch (e) {}
-  }, [value, mapReady]);
+  }, [value?.lat, value?.lng, mapReady]);
 
   const doReverse = async (lat: number, lng: number) => {
     try {

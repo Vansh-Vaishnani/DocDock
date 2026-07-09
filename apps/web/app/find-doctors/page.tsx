@@ -6,6 +6,7 @@ import Link from 'next/link';
 import nextDynamic from 'next/dynamic';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 
 import { DoctorCard } from '@/components/doctor-discovery/DoctorCard';
 import { DoctorFilters } from '@/components/doctor-discovery/DoctorFilters';
@@ -59,8 +60,16 @@ async function fetchDoctors(filters: Record<string, any>) {
 }
 
 function FindDoctorsPageContent() {
-  const [filters, setFilters] = useState(defaultFilters);
-  const [appliedFilters, setAppliedFilters] = useState(defaultFilters);
+  const searchParams = useSearchParams();
+  const initialSpec = searchParams.get('specialization') || '';
+  
+  const initialFilters = {
+    ...defaultFilters,
+    specialization: initialSpec
+  };
+
+  const [filters, setFilters] = useState(initialFilters);
+  const [appliedFilters, setAppliedFilters] = useState(initialFilters);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -385,6 +394,12 @@ function FindDoctorsPageContent() {
   );
 }
 
+import { Suspense } from 'react';
+
 export default function FindDoctorsPage() {
-  return <FindDoctorsPageContent />;
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading search details...</div>}>
+      <FindDoctorsPageContent />
+    </Suspense>
+  );
 }

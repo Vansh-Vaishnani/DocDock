@@ -6,6 +6,7 @@ import { PatientModel, IPatientDocument } from './patient.repository';
 import { DoctorModel } from '../doctor/doctor.repository';
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { EmergencyRequestModel } from './emergency.model';
+import { PaymentModel } from '../payment/payment.repository';
 import { NotificationService } from '../notification/notification.service';
 import { getIO } from '../../sockets/gateway';
 
@@ -291,6 +292,16 @@ export class PatientService {
       status: 'pending',
       isEmergency: true,
       notes: 'EMERGENCY SOS AUTO-ASSIGNED'
+    });
+
+    // Create a pending payment record for tracking
+    const orderId = `sos_${appointment._id}_${Date.now()}`;
+    await PaymentModel.create({
+      appointmentId: appointment._id,
+      patientId: new mongoose.Types.ObjectId(userId),
+      razorpayOrderId: orderId,
+      status: 'pending',
+      amount: doctor.consultationFee || 500
     });
 
     request.appointmentId = appointment._id;

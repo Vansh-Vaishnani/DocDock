@@ -136,6 +136,20 @@ export class AppointmentController {
     }
   }
 
+  async collectCashPayment(req: any, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = (req as AuthenticatedRequest).user;
+      if (!user) {
+        next(new ApiError('Authentication required', 401, 'AUTH_REQUIRED'));
+        return;
+      }
+      const result = await service.collectCashPayment(req.params.appointmentId, user.sub);
+      sendSuccess(res, result, 'Cash payment collection marked successfully.');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async twimlCallback(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
       const to = req.query.to as string;

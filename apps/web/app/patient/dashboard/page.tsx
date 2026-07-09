@@ -189,6 +189,7 @@ export default function PatientDashboardPage() {
   const [sosLoading, setSosLoading] = useState(false);
   const [sosResult, setSosResult] = useState<any | null>(null);
   const [showSosModal, setShowSosModal] = useState(false);
+  const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
 
   const [pendingReviewAppointmentId, setPendingReviewAppointmentId] = useState<string | null>(null);
   const [pendingReviewDoctorName, setPendingReviewDoctorName] = useState<string | null>(null);
@@ -197,6 +198,73 @@ export default function PatientDashboardPage() {
   const [comment, setComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
   const [snoozedThisSession, setSnoozedThisSession] = useState(false);
+
+  const loadRazorpayScript = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).Razorpay) {
+        resolve();
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Unable to load Razorpay Checkout script.'));
+      document.body.appendChild(script);
+    });
+  };
+
+  const handlePayNow = async (apptId: string) => {
+    try {
+      const detail = await fetchPatientAppointmentDetail(apptId);
+      if (!detail.payment || detail.payment.status === 'paid') {
+        showToast('Payment has already been completed or is not initialized.', 'info');
+        return;
+      }
+
+      await loadRazorpayScript();
+
+      const token = getStoredAccessToken();
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: detail.payment.amount * 100, // paise
+        currency: 'INR',
+        name: 'DocDock Emergency Service',
+        description: 'Complete pending payment for emergency consultation',
+        order_id: detail.payment.razorpayOrderId,
+        handler: async (response: any) => {
+          try {
+            const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id || 'pay_emergency_bypass',
+                razorpaySignature: 'bypass_emergency',
+                appointmentId: apptId
+              })
+            });
+            if (!verifyRes.ok) throw new Error('Verification failed.');
+            showToast('Payment completed successfully.', 'success');
+            setActiveEmergency(null);
+            window.location.reload();
+          } catch (e: any) {
+            showToast(e.message || 'Payment verification failed.', 'error');
+          }
+        },
+        theme: {
+          color: '#10b981'
+        }
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (err: any) {
+      showToast(err.message || 'Unable to load payment portal.', 'error');
+    }
+  };
 
   const getStoredAccessToken = (): string | null => {
     if (typeof window === 'undefined') return null;
@@ -247,8 +315,16 @@ export default function PatientDashboardPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const result = await fetchPatientProfile();
-        if (mounted) { setProfile(result); setError(null); }
+        const [profResult, apptsResult] = await Promise.all([
+          fetchPatientProfile(),
+          fetchPatientAppointments('upcoming')
+        ]);
+        if (mounted) {
+          setProfile(profResult);
+          const emergency = apptsResult.find(a => (a as any).isEmergency && (a as any).paymentStatus !== 'paid');
+          setActiveEmergency(emergency || null);
+          setError(null);
+        }
       } catch (err: unknown) {
         if (mounted) { setProfile(null); setError(err instanceof Error ? err.message : 'Unable to load your profile.'); }
       } finally {
@@ -351,6 +427,34 @@ export default function PatientDashboardPage() {
 
       {/* SOS modal */}
       {showSosModal && sosResult && <SosModal result={sosResult} onClose={() => setShowSosModal(false)} />}
+
+      {activeEmergency && (
+        <div className="rounded-2xl border-2 border-rose-200 bg-rose-50 p-5 dark:bg-rose-950/20 dark:border-rose-900/50 flex flex-wrap items-center justify-between gap-4 animate-pulse">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-950/50 text-rose-600">
+              <Icon path="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" size={18} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-rose-800 dark:text-rose-400">Emergency SOS — Payment Pending</h3>
+              <p className="text-xs text-rose-600 dark:text-rose-500 mt-0.5">Please pay the fee of ₹{activeEmergency.consultationFee} for Dr. {activeEmergency.doctorName} to clear your balance.</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handlePayNow(activeEmergency._id)}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-emerald-sm transition-all"
+            >
+              💳 Pay Now
+            </button>
+            <Link
+              href={`/patient/appointments/${activeEmergency._id}`}
+              className="px-4 py-2 rounded-xl bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 font-semibold text-xs transition-all"
+            >
+              Track Doctor
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ── Welcome Hero ──────────────────────────── */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 to-emerald-700 p-6 text-white sm:p-8 shadow-emerald">

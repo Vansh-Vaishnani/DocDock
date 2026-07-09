@@ -146,7 +146,15 @@ export default function DoctorDashboardPage() {
             </span>
             <div>
               <p className="font-bold text-rose-700 dark:text-rose-400 text-sm">HIGH PRIORITY — Emergency SOS</p>
-              <p className="text-xs text-rose-600 dark:text-rose-500 mt-0.5">
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase bg-rose-200 text-rose-800 dark:bg-rose-950/60 dark:text-rose-400">Emergency</span>
+                {appt.paymentStatus === 'paid' ? (
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-400">Payment Completed</span>
+                ) : (
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-400">Payment Pending</span>
+                )}
+              </div>
+              <p className="text-xs text-rose-600 dark:text-rose-500 mt-1">
                 Patient: {appt.patientName}
                 {appt.patientPhone && ` • ${appt.patientPhone}`}
                 {' • '}{new Date(appt.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -301,8 +309,16 @@ export default function DoctorDashboardPage() {
           <div className="space-y-3">
             {reviews.slice(0, 3).map((review) => (
               <div key={review._id} className="flex items-start gap-3 rounded-xl p-3" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-600 dark:bg-amber-950/60">
-                  {(review.patientName || 'P').charAt(0).toUpperCase()}
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-600 dark:bg-amber-950/60 overflow-hidden">
+                  {(review as any).patientPhoto ? (
+                    <img
+                      src={(review as any).patientPhoto}
+                      alt={review.patientName || 'Patient'}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    (review.patientName || 'P').charAt(0).toUpperCase()
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">

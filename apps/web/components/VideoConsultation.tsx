@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/app/auth/auth-context';
 import { useToast } from '@/app/auth/toast-provider';
+import { useRouter } from 'next/navigation';
 
 interface VideoConsultationProps {
   appointmentId: string;
@@ -29,6 +30,7 @@ export default function VideoConsultation({
 }: VideoConsultationProps) {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const router = useRouter();
 
   const [status, setStatus] = useState<'connecting' | 'connected' | 'ended'>('connecting');
   const [isMuted, setIsMuted] = useState(false);
@@ -49,21 +51,44 @@ export default function VideoConsultation({
   };
 
   const cleanup = useCallback(() => {
-    if (durationTimerRef.current) clearInterval(durationTimerRef.current);
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
-    pcRef.current?.close();
-    socketRef.current?.disconnect();
-    pcRef.current = null;
-    localStreamRef.current = null;
-    socketRef.current = null;
+    if (durationTimerRef.current) {
+      clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => {
+        try { t.stop(); } catch (e) {}
+      });
+      localStreamRef.current = null;
+    }
+    if (pcRef.current) {
+      try { pcRef.current.close(); } catch (e) {}
+      pcRef.current = null;
+    }
+    if (socketRef.current) {
+      try { socketRef.current.disconnect(); } catch (e) {}
+      socketRef.current = null;
+    }
   }, []);
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
+  const peerNameRef = useRef(peerName);
+  peerNameRef.current = peerName;
 
   const handleHangup = useCallback(() => {
     socketRef.current?.emit('call:hangup', { appointmentId, to: peerId });
     setStatus('ended');
     cleanup();
-    setTimeout(onClose, 1500);
-  }, [appointmentId, peerId, cleanup, onClose]);
+    setTimeout(() => {
+      onCloseRef.current();
+      if (user?.role === 'patient') {
+        window.location.href = `/patient/appointments/${appointmentId}`;
+      }
+    }, 1500);
+  }, [appointmentId, peerId, cleanup, user?.role]);
 
   const candidatesQueueRef = useRef<RTCIceCandidateInit[]>([]);
 
@@ -140,10 +165,15 @@ export default function VideoConsultation({
     });
 
     socket.on('call:hungup', () => {
-      showToast(`${peerName} ended the call.`, 'info');
+      showToastRef.current(`Consultation ended.`, 'info');
       setStatus('ended');
       cleanup();
-      setTimeout(onClose, 2000);
+      setTimeout(() => {
+        onCloseRef.current();
+        if (user?.role === 'patient') {
+          window.location.href = `/patient/appointments/${appointmentId}`;
+        }
+      }, 2000);
     });
 
     // Start media + WebRTC
@@ -199,18 +229,28 @@ export default function VideoConsultation({
         }
       } catch (err) {
         console.error('VideoConsultation media error:', err);
-        showToast('Camera/Microphone access is required for video consultation.', 'error');
+        showToastRef.current('Camera/Microphone access is required for video consultation.', 'error');
         cleanup();
-        onClose();
+        onCloseRef.current();
       }
     };
 
     startSession();
 
-    return () => {
+    // Tab close / refresh handler
+    const handleBeforeUnload = () => {
+      try {
+        socket.emit('call:hangup', { appointmentId, to: peerId });
+      } catch (e) {}
       cleanup();
     };
-  }, [user, appointmentId, peerId, peerName, isCaller, onClose, cleanup, showToast]);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      cleanup();
+    };
+  }, [user?._id, appointmentId, peerId, isCaller, cleanup]);
 
   const toggleMute = () => {
     const stream = localStreamRef.current;

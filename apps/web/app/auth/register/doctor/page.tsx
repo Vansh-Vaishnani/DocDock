@@ -2,14 +2,17 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import 'leaflet/dist/leaflet.css';
+import MapPicker from '@/components/map/MapPicker';
 
 import { type AuthUser, getRoleHomePath, useAuth } from '../../auth-context';
 import { useToast } from '../../toast-provider';
 import { fileToBase64, registerDoctor } from '../../../doctor/api';
+import { COMMON_SPECIALIZATIONS } from '@/components/doctor-discovery/DoctorFilters';
 import { DarkModeToggle } from '../../../theme-context';
 
 const schema = z.object({
@@ -23,7 +26,7 @@ const schema = z.object({
   medicalDegree: z.string().min(2, 'Medical degree is required'),
   licenseNumber: z.string().min(3, 'License number is required'),
   experience: z.coerce.number().min(0, 'Experience must be a positive number'),
-  specialization: z.string().min(2, 'Specialization is required'),
+  specialization: z.string().optional(),
   consultationFee: z.coerce.number().min(0, 'Fee must be a positive number'),
   languages: z.string().min(2, 'Languages are required'),
   clinicName: z.string().min(2, 'Clinic name is required'),
@@ -44,10 +47,24 @@ export default function DoctorRegisterPage() {
   const [medicalLicenseUrl, setMedicalLicenseUrl] = useState<string | null>(null);
 
   const [consultationModes, setConsultationModes] = useState<string[]>(['clinic']);
+  const [slotDuration, setSlotDuration] = useState(30);
+  const [isAvailable, setIsAvailable] = useState(false);
+  const [clinicAddress, setClinicAddress] = useState('');
+  const [clinicCoords, setClinicCoords] = useState<[number, number] | null>(null);
+  
+  const [specSelect, setSpecSelect] = useState('General Physician');
+  const [customSpec, setCustomSpec] = useState('');
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
+  const SLOT_DURATIONS = [15, 30, 45, 60] as const;
+
   const onSubmit = async (values: FormValues) => {
+    const finalSpecialization = specSelect === 'Other' ? customSpec.trim() : specSelect;
+    if (!finalSpecialization) {
+      showToast('Specialization is required.', 'error');
+      return;
+    }
     if (consultationModes.length === 0) {
       showToast('Select at least one consultation mode.', 'error');
       return;
@@ -57,11 +74,16 @@ export default function DoctorRegisterPage() {
     try {
       const payload = {
         ...values,
+        specialization: finalSpecialization,
         languages: values.languages.split(',').map((l) => l.trim()).filter(Boolean),
         profilePhoto: profilePhotoUrl || undefined,
         governmentId: governmentIdUrl || undefined,
         medicalLicense: medicalLicenseUrl || undefined,
-        consultationModes
+        consultationModes,
+        clinicAddress: clinicAddress || undefined,
+        location: clinicCoords ? { type: 'Point', coordinates: [clinicCoords[1], clinicCoords[0]] } : undefined,
+        slotDuration,
+        availability: { isAvailable, vacationMode: false }
       };
       const response = await registerDoctor(payload);
       handleOAuthCallback({
@@ -214,8 +236,29 @@ export default function DoctorRegisterPage() {
             {/* Specialization */}
             <div>
               <label className="dd-label">Specialization <span className="text-rose-500">*</span></label>
-              <input {...register('specialization')} className="dd-input" placeholder="Cardiologist, Pediatrician" />
-              {errors.specialization && <p className="mt-1 text-xs text-rose-600">{errors.specialization.message}</p>}
+              <select
+                value={specSelect}
+                onChange={(e) => setSpecSelect(e.target.value)}
+                className="dd-input"
+              >
+                {COMMON_SPECIALIZATIONS.map((spec) => (
+                  <option key={spec} value={spec}>
+                    {spec}
+                  </option>
+                ))}
+                <option value="Other">Other</option>
+              </select>
+              {specSelect === 'Other' && (
+                <div className="mt-2">
+                  <label className="dd-label">Custom Specialization <span className="text-rose-500">*</span></label>
+                  <input
+                    value={customSpec}
+                    onChange={(e) => setCustomSpec(e.target.value)}
+                    className="dd-input"
+                    placeholder="Enter your specialization"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Consultation Fee */}
@@ -268,6 +311,75 @@ export default function DoctorRegisterPage() {
               <label className="dd-label">Clinic / Hospital Name <span className="text-rose-500">*</span></label>
               <input {...register('clinicName')} className="dd-input" placeholder="Apollo Hospital / Apex Clinic" />
               {errors.clinicName && <p className="mt-1 text-xs text-rose-600">{errors.clinicName.message}</p>}
+            </div>
+
+            {/* Clinic Address Text */}
+            <div className="md:col-span-2">
+              <label className="dd-label">Clinic Address</label>
+              <input
+                value={clinicAddress}
+                onChange={(e) => setClinicAddress(e.target.value)}
+                className="dd-input"
+                placeholder="123 Main Street, Mumbai, Maharashtra"
+              />
+            </div>
+
+            {/* Clinic Location Map */}
+            <div className="md:col-span-2 space-y-3">
+              <label className="dd-label">Clinic Location on Map</label>
+              <MapPicker
+                value={clinicCoords ? { lat: clinicCoords[0], lng: clinicCoords[1] } : null}
+                onChange={(lat: number, lng: number, label?: string) => {
+                  setClinicCoords([lat, lng]);
+                  if (label) {
+                    setClinicAddress(label);
+                  }
+                }}
+                minHeight={300}
+                placeholder="Search for clinic address"
+              />
+              {clinicCoords && (
+                <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 px-3 py-1.5 text-xs font-mono text-emerald-800 dark:text-emerald-400">
+                  📍 {clinicCoords[0].toFixed(5)}, {clinicCoords[1].toFixed(5)}
+                </div>
+              )}
+            </div>
+
+            {/* Slot Duration */}
+            <div className="md:col-span-2">
+              <label className="dd-label">Appointment Slot Duration</label>
+              <div className="flex flex-wrap gap-2 mt-1.5">
+                {SLOT_DURATIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setSlotDuration(d)}
+                    className={`rounded-full px-4 py-2 text-xs font-semibold transition-all ${
+                      slotDuration === d
+                        ? 'bg-emerald-600 text-white shadow'
+                        : 'border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {d} min
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Availability Toggle */}
+            <div className="md:col-span-2">
+              <label className="flex items-center gap-3 cursor-pointer p-4 rounded-xl border transition-all hover:border-emerald-500" style={{ borderColor: 'var(--border-color)' }}>
+                <div
+                  onClick={() => setIsAvailable(!isAvailable)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${isAvailable ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isAvailable ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Accept Appointments After Registration</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>You can change this anytime in Availability settings</p>
+                </div>
+              </label>
             </div>
 
             {/* Bio */}

@@ -1,5 +1,9 @@
 {
-  "/page": "app/page.js",
-  "/patient/dashboard/page": "app/patient/dashboard/page.js",
-  "/patient/addresses/page": "app/patient/addresses/page.js"
+  "/patient/allergies/page": "app/patient/allergies/page.js",
+  "/doctor/appointments/page": "app/doctor/appointments/page.js",
+  "/doctor/prescriptions/page": "app/doctor/prescriptions/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/admin/(protected)/doctors/page": "app/admin/(protected)/doctors/page.js",
+  "/admin/(protected)/audit-logs/page": "app/admin/(protected)/audit-logs/page.js",
+  "/admin/(protected)/dashboard/page": "app/admin/(protected)/dashboard/page.js"
 }

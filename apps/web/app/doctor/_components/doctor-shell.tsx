@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState, useEffect, useCallback } from 'react';
+import { io } from 'socket.io-client';
+import { fetchDoctorAppointments } from '../api';
 
 import { useAuth } from '../../auth/auth-context';
 import { VerificationBanner } from './verification-banner';
@@ -72,23 +74,29 @@ function Avatar({ name, role }: { name: string; role: string }) {
   );
 }
 
-function NavItem({ href, label, icon, isActive, onClick }: {
+function NavItem({ href, label, icon, isActive, onClick, badgeCount }: {
   href: string;
   label: string;
   icon: string;
   isActive: boolean;
   onClick?: () => void;
+  badgeCount?: number;
 }) {
   return (
     <Link
       href={href}
       onClick={onClick}
-      className={`nav-link ${isActive ? 'active' : ''}`}
+      className={`nav-link ${isActive ? 'active' : ''} relative`}
     >
       <span className="flex-shrink-0">
         <Icon path={ICONS[icon]} size={17} />
       </span>
       <span className="flex-1 truncate">{label}</span>
+      {badgeCount !== undefined && badgeCount > 0 && (
+        <span className="ml-2 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">
+          {badgeCount}
+        </span>
+      )}
       {isActive && (
         <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-white opacity-80" />
       )}
@@ -100,6 +108,76 @@ export function DoctorShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [appointmentUnreadCounts, setAppointmentUnreadCounts] = useState<Record<string, number>>({});
+
+  const totalUnread = useMemo(() => {
+    return Object.values(appointmentUnreadCounts).reduce((acc, curr) => acc + curr, 0);
+  }, [appointmentUnreadCounts]);
+
+  const loadUnreadCounts = useCallback(async () => {
+    try {
+      const appointmentsList = await fetchDoctorAppointments('all');
+      const counts: Record<string, number> = {};
+      appointmentsList.forEach((appt: any) => {
+        counts[appt._id] = appt.unreadMessageCount || 0;
+      });
+      setAppointmentUnreadCounts(counts);
+    } catch (err) {
+      console.error('Failed to load initial unread counts:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadUnreadCounts();
+  }, [loadUnreadCounts]);
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+    if (!raw) return;
+    let token = '';
+    let userId = '';
+    try {
+      const parsed = JSON.parse(raw);
+      token = parsed.accessToken || '';
+      userId = parsed.user?._id || '';
+    } catch (e) {
+      return;
+    }
+    if (!token || !userId) return;
+
+    const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
+    const socket = io(`${SOCKET_BASE}/notifications`, {
+      transports: ['websocket', 'polling'],
+      auth: { token }
+    });
+
+    socket.on('connect', () => {
+      socket.emit('join', userId);
+    });
+
+    socket.on('chat:message_received', (data: { roomId: string; appointmentId: string; message: any }) => {
+      setAppointmentUnreadCounts((prev) => ({
+        ...prev,
+        [data.appointmentId]: (prev[data.appointmentId] || 0) + 1
+      }));
+    });
+
+    const handleReadMessages = (e: Event) => {
+      const { appointmentId } = (e as CustomEvent).detail || {};
+      if (appointmentId) {
+        setAppointmentUnreadCounts((prev) => ({
+          ...prev,
+          [appointmentId]: 0
+        }));
+      }
+    };
+    window.addEventListener('docdock:read_messages', handleReadMessages);
+
+    return () => {
+      socket.disconnect();
+      window.removeEventListener('docdock:read_messages', handleReadMessages);
+    };
+  }, [pathname]);
 
   const activeItem = useMemo(() => {
     return navItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ?? navItems[0];
@@ -129,6 +207,7 @@ export function DoctorShell({ children }: { children: ReactNode }) {
             icon={item.icon}
             isActive={activeItem.href === item.href}
             onClick={() => setMobileOpen(false)}
+            badgeCount={item.href === '/doctor/appointments' ? totalUnread : undefined}
           />
         ))}
       </nav>
@@ -176,10 +255,13 @@ export function DoctorShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg lg:hidden transition-all hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="flex h-8 w-8 items-center justify-center rounded-lg lg:hidden transition-all hover:bg-slate-100 dark:hover:bg-slate-800 relative"
               aria-label="Toggle menu"
             >
               <Icon path={mobileOpen ? ICONS.close : ICONS.menu} size={18} />
+              {totalUnread > 0 && !mobileOpen && (
+                <span className="absolute -top-1 -right-1 flex h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white animate-pulse" />
+              )}
             </button>
             <div className="hidden sm:block">
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{activeItem.label}</p>

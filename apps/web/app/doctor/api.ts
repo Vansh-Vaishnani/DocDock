@@ -41,6 +41,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 type ApiEnvelope<T> = { success: boolean; message: string; data: T };
 
+export type DaySchedule = {
+  enabled: boolean;
+  slots: { start: string; end: string }[];
+};
+
 export type DoctorAvailability = {
   isAvailable: boolean;
   workingDays: string[];
@@ -49,6 +54,8 @@ export type DoctorAvailability = {
   breakTime: { start: string; end: string };
   vacationMode: boolean;
   maxAppointmentsPerDay: number;
+  slotDuration: number;
+  perDaySchedule: Record<string, DaySchedule>;
 };
 
 export type DoctorProfile = {

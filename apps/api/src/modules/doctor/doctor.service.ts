@@ -20,6 +20,7 @@ import { PrescriptionModel } from '../prescription/prescription.repository';
 import { NotificationService } from '../notification/notification.service';
 
 import { DoctorModel, IDoctorDocument, defaultAvailability } from './doctor.repository';
+import { ChatMessageModel } from '../chat/chat.model';
 
 
 
@@ -853,6 +854,16 @@ export class DoctorService {
     const paymentMap = new Map(payments.map((payment) => [payment.appointmentId.toString(), payment]));
 
 
+    const unreadMessages = await ChatMessageModel.find({
+      roomId: { $in: appointments.map((a) => `${a._id}:${a.patientId}:${a.doctorId}`) },
+      senderRole: 'patient',
+      isRead: false
+    }).lean();
+
+    const unreadCountMap: Record<string, number> = {};
+    unreadMessages.forEach((msg) => {
+      unreadCountMap[msg.roomId] = (unreadCountMap[msg.roomId] || 0) + 1;
+    });
 
     return appointments.map((appt) => {
 
@@ -861,6 +872,8 @@ export class DoctorService {
       const payment = paymentMap.get(appt._id.toString());
 
       const prescription = prescriptionMap.get(appt._id.toString());
+
+      const rId = `${appt._id}:${appt.patientId}:${appt.doctorId}`;
 
       return {
 
@@ -886,6 +899,7 @@ export class DoctorService {
         doctorId: appt.doctorId.toString(),
         isEmergency: appt.isEmergency,
         consultationMode: appt.consultationMode,
+        unreadMessageCount: unreadCountMap[rId] || 0,
 
         prescription: prescription
 
@@ -1198,8 +1212,17 @@ export class DoctorService {
     }
 
     if (specialization) {
-      const stem = getSpecializationStem(specialization);
-      match.specialization = { $regex: stem, $options: 'i' };
+      if (specialization.toLowerCase() === 'other') {
+        const commonStems = [
+          'general', 'cardio', 'dermat', 'pediatr', 'neurol', 'ortho',
+          'ophthal', 'gyneco', 'psych', 'onco', 'gastro', 'endocrin',
+          'pulmon', 'nephro', 'ent', 'urol', 'dent', 'surg', 'rheumat', 'immunol'
+        ];
+        match.specialization = { $nin: commonStems.map(stem => new RegExp(stem, 'i')) };
+      } else {
+        const stem = getSpecializationStem(specialization);
+        match.specialization = { $regex: stem, $options: 'i' };
+      }
     }
 
     if (typeof options.minExperience === 'number' && !Number.isNaN(options.minExperience)) {

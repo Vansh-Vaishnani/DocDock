@@ -55,7 +55,8 @@ type PrescriptionDraft = {
 };
 
 function getActions(appt: DoctorAppointment, verified: boolean): ActionButton[] {
-  if (!verified || appt.paymentStatus !== 'paid') return [];
+  if (!verified) return [];
+  if (appt.paymentStatus !== 'paid' && !appt.isEmergency) return [];
 
   const status = appt.status;
   const mode = (appt as any).consultationMode || 'clinic';
@@ -116,6 +117,7 @@ export default function DoctorAppointmentsPage() {
   const [otpInput, setOtpInput] = useState('');
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [resendingOtp, setResendingOtp] = useState(false);
 
   const [activeChatApptId, setActiveChatApptId] = useState<string | null>(null);
   const [videoCallAppt, setVideoCallAppt] = useState<DoctorAppointment | null>(null);
@@ -223,6 +225,35 @@ export default function DoctorAppointmentsPage() {
         console.log('Real-time appointment update received on doctor side:', newNotification.type);
         void load();
       }
+    });
+
+    socket.on('otp:updated', (data: { appointmentId: string; otpCode: string }) => {
+      console.log('Real-time OTP update received on doctor side:', data);
+      setAppointments((prev) =>
+        prev.map((appt) => {
+          if (appt._id === data.appointmentId) {
+            return {
+              ...appt,
+              otpCode: data.otpCode
+            };
+          }
+          return appt;
+        })
+      );
+    });
+
+    socket.on('chat:message_received', (data: { roomId: string; appointmentId: string; message: any }) => {
+      setAppointments((prev) =>
+        prev.map((appt) => {
+          if (appt._id === data.appointmentId) {
+            return {
+              ...appt,
+              unreadMessageCount: ((appt as any).unreadMessageCount || 0) + 1
+            };
+          }
+          return appt;
+        })
+      );
     });
 
     return () => {
@@ -492,10 +523,25 @@ export default function DoctorAppointmentsPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => setActiveChatApptId((prev) => (prev === appt._id ? null : appt._id))}
-                        className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                        onClick={() => {
+                          setActiveChatApptId((prev) => (prev === appt._id ? null : appt._id));
+                          // Clear unread count when opening chat
+                          if (activeChatApptId !== appt._id) {
+                            setAppointments((prev) =>
+                              prev.map((a) =>
+                                a._id === appt._id ? { ...a, unreadMessageCount: 0 } : a
+                              )
+                            );
+                          }
+                        }}
+                        className="relative rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
                       >
                         {activeChatApptId === appt._id ? 'Close Chat' : 'Open Chat'}
+                        {activeChatApptId !== appt._id && (appt as any).unreadMessageCount > 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-bold text-white shadow">
+                            {(appt as any).unreadMessageCount > 9 ? '9+' : (appt as any).unreadMessageCount}
+                          </span>
+                        )}
                       </button>
                       {/* Video call for online consultations */}
                       {(appt as any).consultationMode === 'online' && appt.status === 'in_consultation' && (
@@ -517,10 +563,39 @@ export default function DoctorAppointmentsPage() {
                           Call Patient
                         </button>
                       )}
-                    </div>
+                  </div>
                   )}
-                  {!actions.length && appt.paymentStatus !== 'paid' && (
+                  {!actions.length && appt.paymentStatus !== 'paid' && !appt.isEmergency && (
                     <p className="text-xs text-amber-700">Waiting for payment confirmation before the doctor can proceed.</p>
+                  )}
+                  {appt.isEmergency && appt.paymentStatus !== 'paid' && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="rounded bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5">🚨 Emergency SOS Case</span>
+                      <button
+                        type="button"
+                        disabled={actionId === appt._id}
+                        onClick={async () => {
+                          setActionId(appt._id);
+                          try {
+                            const token = getStoredAccessToken();
+                            const res = await fetch(`${SOCKET_BASE.replace('/socket.io', '')}/api/v1/appointments/${appt._id}/collect-payment`, {
+                              method: 'POST',
+                              headers: { 'Authorization': `Bearer ${token}` }
+                            });
+                            if (!res.ok) throw new Error('Failed to mark payment collected.');
+                            showToast('Payment marked as Collected.', 'success');
+                            await load();
+                          } catch (err: any) {
+                            showToast(err.message || 'Error updating payment.', 'error');
+                          } finally {
+                            setActionId(null);
+                          }
+                        }}
+                        className="rounded-full bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold px-2 py-1 transition"
+                      >
+                        Mark Payment Collected
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -662,51 +737,95 @@ export default function DoctorAppointmentsPage() {
           </div>
         </div>
       )}
-      {pendingOtpActionApptId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl p-6 shadow-large border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
-            <h3 className="text-lg font-bold">Enter Consultation OTP</h3>
-            <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              Please enter the 6-digit OTP code received by the patient to verify their arrival and start the consultation.
-            </p>
-            <div className="mt-4">
-              <input
-                type="text"
-                maxLength={6}
-                value={otpInput}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  setOtpInput(val);
-                }}
-                className="w-full text-center text-3xl tracking-widest font-extrabold rounded-xl border px-3 py-3"
-                style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                placeholder="000000"
-              />
-              {otpError && (
-                <p className="mt-2 text-xs font-semibold text-rose-600">{otpError}</p>
+      {pendingOtpActionApptId && (() => {
+        const activeAppt = appointments.find((a) => a._id === pendingOtpActionApptId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="w-full max-w-md rounded-2xl p-6 shadow-large border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+              <h3 className="text-lg font-bold">Enter Consultation OTP</h3>
+              <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Please enter the 6-digit OTP code received by the patient to verify their arrival and start the consultation.
+              </p>
+              
+              {(activeAppt as any)?.otpCode && (
+                <div className="mt-4 flex flex-col items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 p-4">
+                  <span className="text-3xl font-extrabold tracking-widest text-emerald-800 dark:text-emerald-400">
+                    {(activeAppt as any).otpCode}
+                  </span>
+                  <span className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">OTP Code (Dev Mode Display)</span>
+                </div>
               )}
-            </div>
-            <div className="mt-6 flex justify-end gap-2.5">
-              <button
-                type="button"
-                disabled={verifyingOtp}
-                onClick={() => setPendingOtpActionApptId(null)}
-                className="btn-secondary text-xs px-4 py-2"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={verifyingOtp || otpInput.length !== 6}
-                onClick={confirmOtp}
-                className="btn-primary text-xs px-4 py-2"
-              >
-                {verifyingOtp ? 'Verifying...' : 'Verify & Start'}
-              </button>
+
+              <div className="mt-4">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={otpInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setOtpInput(val);
+                  }}
+                  className="w-full text-center text-3xl tracking-widest font-extrabold rounded-xl border px-3 py-3"
+                  style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  placeholder="000000"
+                />
+                {otpError && (
+                  <p className="mt-2 text-xs font-semibold text-rose-600">{otpError}</p>
+                )}
+              </div>
+              <div className="mt-6 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  disabled={resendingOtp || verifyingOtp}
+                  onClick={async () => {
+                    setResendingOtp(true);
+                    try {
+                      const token = getStoredAccessToken();
+                      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+                      const res = await fetch(`${API_BASE}/appointments/${pendingOtpActionApptId}/resend-otp`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`
+                        }
+                      });
+                      if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(errData.message || 'Failed to resend OTP.');
+                      }
+                      showToast('OTP resent successfully.', 'success');
+                      await load();
+                    } catch (err: any) {
+                      showToast(err.message || 'Unable to resend OTP.', 'error');
+                    } finally {
+                      setResendingOtp(false);
+                    }
+                  }}
+                  className="rounded-full border border-slate-300 hover:bg-slate-50 text-slate-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 text-xs px-4 py-2"
+                >
+                  {resendingOtp ? 'Resending...' : 'Resend OTP'}
+                </button>
+                <button
+                  type="button"
+                  disabled={verifyingOtp}
+                  onClick={() => setPendingOtpActionApptId(null)}
+                  className="rounded-full border border-slate-300 hover:bg-slate-50 text-slate-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 text-xs px-4 py-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={verifyingOtp || otpInput.length !== 6}
+                  onClick={confirmOtp}
+                  className="rounded-full bg-emerald-600 text-white hover:bg-emerald-700 text-xs px-4 py-2"
+                >
+                  {verifyingOtp ? 'Verifying...' : 'Verify & Start'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {/* Video Consultation Overlay */}
       {videoCallAppt && (
         <VideoConsultation

@@ -15,6 +15,7 @@ import prescriptionRoutes from './modules/prescription/prescription.routes';
 import trackingRoutes from './modules/tracking/tracking.routes';
 import chatRoutes from './modules/chat/chat.routes';
 import notificationRoutes from './modules/notification/notification.routes';
+import aiRoutes from './modules/ai/ai.routes';
 import { config } from './common/config';
 import { errorHandler } from './common/errors/errorHandler';
 import { authenticate } from './common/middleware/authMiddleware';
@@ -116,6 +117,7 @@ app.use('/api/v1/chat', authenticate, chatRoutes);
 app.use('/api/v1/notifications', authenticate, notificationRoutes);
 app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/prescriptions', authenticate, prescriptionRoutes);
+app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/admin', authenticate, adminRoutes);
 
 app.get('/', (req, res) => {

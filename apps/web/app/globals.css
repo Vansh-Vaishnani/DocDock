@@ -64,6 +64,27 @@ html, body {
   transition: background-color 0.25s ease, color 0.25s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent horizontal overflow on mobile */
+  overflow-x: hidden;
+}
+
+/* Safe area insets for iPhone notch / Android cutout */
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Touch interactions */
+a, button, [role="button"] {
+  touch-action: manipulation;
+}
+
+/* Better tap targets on mobile */
+@media (max-width: 768px) {
+  .btn-primary, .btn-secondary, .btn-danger, .btn-ghost {
+    min-height: 44px;
+  }
 }
 
 /* ─── Scrollbar ──────────────────────────────────────── */

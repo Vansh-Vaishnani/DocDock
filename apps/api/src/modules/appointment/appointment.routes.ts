@@ -22,7 +22,6 @@ router.patch('/:appointmentId/status', requireRole(['doctor', 'patient']), valid
 router.post('/:appointmentId/resend-otp', requireRole(['doctor', 'patient']), controller.resendOtp.bind(controller));
 router.post('/:appointmentId/call', requireRole(['patient', 'doctor']), controller.initiateCall.bind(controller));
 router.get('/:appointmentId/calls', requireRole(['patient', 'doctor']), controller.getCallHistory.bind(controller));
-router.patch('/:appointmentId/calls/:callLogId', requireRole(['patient', 'doctor']), controller.updateCallStatus.bind(controller));
-router.post('/:appointmentId/twiml-callback', controller.twimlCallback.bind(controller));
+router.post('/:appointmentId/collect-payment', requireRole(['doctor']), controller.collectCashPayment.bind(controller));
 
 export default router;

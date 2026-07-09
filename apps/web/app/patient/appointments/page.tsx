@@ -8,6 +8,7 @@ import { useToast } from '../../auth/toast-provider';
 import {
   cancelPatientAppointment,
   fetchPatientAppointments,
+  fetchPatientAppointmentDetail,
   type PatientAppointment
 } from '../api';
 
@@ -43,6 +44,72 @@ export default function PatientAppointmentsPage() {
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+
+  const loadRazorpayScript = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).Razorpay) {
+        resolve();
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Unable to load Razorpay Checkout script.'));
+      document.body.appendChild(script);
+    });
+  };
+
+  const handlePayNow = async (apptId: string) => {
+    try {
+      const detail = await fetchPatientAppointmentDetail(apptId);
+      if (!detail.payment || detail.payment.status === 'paid') {
+        showToast('Payment has already been completed or is not initialized.', 'info');
+        return;
+      }
+
+      await loadRazorpayScript();
+
+      const token = getStoredAccessToken();
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: detail.payment.amount * 100, // paise
+        currency: 'INR',
+        name: 'DocDock Emergency Service',
+        description: 'Complete pending payment for emergency consultation',
+        order_id: detail.payment.razorpayOrderId,
+        handler: async (response: any) => {
+          try {
+            const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id || 'pay_emergency_bypass',
+                razorpaySignature: 'bypass_emergency',
+                appointmentId: apptId
+              })
+            });
+            if (!verifyRes.ok) throw new Error('Verification failed.');
+            showToast('Payment completed successfully.', 'success');
+            await load();
+          } catch (e: any) {
+            showToast(e.message || 'Payment verification failed.', 'error');
+          }
+        },
+        theme: {
+          color: '#10b981'
+        }
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (err: any) {
+      showToast(err.message || 'Unable to load payment portal.', 'error');
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,6 +165,20 @@ export default function PatientAppointmentsPage() {
         console.log('Real-time updates received on patient appointments list:', newNotification.type);
         void load();
       }
+    });
+
+    socket.on('chat:message_received', (data: { roomId: string; appointmentId: string; message: any }) => {
+      setAppointments((prev) =>
+        prev.map((appt) => {
+          if (appt._id === data.appointmentId) {
+            return {
+              ...appt,
+              unreadMessageCount: ((appt as any).unreadMessageCount || 0) + 1
+            };
+          }
+          return appt;
+        })
+      );
     });
 
     return () => {
@@ -167,6 +248,11 @@ export default function PatientAppointmentsPage() {
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-3">
                     <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>{appt.doctorName}</p>
+                    { (appt as any).isEmergency && (
+                      <span className="rounded-full px-2.5 py-0.5 text-xs font-extrabold bg-rose-600 text-white animate-pulse">
+                        🚨 Emergency Case
+                      </span>
+                    )}
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLORS[appt.status] ?? 'bg-slate-100 text-slate-700'}`}>
                       {appt.statusLabel}
                     </span>
@@ -177,6 +263,23 @@ export default function PatientAppointmentsPage() {
                   {appt.notes && <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>Notes: {appt.notes}</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {(appt as any).isEmergency && (appt as any).paymentStatus !== 'paid' && (
+                    <button
+                      type="button"
+                      onClick={() => void handlePayNow(appt._id)}
+                      className="btn-primary text-xs px-3.5 py-1.5 bg-emerald-600 text-white rounded-lg shadow-emerald-sm animate-pulse hover:bg-emerald-700 font-bold"
+                    >
+                      💳 Pay Now
+                    </button>
+                  )}
+                  <Link href={`/patient/appointments/${appt._id}`} className="btn-secondary text-xs px-3.5 py-1.5 relative">
+                    Chat
+                    {(appt as any).unreadMessageCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-bold text-white shadow">
+                        {(appt as any).unreadMessageCount > 9 ? '9+' : (appt as any).unreadMessageCount}
+                      </span>
+                    )}
+                  </Link>
                   <Link href={`/patient/appointments/${appt._id}`} className="btn-secondary text-xs px-3.5 py-1.5">
                     View details
                   </Link>
