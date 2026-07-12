@@ -1,11 +1,11 @@
 'use client';
 
-import { AIAssistantChat } from '../../../components/ai/AIAssistantChat';
+import { UnifiedAIAssistant } from '../../../components/ai/UnifiedAIAssistant';
 
 export default function AIAssistantPage() {
   return (
     <div className="max-w-4xl mx-auto animate-fade-in">
-      <AIAssistantChat containerHeight="h-[80vh]" showTitleCard={true} />
+      <UnifiedAIAssistant containerHeight="h-[80vh]" defaultMode="chat" />
     </div>
   );
 }

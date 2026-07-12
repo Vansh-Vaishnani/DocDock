@@ -4,7 +4,11 @@ export interface AIMessage {
   timestamp: Date;
 }
 
-export async function sendChatMessage(message: string, history: AIMessage[]): Promise<string> {
+export async function sendChatMessageStream(
+  message: string,
+  history: AIMessage[],
+  onChunk: (chunk: string) => void
+): Promise<void> {
   const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
   let token = '';
   try {
@@ -28,9 +32,42 @@ export async function sendChatMessage(message: string, history: AIMessage[]): Pr
   });
 
   if (!res.ok) {
-    throw new Error('Failed to fetch assistant response.');
+    throw new Error('Failed to connect to AI assistant.');
   }
 
-  const data = await res.json();
-  return data.data.response;
+  const reader = res.body?.getReader();
+  if (!reader) {
+    throw new Error('Streaming response is not supported by the browser.');
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const cleanLine = line.trim();
+      if (!cleanLine.startsWith('data: ')) continue;
+      
+      const jsonStr = cleanLine.substring(6);
+      if (jsonStr === '[DONE]') {
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.text) {
+          onChunk(parsed.text);
+        }
+      } catch (e) {
+        // Skip malformed SSE lines
+      }
+    }
+  }
 }

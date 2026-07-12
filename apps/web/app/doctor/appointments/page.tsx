@@ -102,6 +102,21 @@ export default function DoctorAppointmentsPage() {
   const [appointments, setAppointments] = useState<DoctorAppointment[]>([]);
   const [filter, setFilter] = useState<'today' | 'upcoming' | 'all'>('all');
   const [loading, setLoading] = useState(true);
+  const [loggedInUserId, setLoggedInUserId] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+      if (raw) {
+        const parsed = JSON.parse(raw) as { user?: { _id?: string } };
+        if (parsed.user?._id) {
+          setLoggedInUserId(parsed.user._id);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse docdock-auth:', e);
+    }
+  }, []);
   const [verified, setVerified] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [showReasonModal, setShowReasonModal] = useState(false);
@@ -524,14 +539,18 @@ export default function DoctorAppointmentsPage() {
                       <button
                         type="button"
                         onClick={() => {
+                          const opening = activeChatApptId !== appt._id;
                           setActiveChatApptId((prev) => (prev === appt._id ? null : appt._id));
                           // Clear unread count when opening chat
-                          if (activeChatApptId !== appt._id) {
+                          if (opening) {
                             setAppointments((prev) =>
                               prev.map((a) =>
                                 a._id === appt._id ? { ...a, unreadMessageCount: 0 } : a
                               )
                             );
+                            window.dispatchEvent(new CustomEvent('docdock:read_messages', {
+                              detail: { appointmentId: appt._id }
+                            }));
                           }
                         }}
                         className="relative rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
@@ -688,7 +707,7 @@ export default function DoctorAppointmentsPage() {
                     appointmentId={appt._id}
                     roomId={`${appt._id}:${appt.patientId}:${appt.doctorId}`}
                     senderRole="doctor"
-                    userId={appt.doctorId}
+                    userId={loggedInUserId || appt.doctorId}
                     peerName={appt.patientName}
                     isActive={['accepted', 'doctor_on_way', 'arrived', 'in_consultation'].includes(appt.status)}
                     onClose={() => setActiveChatApptId(null)}

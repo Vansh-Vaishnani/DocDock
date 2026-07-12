@@ -12,6 +12,7 @@ interface Notification {
   message: string;
   isRead: boolean;
   createdAt: string;
+  metadata?: any;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
@@ -58,6 +59,13 @@ export default function NotificationBell() {
         setNotifications((prev) =>
           prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
         );
+        const notification = notifications.find((n) => n._id === id);
+        const apptId = notification?.metadata?.appointmentId || (notification?.metadata as any)?.appointment?._id;
+        if (apptId) {
+          window.dispatchEvent(new CustomEvent('docdock:read_messages', {
+            detail: { appointmentId: apptId }
+          }));
+        }
       }
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
@@ -76,6 +84,7 @@ export default function NotificationBell() {
       });
       if (response.ok) {
         setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+        window.dispatchEvent(new CustomEvent('docdock:clear_all_notifications'));
       }
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);

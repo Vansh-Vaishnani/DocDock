@@ -9,7 +9,7 @@ import { fetchPatientAppointments } from '../api';
 import { useAuth } from '../../auth/auth-context';
 import NotificationBell from '@/components/NotificationBell';
 import { DarkModeToggle } from '../../theme-context';
-import { AIAssistantChat } from '@/components/ai/AIAssistantChat';
+import { UnifiedAIAssistant } from '@/components/ai/UnifiedAIAssistant';
 
 // ─── Icons ───────────────────────────────────────────────────
 function Icon({ path, size = 18 }: { path: string; size?: number }) {
@@ -37,8 +37,7 @@ const ICONS: Record<string, string> = {
 
 const navItems = [
   { href: '/patient/dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { href: '/patient/ai-symptom-checker', label: 'AI Symptom Checker', icon: 'ai_symptom' },
-  { href: '/patient/ai-assistant', label: 'AI Assistant Chat', icon: 'ai_chat' },
+  { href: '/patient/ai-assistant', label: 'AI Assistant', icon: 'ai_chat' },
   { href: '/patient/appointments', label: 'Appointments', icon: 'appointments' },
   { href: '/patient/profile', label: 'Profile', icon: 'profile' },
   { href: '/patient/addresses', label: 'Addresses', icon: 'addresses' },
@@ -167,9 +166,6 @@ export function PatientShell({ children }: { children: ReactNode }) {
     });
 
     socket.on('chat:message_received', (data: { roomId: string; appointmentId: string; message: any }) => {
-      if (pathname.includes(`/patient/appointments/${data.appointmentId}`)) {
-        return;
-      }
       setAppointmentUnreadCounts((prev) => ({
         ...prev,
         [data.appointmentId]: (prev[data.appointmentId] || 0) + 1
@@ -185,11 +181,18 @@ export function PatientShell({ children }: { children: ReactNode }) {
         }));
       }
     };
+
+    const handleClearAll = () => {
+      setAppointmentUnreadCounts({});
+    };
+
     window.addEventListener('docdock:read_messages', handleReadMessages);
+    window.addEventListener('docdock:clear_all_notifications', handleClearAll);
 
     return () => {
       socket.disconnect();
       window.removeEventListener('docdock:read_messages', handleReadMessages);
+      window.removeEventListener('docdock:clear_all_notifications', handleClearAll);
     };
   }, [pathname]);
 
@@ -335,7 +338,6 @@ export function PatientShell({ children }: { children: ReactNode }) {
         className="hidden lg:flex fixed bottom-6 right-6 z-50 h-14 w-14 items-center justify-center rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 group"
         aria-label="Ask AI Assistant"
       >
-        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-bold animate-bounce">New</span>
         <span className="h-6 w-6 group-hover:rotate-12 transition-transform duration-300 flex items-center justify-center text-lg">✨</span>
       </button>
 
@@ -347,7 +349,7 @@ export function PatientShell({ children }: { children: ReactNode }) {
             onClick={() => setShowAIDrawer(false)}
           />
           <div
-            className="hidden lg:flex fixed top-0 right-0 z-50 h-full w-[400px] flex-col border-l bg-white shadow-2xl p-4"
+            className="hidden lg:flex fixed top-0 right-0 z-50 h-full w-[450px] flex-col border-l bg-white shadow-2xl p-4"
             style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
           >
             <div className="flex items-center justify-between border-b pb-3 mb-4" style={{ borderColor: 'var(--border-color)' }}>
@@ -363,7 +365,7 @@ export function PatientShell({ children }: { children: ReactNode }) {
                 <Icon path={ICONS.close} size={18} />
               </button>
             </div>
-            <AIAssistantChat containerHeight="flex-1" showTitleCard={false} />
+            <UnifiedAIAssistant containerHeight="flex-1" defaultMode="chat" />
           </div>
         </>
       )}

@@ -69,7 +69,7 @@ const DEFAULT_PER_DAY_SCHEDULE: Record<string, IDaySchedule> = {
 };
 
 const defaultAvailability: IDoctorAvailability = {
-  isAvailable: false,
+  isAvailable: true,
   workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
   morningSlot: { start: '09:00', end: '12:00' },
   eveningSlot: { start: '17:00', end: '20:00' },
@@ -111,7 +111,7 @@ const doctorSchema = new Schema<IDoctorDocument>(
       coordinates: { type: [Number], required: true }
     },
     availability: {
-      isAvailable: { type: Boolean, default: false },
+      isAvailable: { type: Boolean, default: true },
       lastSeenAt: { type: Date },
       workingDays: { type: [String], default: defaultAvailability.workingDays },
       morningSlot: { type: timeSlotSchema, default: () => defaultAvailability.morningSlot },

@@ -18,6 +18,7 @@ import { AppointmentModel } from '../appointment/appointment.repository';
 import { PaymentModel } from '../payment/payment.repository';
 import { PrescriptionModel } from '../prescription/prescription.repository';
 import { NotificationService } from '../notification/notification.service';
+import { NotificationModel } from '../notification/notification.model';
 
 import { DoctorModel, IDoctorDocument, defaultAvailability } from './doctor.repository';
 import { ChatMessageModel } from '../chat/chat.model';
@@ -865,62 +866,91 @@ export class DoctorService {
       unreadCountMap[msg.roomId] = (unreadCountMap[msg.roomId] || 0) + 1;
     });
 
-    return appointments.map((appt) => {
+    const unreadNotifications = await NotificationModel.find({
+      userId: new mongoose.Types.ObjectId(userId),
+      isRead: false,
+      type: { $in: ['accepted', 'rejected', 'doctor_on_way', 'arrived', 'in_consultation', 'completed', 'payment_received', 'appointment_pending'] }
+    }).lean();
 
+    const notificationCountMap: Record<string, number> = {};
+    unreadNotifications.forEach((n) => {
+      const apptId = n.metadata?.appointmentId?.toString();
+      if (apptId) {
+        notificationCountMap[apptId] = (notificationCountMap[apptId] || 0) + 1;
+      }
+    });
+
+    const mappedAppointments = appointments.map((appt) => {
       const patient = userMap.get(appt.patientId.toString());
-
       const payment = paymentMap.get(appt._id.toString());
-
       const prescription = prescriptionMap.get(appt._id.toString());
-
       const rId = `${appt._id}:${appt.patientId}:${appt.doctorId}`;
+      const apptIdStr = appt._id.toString();
 
       return {
-
         _id: appt._id,
-
         scheduledAt: appt.scheduledAt,
-
         status: appt.status,
-
         address: appt.address,
-
         notes: appt.notes,
-
         patientName: patient?.fullName ?? 'Patient',
-
         patientPhone: patient?.phone ?? '',
-
         paymentStatus: payment?.status ?? 'created',
-
         paymentStatusLabel: payment?.status === 'paid' ? 'Payment Paid' : 'Payment Pending',
-
         patientId: appt.patientId.toString(),
         doctorId: appt.doctorId.toString(),
         isEmergency: appt.isEmergency,
         consultationMode: appt.consultationMode,
-        unreadMessageCount: unreadCountMap[rId] || 0,
-
+        unreadMessageCount: (unreadCountMap[rId] || 0) + (notificationCountMap[apptIdStr] || 0),
         prescription: prescription
-
           ? {
-
               _id: prescription._id.toString(),
-
               diagnosis: prescription.diagnosis,
-
               medications: prescription.medications,
-
               issuedAt: prescription.issuedAt
-
             }
-
           : null
-
       };
-
     });
 
+    // Helper categories for sorting priority
+    const upcomingStatuses = new Set(['pending', 'accepted', 'doctor_on_way', 'arrived', 'in_consultation']);
+    const startOfTodayForSort = new Date();
+    startOfTodayForSort.setHours(0, 0, 0, 0);
+    const endOfTodayForSort = new Date();
+    endOfTodayForSort.setHours(23, 59, 59, 999);
+
+    const getPriority = (appt: any) => {
+      const scheduledDate = new Date(appt.scheduledAt);
+      const isCompleted = appt.status === 'completed';
+
+      // 1. Upcoming (not completed, and has upcoming status)
+      if (!isCompleted && upcomingStatuses.has(appt.status)) {
+        return 1;
+      }
+      // 2. Today's (and not completed)
+      if (!isCompleted && scheduledDate >= startOfTodayForSort && scheduledDate <= endOfTodayForSort) {
+        return 2;
+      }
+      // 3. Recent Completed (completed today)
+      if (isCompleted && scheduledDate >= startOfTodayForSort && scheduledDate <= endOfTodayForSort) {
+        return 3;
+      }
+      // 4. Older Completed (completed in past days) or cancelled/rejected
+      return 4;
+    };
+
+    return mappedAppointments.sort((a, b) => {
+      const priorityA = getPriority(a);
+      const priorityB = getPriority(b);
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      // Within same category, sort by latest booking date/time first (most recent at top)
+      return new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime();
+    });
   }
 
 
@@ -1024,58 +1054,40 @@ export class DoctorService {
 
 
   async updateAvailability(
-
     userId: string,
-
     payload: {
-
       isAvailable?: boolean;
-
       workingDays?: string[];
-
       morningSlot?: { start: string; end: string };
-
       eveningSlot?: { start: string; end: string };
-
       breakTime?: { start: string; end: string };
-
       vacationMode?: boolean;
-
       maxAppointmentsPerDay?: number;
-
+      slotDuration?: number;
+      perDaySchedule?: Record<string, any>;
     }
-
   ) {
-
     const doctor = await this.findDoctorByUserId(userId);
 
-
-
     if (typeof payload.isAvailable === 'boolean') {
-
       doctor.availability.isAvailable = payload.isAvailable;
-
       doctor.availability.lastSeenAt = new Date();
-
     }
-
     if (payload.workingDays) doctor.availability.workingDays = payload.workingDays;
-
     if (payload.morningSlot) doctor.availability.morningSlot = payload.morningSlot;
-
     if (payload.eveningSlot) doctor.availability.eveningSlot = payload.eveningSlot;
-
     if (payload.breakTime) doctor.availability.breakTime = payload.breakTime;
-
     if (typeof payload.vacationMode === 'boolean') doctor.availability.vacationMode = payload.vacationMode;
-
     if (typeof payload.maxAppointmentsPerDay === 'number') {
-
       doctor.availability.maxAppointmentsPerDay = payload.maxAppointmentsPerDay;
-
     }
-
-
+    if (typeof payload.slotDuration === 'number') {
+      doctor.availability.slotDuration = payload.slotDuration;
+    }
+    if (payload.perDaySchedule) {
+      doctor.availability.perDaySchedule = payload.perDaySchedule;
+      doctor.markModified('availability.perDaySchedule');
+    }
 
     await doctor.save();
 
@@ -1204,12 +1216,12 @@ export class DoctorService {
       limit?: number;
     } = {}
   ): Promise<Array<Record<string, unknown>>> {
-    const match: mongoose.FilterQuery<IDoctorDocument> = { verificationStatus: 'approved' };
-
-    if (options.availableOnly) {
-      match['availability.isAvailable'] = true;
-      match['availability.vacationMode'] = { $ne: true };
-    }
+    // Find Doctors should ONLY display doctors who are available and not on vacation mode
+    const match: mongoose.FilterQuery<IDoctorDocument> = {
+      verificationStatus: 'approved',
+      'availability.isAvailable': true,
+      'availability.vacationMode': { $ne: true }
+    };
 
     if (specialization) {
       if (specialization.toLowerCase() === 'other') {

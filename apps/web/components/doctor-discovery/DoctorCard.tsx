@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { formatDistanceKm } from '@/lib/locationUtils';
+import { formatDistanceKm, calculateDistanceKm } from '@/lib/locationUtils';
+import { MapPin } from 'lucide-react';
 
 interface DoctorCardProps {
   doctor: {
@@ -29,7 +30,20 @@ export function DoctorCard({ doctor, location, locationLabel }: DoctorCardProps)
   const name = doctor.userId?.fullName || `Dr. ${doctor.specialization}`;
   const availabilityLabel = doctor.availability?.isAvailable ? 'Available now' : 'On request';
   const distanceValue = typeof doctor.distance === 'number' || typeof doctor.distance === 'string' ? Number(doctor.distance) : NaN;
-  const distanceLabel = Number.isFinite(distanceValue) ? formatDistanceKm(distanceValue, true) : '—';
+  
+  const calculateDistance = () => {
+    if (Number.isFinite(distanceValue) && distanceValue > 0) {
+      return formatDistanceKm(distanceValue, true);
+    }
+    const coords = (doctor as any).location?.coordinates;
+    if (location && Array.isArray(coords) && coords.length === 2) {
+      const [lng, lat] = coords;
+      const dist = calculateDistanceKm(location.lat, location.lng, lat, lng);
+      return formatDistanceKm(dist, false);
+    }
+    return '—';
+  };
+  const finalDistanceLabel = calculateDistance();
   const eta = Number.isFinite(distanceValue) ? Math.max(5, Math.round((distanceValue / 1000) / 40 * 60)) : undefined;
 
   const buildHref = () => {
@@ -108,11 +122,19 @@ export function DoctorCard({ doctor, location, locationLabel }: DoctorCardProps)
           </span>
         ))}
       </div>
-      <div className="mt-6 flex items-center justify-between gap-3 pt-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
-        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{distanceLabel}</div>
-        <Link href={buildHref()} className="btn-primary text-xs px-4 py-2">
-          View profile
-        </Link>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 pt-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
+        <div className="flex items-center gap-1 text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-full">
+          <MapPin className="h-4 w-4" />
+          <span>{finalDistanceLabel}</span>
+        </div>
+        <div className="flex gap-2">
+          <Link href={buildHref()} className="rounded-full border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all">
+            View Profile
+          </Link>
+          <Link href={buildHref()} className="btn-primary text-xs px-4 py-2 rounded-full font-semibold">
+            Book Appointment
+          </Link>
+        </div>
       </div>
     </article>
   );

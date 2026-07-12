@@ -1,18 +1,20 @@
 import { Request, Response, NextFunction } from 'express';
 import { sendSuccess } from '../../common/utils/http';
 import { ApiError } from '../../common/errors/ApiError';
+import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { DoctorModel } from '../doctor/doctor.repository';
 import { UserModel } from '../auth/auth.repository';
+import { PatientModel } from '../patient/patient.repository';
+import { DoctorService } from '../doctor/doctor.service';
 import mongoose from 'mongoose';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Google Generative AI import or mock fallback
 let GeminiModel: any = null;
 try {
-  const { GoogleGenAI } = require('@google/generative-ai');
   const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey) {
-    const genAI = new GoogleGenAI(apiKey);
-    GeminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  if (apiKey && apiKey !== 'your_api_key_here') {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    GeminiModel = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' });
   }
 } catch (e) {
   // Silent fallback
@@ -164,38 +166,131 @@ Do not output code blocks or markdowns, output pure valid JSON only. Keep respon
         throw new ApiError('Message is required.', 400, 'VALIDATION_ERROR');
       }
 
-      let responseText = '';
+      const systemPrompt = `You are Antigravity, DocDock's professional AI healthcare assistant.
+Your capabilities:
+- General medical guidance
+- Explain symptoms in patient-friendly terms
+- Explain medicines and prescriptions
+- Answer healthcare questions
+- Suggest lifestyle improvements
+- Suggest doctor specializations
+- Recommend available doctors
+
+Rules:
+1. NEVER diagnose diseases. Always include a disclaimer at the end when necessary reminding the patient that this is for informational purposes and they should consult a doctor on DocDock.
+2. If the patient asks about symptoms (e.g. "I have fever and headache") or requests a type of doctor (e.g. "I need skin doctor"), suggest the appropriate doctor specialization (e.g. Dermatologist, General Physician, Pediatrician, Cardiologist, ENT Specialist).
+3. If you recommend a doctor specialization, you MUST append the exact tag \`[RECOMMEND_DOCTORS: Specialization]\` (e.g., \`[RECOMMEND_DOCTORS: Dermatologist]\` or \`[RECOMMEND_DOCTORS: General Physician]\`) at the very end of your response so the system can query and list matching doctors in real-time.
+4. Respond in Markdown.`;
+
+      // Set headers for Event Stream / Streaming
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      let recommendedSpecialization = '';
+      let accumulatedText = '';
 
       if (GeminiModel) {
-        const historyPrompt = (conversationHistory || []).map((h: any) => `${h.role}: ${h.content}`).join('\n');
-        const prompt = `You are DocDock's professional AI health advisor.
-Conversation history:
-${historyPrompt}
-Patient message: ${message}
+        const historyPrompt = (conversationHistory || []).map((h: any) => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join('\n');
+        const finalPrompt = `${systemPrompt}\n\nConversation history:\n${historyPrompt}\nUser: ${message}\nAssistant:`;
 
-Provide a helpful, safe, medically cautious response. NEVER give a final diagnosis. Recommend booking a doctor whenever appropriate.`;
         try {
-          const result = await GeminiModel.generateContent(prompt);
-          responseText = result.response.text().trim();
+          const resultStream = await GeminiModel.generateContentStream(finalPrompt);
+          for await (const chunk of resultStream.stream) {
+            const text = chunk.text();
+            accumulatedText += text;
+            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          }
+
+          // Check if accumulated text contains [RECOMMEND_DOCTORS: Specialization]
+          const match = accumulatedText.match(/\[RECOMMEND_DOCTORS:\s*([^\]]+)\]/i);
+          if (match && match[1]) {
+            recommendedSpecialization = match[1].trim();
+          }
         } catch (e) {
-          // fallback
+          // fallback to simulated stream below
         }
       }
 
-      if (!responseText) {
+      if (!GeminiModel) {
+        // Simulated Stream Fallback
+        let fallbackResponse = '';
         const msg = message.toLowerCase();
-        if (msg.includes('fever')) {
-          responseText = 'A fever for several days can indicate an underlying infection. I recommend tracking your temperature and drinking plenty of fluids. Please consider booking a consultation with a General Physician for a physical examination.';
-        } else if (msg.includes('cough')) {
-          responseText = 'A persistent cough can be caused by viral infections, allergies, or other respiratory issues. Make sure to stay warm and hydrated. If the cough lasts more than a few days, please schedule a pediatric or medical checkup.';
-        } else if (msg.includes('ent') || msg.includes('ear') || msg.includes('throat')) {
-          responseText = 'You should visit an ENT Specialist if you experience persistent ear pain, sinus pressure, throat discomfort, or difficulty swallowing. You can book an appointment with our ENT partners.';
+        if (msg.includes('fever') || msg.includes('headache') || msg.includes('cold') || msg.includes('flu') || msg.includes('cough')) {
+          fallbackResponse = 'Based on your symptoms of fever, headache, or respiratory irritation, it appears you may be dealing with a common viral illness or respiratory infection. I recommend tracking your body temperature, getting ample rest, and drinking warm fluids. For a definitive diagnosis and treatment plan, consulting a **General Physician** is highly recommended.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: General Physician]';
+          recommendedSpecialization = 'General Physician';
+        } else if (msg.includes('skin') || msg.includes('rash') || msg.includes('acne') || msg.includes('itch') || msg.includes('dermatologist')) {
+          fallbackResponse = 'For skin concerns, dermatological rashes, acne outbreaks, or localized allergic reactions, a **Dermatologist** is the specialist best equipped to diagnose and suggest targeted treatments.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: Dermatologist]';
+          recommendedSpecialization = 'Dermatologist';
+        } else if (msg.includes('child') || msg.includes('baby') || msg.includes('pediatric') || msg.includes('kid')) {
+          fallbackResponse = 'For health concerns relating to infants, children, or adolescents, you should seek guidance from a **Pediatrician** who specializes in early development and childhood illnesses.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: Pediatrician]';
+          recommendedSpecialization = 'Pediatrician';
+        } else if (msg.includes('heart') || msg.includes('chest') || msg.includes('bp') || msg.includes('cardio')) {
+          fallbackResponse = 'For symptoms like chest tightness, breathing difficulties, high blood pressure, or heart rate irregularities, it is critical to consult a **Cardiologist** immediately.\n\n*Disclaimer: This is general guidance. If you are experiencing a medical emergency, go to the nearest ER.*\n\n[RECOMMEND_DOCTORS: Cardiologist]';
+          recommendedSpecialization = 'Cardiologist';
+        } else if (msg.includes('ear') || msg.includes('nose') || msg.includes('throat') || msg.includes('ent') || msg.includes('sinus')) {
+          fallbackResponse = 'For issues involving earaches, nasal congestion, throat pain, sinus infections, or hearing disturbances, an **ENT Specialist** (Otolaryngologist) is the most suitable medical expert.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: ENT Specialist]';
+          recommendedSpecialization = 'ENT Specialist';
+        } else if (msg.includes('stomach') || msg.includes('pain') || msg.includes('digestion') || msg.includes('diarrhea') || msg.includes('vomit')) {
+          fallbackResponse = 'Abdominal pain, digestion issues, persistent acid reflux, or gastrointestinal disturbances are best evaluated by a **Gastroenterologist** or a **General Physician**.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: General Physician]';
+          recommendedSpecialization = 'General Physician';
         } else {
-          responseText = 'I am here to help guide your health journey. Please remember that this chat does not replace professional medical advice. If you are experiencing concerning symptoms, we recommend booking a slot with one of our certified doctors.';
+          fallbackResponse = `Hello! I am Antigravity, your DocDock AI Healthcare Assistant. I am here to help guide you on symptoms, medications, or connect you with clinical specialists.\n\nCould you please describe what symptoms you are experiencing? E.g., "I have a skin rash" or "My child has a fever". I will analyze it and suggest the right specialist nearby.\n\n*Disclaimer: I provide information, not medical diagnoses.*`;
+        }
+
+        const words = fallbackResponse.split(' ');
+        for (const word of words) {
+          res.write(`data: ${JSON.stringify({ text: word + ' ' })}\n\n`);
+          await new Promise(r => setTimeout(r, 20));
         }
       }
 
-      sendSuccess(res, { response: responseText }, 'Chat response generated.');
+      // If doctor recommendation is triggered, fetch actual doctors and append to stream
+      if (recommendedSpecialization) {
+        // Strip out the bracket tag in UI if we want, but since we outputted it,
+        // let's fetch the doctors and append the GFM Markdown table.
+        let lat: number | undefined;
+        let lng: number | undefined;
+        try {
+          const patient = await PatientModel.findOne({ userId: (req as AuthenticatedRequest).user?.sub });
+          const defaultAddress = patient?.addresses?.find(a => a.isDefault) || patient?.addresses?.[0];
+          if (defaultAddress?.location?.coordinates) {
+            lng = defaultAddress.location.coordinates[0];
+            lat = defaultAddress.location.coordinates[1];
+          }
+        } catch (err) {
+          // Ignore location fetch errors
+        }
+
+        try {
+          const doctorService = new DoctorService();
+          const doctors = await doctorService.searchNearby(lat, lng, 25000, recommendedSpecialization, { limit: 3 });
+
+          if (doctors && doctors.length > 0) {
+            let doctorMd = '\n\n### Recommended Doctors\n\n| Doctor Name | Rating | Distance | Consultation | Availability | Action |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n';
+            for (const doc of doctors) {
+              const d = doc as any;
+              const name = d.fullName || `Dr. ${d.specialization || recommendedSpecialization}`;
+              const rating = typeof d.averageRating === 'number' ? d.averageRating.toFixed(1) : '0.0';
+              const dist = typeof d.distance === 'number' ? `${(d.distance / 1000).toFixed(1)} km` : '—';
+              const type = Array.isArray(d.consultationModes) ? d.consultationModes.map((m: string) => m.charAt(0).toUpperCase() + m.slice(1)).join(' • ') : 'Clinic';
+              const avail = d.availability?.isAvailable ? 'Available Today' : 'On Request';
+              const bookingLink = `[Book Now](/find-doctors/${d._id})`;
+
+              doctorMd += `| **${name}** | ⭐ ${rating} | 📍 ${dist} | ${type} | 🟢 ${avail} | ${bookingLink} |\n`;
+            }
+
+            res.write(`data: ${JSON.stringify({ text: doctorMd })}\n\n`);
+          } else {
+            res.write(`data: ${JSON.stringify({ text: `\n\n*No available ${recommendedSpecialization}s found nearby at the moment.*` })}\n\n`);
+          }
+        } catch (err) {
+          res.write(`data: ${JSON.stringify({ text: `\n\n*Unable to retrieve recommended doctors right now.*` })}\n\n`);
+        }
+      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
     } catch (error) {
       next(error);
     }

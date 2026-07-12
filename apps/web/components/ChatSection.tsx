@@ -126,6 +126,9 @@ export default function ChatSection({
       setMessages((prev) => [...prev, msg]);
       // If we are active window, send read receipt
       socket.emit('message:read', { roomId, userId });
+      window.dispatchEvent(new CustomEvent('docdock:read_messages', {
+        detail: { appointmentId }
+      }));
     });
 
     socket.on('typing:start', (payload: { userId: string }) => {

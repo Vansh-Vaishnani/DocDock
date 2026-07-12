@@ -41,25 +41,23 @@ export const nearbyDoctorsSchema = z.object({
 
 
 export const availabilitySchema = z.object({
-
   body: z.object({
-
     isAvailable: z.boolean().optional(),
-
     workingDays: z.array(z.string()).optional(),
-
     morningSlot: timeSlotSchema.optional(),
-
     eveningSlot: timeSlotSchema.optional(),
-
     breakTime: timeSlotSchema.optional(),
-
     vacationMode: z.boolean().optional(),
-
-    maxAppointmentsPerDay: z.number().int().min(1).max(50).optional()
-
+    maxAppointmentsPerDay: z.number().int().min(1).max(50).optional(),
+    slotDuration: z.number().int().min(5).max(240).optional(),
+    perDaySchedule: z.record(z.object({
+      enabled: z.boolean(),
+      slots: z.array(z.object({
+        start: z.string().regex(/^\d{2}:\d{2}$/),
+        end: z.string().regex(/^\d{2}:\d{2}$/)
+      }))
+    })).optional()
   })
-
 });
 
 

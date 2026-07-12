@@ -180,6 +180,7 @@ export type AppointmentDetail = {
     rejectionReason?: string | null;
     otpCode?: string;
     isEmergency?: boolean;
+    consultationMode?: string;
   };
   doctor: {
     _id?: string;

@@ -171,11 +171,18 @@ export function DoctorShell({ children }: { children: ReactNode }) {
         }));
       }
     };
+
+    const handleClearAll = () => {
+      setAppointmentUnreadCounts({});
+    };
+
     window.addEventListener('docdock:read_messages', handleReadMessages);
+    window.addEventListener('docdock:clear_all_notifications', handleClearAll);
 
     return () => {
       socket.disconnect();
       window.removeEventListener('docdock:read_messages', handleReadMessages);
+      window.removeEventListener('docdock:clear_all_notifications', handleClearAll);
     };
   }, [pathname]);
 

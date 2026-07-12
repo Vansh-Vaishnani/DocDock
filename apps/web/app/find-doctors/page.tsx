@@ -375,13 +375,9 @@ function FindDoctorsPageContent() {
                       id={`doctor-card-${doctor._id}`} 
                       key={doctor._id} 
                       onClick={() => handleDoctorCardClick(doctor)}
-                      className={`cursor-pointer transition duration-200 hover-lift rounded-2xl border ${selectedDoctorId === doctor._id ? 'ring-2 ring-emerald-500' : ''}`}
-                      style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
+                      className={`cursor-pointer transition duration-200 hover-lift rounded-3xl ${selectedDoctorId === doctor._id ? 'ring-2 ring-emerald-500' : ''}`}
                     >
                       <DoctorCard doctor={doctor} location={location} locationLabel={locationLabel} />
-                      <div className="px-5 pb-4 pt-1 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
-                        <span>Distance: {distanceLabel}</span>
-                      </div>
                     </div>
                   );
                 })}

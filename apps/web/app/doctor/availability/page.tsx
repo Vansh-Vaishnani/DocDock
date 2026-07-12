@@ -109,14 +109,40 @@ export default function DoctorAvailabilityPage() {
     leafletMapRef.current = map;
   }, [mapLoaded, clinicCoords]);
 
-  const toggleVacation = () => {
+  const toggleUnifiedAvailability = () => {
     if (!profile) return;
-    setProfile({ ...profile, availability: { ...profile.availability, vacationMode: !profile.availability.vacationMode } });
+    const isCurrentlyVacation = profile.availability.vacationMode;
+    // If vacationMode is on, turning it ON means: available=true, vacationMode=false
+    // If vacationMode is off, turning it OFF means: available=false, vacationMode=true
+    setProfile({
+      ...profile,
+      availability: {
+        ...profile.availability,
+        isAvailable: isCurrentlyVacation,
+        vacationMode: !isCurrentlyVacation
+      }
+    });
   };
 
-  const toggleAvailable = () => {
-    if (!profile) return;
-    setProfile({ ...profile, availability: { ...profile.availability, isAvailable: !profile.availability.isAvailable } });
+  const applyMondayScheduleToAll = () => {
+    const mondaySched = perDaySchedule['monday'];
+    if (!mondaySched) return;
+
+    setPerDaySchedule((prev) => {
+      const updated = { ...prev };
+      for (const day of DAYS) {
+        if (day !== 'monday') {
+          updated[day] = {
+            ...updated[day],
+            slots: mondaySched.slots.map(s => ({ ...s })),
+          };
+        }
+      }
+      return updated;
+    });
+
+    const finalDuration = useCustomDuration ? (Number(customDuration) || 30) : slotDuration;
+    showToast('Applied Monday schedule to all days locally. Save to submit changes.', 'info');
   };
 
   const toggleDay = (day: string) => {
@@ -179,6 +205,7 @@ export default function DoctorAvailabilityPage() {
   }
 
   const av = profile.availability;
+  const isAvailableUnified = av.isAvailable && !av.vacationMode;
 
   return (
     <div className="space-y-6">
@@ -191,7 +218,7 @@ export default function DoctorAvailabilityPage() {
       </div>
 
       {/* Vacation Mode Banner */}
-      {av.vacationMode && (
+      {!isAvailableUnified && (
         <div className="rounded-2xl border border-amber-300 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/20 p-5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🏖️</span>
@@ -200,39 +227,37 @@ export default function DoctorAvailabilityPage() {
               <p className="text-xs text-amber-700 dark:text-amber-500 mt-0.5">You are currently unavailable. Patients cannot book appointments.</p>
             </div>
           </div>
-          <button type="button" onClick={toggleVacation} className="rounded-full bg-amber-600 text-white text-xs font-semibold px-4 py-2 hover:bg-amber-700">
+          <button type="button" onClick={toggleUnifiedAvailability} className="rounded-full bg-amber-600 text-white text-xs font-semibold px-4 py-2 hover:bg-amber-700">
             Disable Vacation
           </button>
         </div>
       )}
 
       {/* Quick Toggles */}
-      <div className="dd-card grid gap-4 sm:grid-cols-2">
-        <label className="flex items-center gap-3 cursor-pointer p-4 rounded-xl border transition-all hover:border-emerald-500" style={{ borderColor: 'var(--border-color)' }}>
-          <div
-            onClick={toggleAvailable}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${av.isAvailable ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'}`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${av.isAvailable ? 'translate-x-6' : 'translate-x-1'}`} />
+      <div className="dd-card">
+        <div className="flex items-center justify-between p-4 rounded-xl border" style={{ borderColor: 'var(--border-color)' }}>
+          <div className="flex items-center gap-3">
+            <div
+              onClick={toggleUnifiedAvailability}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${isAvailableUnified ? 'bg-emerald-600' : 'bg-rose-500'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isAvailableUnified ? 'translate-x-6' : 'translate-x-1'}`} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Status: {isAvailableUnified ? 'Available' : 'Vacation Mode'}
+              </p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {isAvailableUnified ? 'Green — Patients can book with you' : 'Orange/Red — Bookings disabled, hidden from discovery'}
+              </p>
+            </div>
           </div>
           <div>
-            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Accepting Appointments</p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{av.isAvailable ? 'Patients can book with you' : 'You appear offline'}</p>
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${isAvailableUnified ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400'}`}>
+              ● {isAvailableUnified ? 'Available' : 'Vacation'}
+            </span>
           </div>
-        </label>
-
-        <label className="flex items-center gap-3 cursor-pointer p-4 rounded-xl border transition-all hover:border-amber-400" style={{ borderColor: 'var(--border-color)' }}>
-          <div
-            onClick={toggleVacation}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${av.vacationMode ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-600'}`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${av.vacationMode ? 'translate-x-6' : 'translate-x-1'}`} />
-          </div>
-          <div>
-            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Vacation Mode</p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{av.vacationMode ? 'On holiday — bookings hidden' : 'Not on vacation'}</p>
-          </div>
-        </label>
+        </div>
       </div>
 
       {/* Slot Duration */}
@@ -284,8 +309,19 @@ export default function DoctorAvailabilityPage() {
 
       {/* Per-Day Schedule */}
       <div className="dd-card">
-        <h3 className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Weekly Schedule</h3>
-        <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>Enable days and add your working intervals with optional breaks.</p>
+        <div className="flex flex-wrap items-center justify-between mb-4 gap-2">
+          <div>
+            <h3 className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Weekly Schedule</h3>
+            <p className="text-xs text-slate-500" style={{ color: 'var(--text-secondary)' }}>Enable days and add your working intervals with optional breaks.</p>
+          </div>
+          <button
+            type="button"
+            onClick={applyMondayScheduleToAll}
+            className="rounded-full border border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-400 px-4 py-1.5 text-xs font-semibold hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all"
+          >
+            Apply Monday Schedule to All Days
+          </button>
+        </div>
         <div className="space-y-3">
           {DAYS.map((day) => {
             const ds = perDaySchedule[day] || { enabled: false, slots: [{ start: '09:00', end: '17:00' }] };

@@ -6,7 +6,7 @@ import Link from 'next/link';
 
 import { useParams } from 'next/navigation';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 
 const REVIEW_MODAL_KEY_PREFIX = 'docdock-review-modal-dismissed';
@@ -304,6 +304,18 @@ export default function AppointmentDetailsPage() {
 
   const [showChat, setShowChat] = useState(false);
   const [showVideoCall, setShowVideoCall] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const showChatRef = useRef(showChat);
+  useEffect(() => {
+    showChatRef.current = showChat;
+    if (showChat) {
+      setUnreadCount(0);
+      window.dispatchEvent(new CustomEvent('docdock:read_messages', {
+        detail: { appointmentId }
+      }));
+    }
+  }, [showChat, appointmentId]);
   
   // AI summary states
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
@@ -384,6 +396,7 @@ export default function AppointmentDetailsPage() {
         }
         return prev;
       });
+      setUnreadCount((data.appointment as any)?.unreadMessageCount || 0);
 
       const hasReview = Boolean(data.review);
       setReviewSubmitted(hasReview);
@@ -467,9 +480,24 @@ export default function AppointmentDetailsPage() {
       }
     });
 
+    socket.on('chat:message_received', (data: { roomId: string; appointmentId: string; message: any }) => {
+      if (data.appointmentId === appointmentId && !showChatRef.current) {
+        setUnreadCount((prev) => prev + 1);
+      }
+    });
+
+    const handleReadMessages = (e: Event) => {
+      const { appointmentId: readApptId } = (e as CustomEvent).detail || {};
+      if (readApptId === appointmentId) {
+        setUnreadCount(0);
+      }
+    };
+    window.addEventListener('docdock:read_messages', handleReadMessages);
+
     return () => {
       clearInterval(interval);
       socket.disconnect();
+      window.removeEventListener('docdock:read_messages', handleReadMessages);
     };
   }, [appointmentId, load]);
 
@@ -616,9 +644,14 @@ export default function AppointmentDetailsPage() {
                     <button
                       type="button"
                       onClick={() => setShowChat((prev) => !prev)}
-                      className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                      className="relative rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
                     >
                       {showChat ? 'Close Chat' : 'Open Chat'}
+                      {!showChat && unreadCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-bold text-white shadow">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      )}
                     </button>
                     {/* Show Video Call button for online appointments in in_consultation */}
                     {(detail.appointment as any)?.consultationMode === 'online' &&

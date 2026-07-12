@@ -4,6 +4,7 @@ import { DoctorModel } from '../doctor/doctor.repository';
 import { config } from '../../common/config';
 import { ApiError } from '../../common/errors/ApiError';
 import { NotificationService } from '../notification/notification.service';
+import { NotificationModel } from '../notification/notification.model';
 import { UserModel } from '../auth/auth.repository';
 import { PatientModel } from '../patient/patient.repository';
 import { PaymentModel } from '../payment/payment.repository';
@@ -16,9 +17,9 @@ import crypto from 'crypto';
 import { smsService } from '../../services/sms.service';
 import { AppointmentOtpModel } from './otp.model';
 import { CallLogModel } from './call.model';
+import { ChatMessageModel } from '../chat/chat.model';
 import { voiceService } from '../../services/voice.service';
 import { getIO } from '../../sockets/gateway';
-import { ChatMessageModel } from '../chat/chat.model';
 
 const notificationService = new NotificationService();
 const paymentService = new PaymentService();
@@ -204,98 +205,23 @@ export class AppointmentService {
       throw new ApiError('Invalid date', 400, 'VALIDATION_ERROR');
     }
 
-    const now = new Date();
-    const nowIST = getISTParts(now);
-    const todayStr = `${nowIST.year}-${String(nowIST.month).padStart(2, '0')}-${String(nowIST.date).padStart(2, '0')}`;
-
-    if (date === todayStr) {
-      // Build 24 hourly slots for the calendar date in IST (00:00 - 23:00)
-      const startOfDay = new Date(`${date}T00:00:00+05:30`);
-      const slots: Date[] = [];
-      for (let h = 0; h < 24; h++) {
-        const slot = new Date(startOfDay.getTime() + h * 60 * 60 * 1000);
-        slots.push(slot);
-      }
-
-      const windowStart = slots[0];
-      const windowEnd = new Date(slots[slots.length - 1].getTime() + 60 * 60 * 1000 - 1);
-
-      // Fetch existing appointments in the 24-hour window
-      const existing = await AppointmentModel.find({
-        doctorId: doctor._id,
-        scheduledAt: { $gte: windowStart, $lte: windowEnd },
-        status: { $nin: ['cancelled_by_patient', 'cancelled_by_doctor', 'rejected', 'auto_rejected'] }
-      })
-        .select('scheduledAt')
-        .lean();
-
-      const bookedSet = new Set(existing.map((a) => new Date(a.scheduledAt).getTime()));
-
-      // Count bookings per day to respect maxAppointmentsPerDay
-      const bookingsPerDay = new Map<string, number>();
-      existing.forEach((a) => {
-        const dIST = getISTParts(new Date(a.scheduledAt));
-        const key = `${dIST.year}-${String(dIST.month).padStart(2, '0')}-${String(dIST.date).padStart(2, '0')}`;
-        bookingsPerDay.set(key, (bookingsPerDay.get(key) ?? 0) + 1);
-      });
-
-      const result: string[] = [];
-      for (const slot of slots) {
-        const slotIST = getISTParts(slot);
-        // For today: show only slots whose start hour is >= current hour in IST
-        if (slotIST.hours < nowIST.hours) continue;
-
-        const dayKey = `${slotIST.year}-${String(slotIST.month).padStart(2, '0')}-${String(slotIST.date).padStart(2, '0')}`;
-        const dayName = DAY_NAMES[slotIST.day];
-        if (!doctor.availability.workingDays.includes(dayName)) continue;
-
-        // Respect per-day max appointments
-        if ((bookingsPerDay.get(dayKey) ?? 0) >= doctor.availability.maxAppointmentsPerDay) continue;
-
-        // Exclude slots that fall within the doctor's break time
-        if (doctor.availability.breakTime) {
-          const startM = parseTimeToMinutes(doctor.availability.breakTime.start);
-          const endM = parseTimeToMinutes(doctor.availability.breakTime.end);
-          const slotMinutes = slotIST.hours * 60 + slotIST.minutes;
-          if (slotMinutes >= startM && slotMinutes < endM) continue;
-        }
-
-        if (bookedSet.has(slot.getTime())) continue;
-
-        result.push(slot.toISOString());
-      }
-
-      return result;
-    }
-
-    // For any non-today date (tomorrow or future), generate 24 hourly slots for that calendar date
     const parsedDateIST = getISTParts(parsedDate);
     const dayName = DAY_NAMES[parsedDateIST.day];
-    if (!doctor.availability.workingDays.includes(dayName)) {
+
+    const daySchedule = doctor.availability.perDaySchedule?.[dayName];
+    if (!daySchedule || !daySchedule.enabled || !daySchedule.slots || daySchedule.slots.length === 0) {
       return [];
     }
 
+    const slotDuration = doctor.availability.slotDuration || 30;
+
     const startOfDay = new Date(`${date}T00:00:00+05:30`);
-    const slots: Date[] = [];
-    for (let h = 0; h < 24; h++) {
-      const slot = new Date(startOfDay.getTime() + h * 60 * 60 * 1000);
-      slots.push(slot);
-    }
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
 
-    const windowStart = slots[0];
-    const windowEnd = new Date(slots[slots.length - 1].getTime() + 60 * 60 * 1000 - 1);
-
-    const bookedCount = await AppointmentModel.countDocuments({
-      doctorId: doctor._id,
-      scheduledAt: { $gte: windowStart, $lte: windowEnd },
-      status: { $nin: ['cancelled_by_patient', 'cancelled_by_doctor', 'rejected', 'auto_rejected'] }
-    });
-
-    if (bookedCount >= doctor.availability.maxAppointmentsPerDay) return [];
-
+    // Fetch existing appointments in the 24-hour window
     const existing = await AppointmentModel.find({
       doctorId: doctor._id,
-      scheduledAt: { $gte: windowStart, $lte: windowEnd },
+      scheduledAt: { $gte: startOfDay, $lte: endOfDay },
       status: { $nin: ['cancelled_by_patient', 'cancelled_by_doctor', 'rejected', 'auto_rejected'] }
     })
       .select('scheduledAt')
@@ -303,28 +229,47 @@ export class AppointmentService {
 
     const bookedSet = new Set(existing.map((a) => new Date(a.scheduledAt).getTime()));
 
-    const result: string[] = [];
-    for (const slot of slots) {
-      const slotIST = getISTParts(slot);
-      const dayKey = `${slotIST.year}-${String(slotIST.month).padStart(2, '0')}-${String(slotIST.date).padStart(2, '0')}`;
-      
-      // Respect per-day max appointments
-      if ((existing.filter((a) => {
-        const dIST = getISTParts(new Date(a.scheduledAt));
-        const key = `${dIST.year}-${String(dIST.month).padStart(2, '0')}-${String(dIST.date).padStart(2, '0')}`;
-        return key === dayKey;
-      }).length) >= doctor.availability.maxAppointmentsPerDay) continue;
+    if (existing.length >= doctor.availability.maxAppointmentsPerDay) {
+      return [];
+    }
 
-      // Exclude slots that fall within the doctor's break time
-      if (doctor.availability.breakTime) {
-        const startM = parseTimeToMinutes(doctor.availability.breakTime.start);
-        const endM = parseTimeToMinutes(doctor.availability.breakTime.end);
-        const slotMinutes = slotIST.hours * 60 + slotIST.minutes;
-        if (slotMinutes >= startM && slotMinutes < endM) continue;
+    const now = new Date();
+    const result: string[] = [];
+
+    // Generate slots based on the intervals defined in daySchedule.slots
+    for (const interval of daySchedule.slots) {
+      const startMinutes = parseTimeToMinutes(interval.start);
+      let endMinutes = parseTimeToMinutes(interval.end);
+      if (interval.end === '23:59' || interval.end === '23:58' || interval.end === '24:00') {
+        endMinutes = 1440;
       }
 
-      if (bookedSet.has(slot.getTime())) continue;
-      result.push(slot.toISOString());
+      for (let minute = startMinutes; minute + slotDuration <= endMinutes; minute += slotDuration) {
+        // Exclude slots that fall within the doctor's break time
+        if (doctor.availability.breakTime) {
+          const breakStart = parseTimeToMinutes(doctor.availability.breakTime.start);
+          const breakEnd = parseTimeToMinutes(doctor.availability.breakTime.end);
+          const slotEndMinutes = minute + slotDuration;
+          if (minute < breakEnd && slotEndMinutes > breakStart) {
+            continue;
+          }
+        }
+
+        const hour = Math.floor(minute / 60);
+        const min = minute % 60;
+        const slotDate = new Date(`${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00+05:30`);
+
+        // Filter out past slots
+        if (slotDate.getTime() <= now.getTime()) {
+          continue;
+        }
+
+        if (bookedSet.has(slotDate.getTime())) {
+          continue;
+        }
+
+        result.push(slotDate.toISOString());
+      }
     }
 
     return result;
@@ -442,10 +387,25 @@ export class AppointmentService {
       countMap[msg.roomId] = (countMap[msg.roomId] || 0) + 1;
     });
 
+    const unreadNotifications = await NotificationModel.find({
+      userId: new mongoose.Types.ObjectId(userId),
+      isRead: false,
+      type: { $in: ['accepted', 'rejected', 'doctor_on_way', 'arrived', 'in_consultation', 'completed', 'payment_received', 'appointment_pending'] }
+    }).lean();
+
+    const notificationCountMap: Record<string, number> = {};
+    unreadNotifications.forEach((n) => {
+      const apptId = n.metadata?.appointmentId?.toString();
+      if (apptId) {
+        notificationCountMap[apptId] = (notificationCountMap[apptId] || 0) + 1;
+      }
+    });
+
     return appointments.map((appt) => {
       const doctor = doctorMap.get(appt.doctorId.toString());
       const payment = paymentMap.get(appt._id.toString());
       const rId = `${appt._id}:${userId}:${appt.doctorId}`;
+      const apptIdStr = appt._id.toString();
       return {
         _id: appt._id,
         scheduledAt: appt.scheduledAt,
@@ -461,7 +421,7 @@ export class AppointmentService {
         paymentStatus: payment?.status ?? null,
         refundStatus: (payment as any)?.refundStatus ?? null,
         consultationMode: appt.consultationMode,
-        unreadMessageCount: countMap[rId] || 0,
+        unreadMessageCount: (countMap[rId] || 0) + (notificationCountMap[apptIdStr] || 0),
         isEmergency: appt.isEmergency || false
       };
     });
@@ -484,13 +444,29 @@ export class AppointmentService {
       }
     }
 
-    const [doctorProfile, patientUser, payment, prescription, review, otpRecord] = await Promise.all([
+    // Mark notifications for this appointment and user as read
+    await NotificationModel.updateMany(
+      {
+        userId: new mongoose.Types.ObjectId(userId),
+        'metadata.appointmentId': appointmentId,
+        isRead: false
+      },
+      { $set: { isRead: true } }
+    );
+
+    const roomId = `${appointment._id.toString()}:${appointment.patientId.toString()}:${appointment.doctorId.toString()}`;
+    const [doctorProfile, patientUser, payment, prescription, review, otpRecord, unreadMessageCount] = await Promise.all([
       DoctorModel.findById(appointment.doctorId).populate('userId', 'fullName email phone avatar').lean(),
       UserModel.findById(appointment.patientId).select('fullName email phone').lean(),
       PaymentModel.findOne({ appointmentId: appointment._id }).lean(),
       PrescriptionModel.findOne({ appointmentId: appointment._id }).lean(),
       ReviewModel.findOne({ appointmentId: appointment._id }).lean(),
-      AppointmentOtpModel.findOne({ appointmentId: appointment._id }).lean()
+      AppointmentOtpModel.findOne({ appointmentId: appointment._id }).lean(),
+      ChatMessageModel.countDocuments({
+        roomId,
+        senderRole: role === 'patient' ? 'doctor' : 'patient',
+        isRead: false
+      })
     ]);
 
     
@@ -506,6 +482,7 @@ export class AppointmentService {
                 rejectionReason: (appointment as any).rejectionReason ?? null,
                 address: appointment.address,
                 notes: appointment.notes,
+                unreadMessageCount,
                 createdAt: ((appointment as { createdAt?: Date }).createdAt?.toISOString?.() ?? new Date().toISOString()),
                 updatedAt: ((appointment as { updatedAt?: Date }).updatedAt?.toISOString?.() ?? new Date().toISOString())
               },
@@ -667,6 +644,7 @@ export class AppointmentService {
                 cancellationReason: (appointment as any).cancellationReason ?? null,
                 address: appointment.address,
                 notes: appointment.notes,
+                unreadMessageCount,
                 createdAt: ((appointment as { createdAt?: Date }).createdAt?.toISOString?.() ?? new Date().toISOString()),
                 updatedAt: ((appointment as { updatedAt?: Date }).updatedAt?.toISOString?.() ?? new Date().toISOString())
               },
@@ -761,6 +739,7 @@ export class AppointmentService {
               notes: appointment.notes,
               otpCode: otpRecord?.plainTextOtp || null,
               consultationMode: appointment.consultationMode,
+              unreadMessageCount,
               createdAt: ((appointment as { createdAt?: Date }).createdAt?.toISOString?.() ?? new Date().toISOString()),
               updatedAt: ((appointment as { updatedAt?: Date }).updatedAt?.toISOString?.() ?? new Date().toISOString())
             },
