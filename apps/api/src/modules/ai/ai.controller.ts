@@ -9,15 +9,22 @@ import { DoctorService } from '../doctor/doctor.service';
 import mongoose from 'mongoose';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-let GeminiModel: any = null;
-try {
+// --- Lazy Gemini model factory (reads env vars at request time, not module load time) ---
+function getGeminiModel(): any | null {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && apiKey !== 'your_api_key_here') {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    GeminiModel = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' });
+  console.log('[AI] GEMINI_API_KEY present:', !!apiKey, '| placeholder:', apiKey === 'your_api_key_here');
+  if (!apiKey || apiKey === 'your_api_key_here') {
+    return null;
   }
-} catch (e) {
-  // Silent fallback
+  try {
+    const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    console.log('[AI] Initializing Gemini model:', modelName);
+    const genAI = new GoogleGenerativeAI(apiKey);
+    return genAI.getGenerativeModel({ model: modelName });
+  } catch (e: any) {
+    console.error('[AI] Failed to initialize Gemini model:', e?.message);
+    return null;
+  }
 }
 
 export class AIController {
@@ -30,7 +37,8 @@ export class AIController {
 
       const disclaimer = 'This is AI-generated guidance and not a medical diagnosis.';
 
-      if (GeminiModel) {
+      const geminiModel = getGeminiModel();
+      if (geminiModel) {
         const prompt = `You are an expert AI clinical triage assistant. Analyze this case:
 Symptoms: ${symptoms}
 Age: ${age || 'Not specified'}
@@ -49,13 +57,16 @@ Provide a JSON response with:
 Do not output code blocks or markdowns, output pure valid JSON only. Keep responses medically cautious. Include the warning: "${disclaimer}"`;
         
         try {
-          const result = await GeminiModel.generateContent(prompt);
+          console.log('[AI] Calling Gemini for symptom check...');
+          const result = await geminiModel.generateContent(prompt);
           const responseText = result.response.text().trim();
+          console.log('[AI] Gemini symptom-check response received, length:', responseText.length);
           const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
           const parsed = JSON.parse(cleanJson);
           sendSuccess(res, { ...parsed, disclaimer }, 'Symptom check complete.');
           return;
-        } catch (err) {
+        } catch (err: any) {
+          console.error('[AI] Gemini symptom-check failed:', err?.message);
           // Fall back to rule-based analysis if Gemini fails
         }
       }
@@ -166,6 +177,8 @@ Do not output code blocks or markdowns, output pure valid JSON only. Keep respon
         throw new ApiError('Message is required.', 400, 'VALIDATION_ERROR');
       }
 
+      console.log('[AI Chat] Request received. Message:', message?.substring(0, 80));
+
       const systemPrompt = `You are Antigravity, DocDock's professional AI healthcare assistant.
 Your capabilities:
 - General medical guidance
@@ -186,34 +199,59 @@ Rules:
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+      // Ensure response is not buffered (critical for Render/proxied environments)
+      if (typeof (res as any).flush === 'function') {
+        (res as any).flush();
+      }
 
       let recommendedSpecialization = '';
       let accumulatedText = '';
+      let geminiSucceeded = false;
 
-      if (GeminiModel) {
+      // --- Lazy-initialize Gemini model (reads env at request time) ---
+      const geminiModel = getGeminiModel();
+      console.log('[AI Chat] Gemini model available:', !!geminiModel);
+
+      if (geminiModel) {
         const historyPrompt = (conversationHistory || []).map((h: any) => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join('\n');
         const finalPrompt = `${systemPrompt}\n\nConversation history:\n${historyPrompt}\nUser: ${message}\nAssistant:`;
 
         try {
-          const resultStream = await GeminiModel.generateContentStream(finalPrompt);
+          console.log('[AI Chat] Calling Gemini generateContentStream...');
+          const resultStream = await geminiModel.generateContentStream(finalPrompt);
+          let chunkCount = 0;
           for await (const chunk of resultStream.stream) {
             const text = chunk.text();
-            accumulatedText += text;
-            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+            if (text) {
+              accumulatedText += text;
+              res.write(`data: ${JSON.stringify({ text })}\n\n`);
+              chunkCount++;
+            }
           }
+          console.log(`[AI Chat] Gemini stream complete. Chunks: ${chunkCount}, Total chars: ${accumulatedText.length}`);
 
-          // Check if accumulated text contains [RECOMMEND_DOCTORS: Specialization]
-          const match = accumulatedText.match(/\[RECOMMEND_DOCTORS:\s*([^\]]+)\]/i);
-          if (match && match[1]) {
-            recommendedSpecialization = match[1].trim();
+          if (accumulatedText.length > 0) {
+            geminiSucceeded = true;
+            // Check for [RECOMMEND_DOCTORS: Specialization]
+            const match = accumulatedText.match(/\[RECOMMEND_DOCTORS:\s*([^\]]+)\]/i);
+            if (match && match[1]) {
+              recommendedSpecialization = match[1].trim();
+              console.log('[AI Chat] Doctor recommendation triggered for:', recommendedSpecialization);
+            }
+          } else {
+            console.warn('[AI Chat] Gemini returned empty stream — falling back to simulated response.');
           }
-        } catch (e) {
-          // fallback to simulated stream below
+        } catch (e: any) {
+          console.error('[AI Chat] Gemini streaming error:', e?.message || e);
+          // Send error chunk so the frontend knows what happened (does not expose key)
+          res.write(`data: ${JSON.stringify({ text: '\n\n*[Note: AI response encountered an issue. Using offline guidance.]*\n\n' })}\n\n`);
         }
       }
 
-      if (!GeminiModel) {
-        // Simulated Stream Fallback
+      // --- Simulated Stream Fallback ---
+      // Runs when: (1) no Gemini model, or (2) Gemini returned empty/errored
+      if (!geminiSucceeded) {
+        console.log('[AI Chat] Using simulated stream fallback.');
         let fallbackResponse = '';
         const msg = message.toLowerCase();
         if (msg.includes('fever') || msg.includes('headache') || msg.includes('cold') || msg.includes('flu') || msg.includes('cough')) {
@@ -306,7 +344,8 @@ Rules:
       let foodRecommendations = '';
       let followUpReminder = '';
 
-      if (GeminiModel) {
+      const geminiModel = getGeminiModel();
+      if (geminiModel) {
         const prompt = `Analyze this prescription:
 Diagnosis: ${diagnosis || 'Not specified'}
 Medications: ${JSON.stringify(medications || [])}
@@ -322,13 +361,16 @@ Provide a JSON response containing:
 Do not output code blocks or markdowns, output pure valid JSON only.`;
 
         try {
-          const result = await GeminiModel.generateContent(prompt);
+          console.log('[AI] Calling Gemini for prescription summary...');
+          const result = await geminiModel.generateContent(prompt);
           const responseText = result.response.text().trim();
+          console.log('[AI] Gemini prescription response received, length:', responseText.length);
           const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
           const parsed = JSON.parse(cleanJson);
           sendSuccess(res, parsed, 'Prescription summary generated.');
           return;
-        } catch (e) {
+        } catch (e: any) {
+          console.error('[AI] Gemini prescription summary failed:', e?.message);
           // fallback
         }
       }
