@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { getRoleHomePath, useAuth } from './auth/auth-context';
 import { DarkModeToggle } from './theme-context';
 
@@ -97,10 +98,15 @@ export default function HomePage() {
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Logo */}
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-600">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /><path d="M12 8v4M12 16h.01" />
-              </svg>
+            <div style={{ width: 36, height: 36, borderRadius: 14, overflow: 'hidden', flexShrink: 0, display: 'inline-flex' }}>
+              <Image
+                src="/logo.png"
+                alt="DocDock Logo"
+                width={36}
+                height={36}
+                style={{ display: 'block', width: 36, height: 36 }}
+                priority
+              />
             </div>
             <div>
               <div className="text-base font-bold leading-none" style={{ color: 'var(--text-primary)' }}>DocDock</div>

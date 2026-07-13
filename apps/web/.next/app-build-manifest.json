@@ -20,12 +20,6 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/patient/layout.js"
-    ],
-    "/patient/appointments/[appointmentId]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/patient/appointments/[appointmentId]/page.css",
-      "static/chunks/app/patient/appointments/[appointmentId]/page.js"
     ]
   }
 }

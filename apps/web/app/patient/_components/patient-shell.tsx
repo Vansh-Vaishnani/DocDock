@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useMemo, useState, useEffect, useCallback } from 'react';
 import { io } from 'socket.io-client';
@@ -50,11 +51,15 @@ const navItems = [
 function DocDockLogo({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-600 shadow-emerald-sm">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" />
-          <path d="M12 8v4M12 16h.01" />
-        </svg>
+      <div style={{ width: 36, height: 36, borderRadius: 14, overflow: "hidden", flexShrink: 0, display: "inline-flex" }}>
+        <Image
+          src="/logo.png"
+          alt="DocDock Logo"
+          width={36}
+          height={36}
+          style={{ display: "block", width: 36, height: 36 }}
+          priority
+        />
       </div>
       {!collapsed && (
         <div>
