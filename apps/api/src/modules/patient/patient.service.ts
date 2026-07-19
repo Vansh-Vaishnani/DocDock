@@ -9,6 +9,7 @@ import { EmergencyRequestModel } from './emergency.model';
 import { PaymentModel } from '../payment/payment.repository';
 import { NotificationService } from '../notification/notification.service';
 import { getIO } from '../../sockets/gateway';
+import { isCloudinaryEnabled, uploadBase64File } from '../../services/cloudinary.service';
 
 const notificationService = new NotificationService();
 
@@ -19,6 +20,7 @@ export interface PatientProfileResponse {
   email: string;
   phone: string;
   bloodGroup?: string;
+  profilePhotoUrl?: string;
   allergies: string[];
   medicalHistory: Array<{ _id?: string; note: string; createdAt: string }>;
   addresses: Array<{
@@ -37,6 +39,7 @@ const formatProfile = (patient: IPatientDocument, user: { fullName: string; emai
   email: user.email,
   phone: user.phone,
   bloodGroup: patient.bloodGroup,
+  profilePhotoUrl: patient.profilePhotoUrl,
   allergies: patient.allergies ?? [],
   medicalHistory: (patient.medicalHistory ?? []).map((entry) => ({
     _id: entry._id?.toString(),
@@ -81,6 +84,7 @@ export class PatientService {
       email?: string;
       phone?: string;
       bloodGroup?: string;
+      profilePhoto?: string;  // base64 data URI
       allergies?: string[];
       medicalHistory?: Array<{ note: string; createdAt?: string }>;
     }
@@ -127,6 +131,18 @@ export class PatientService {
         note: entry.note,
         createdAt: entry.createdAt ? new Date(entry.createdAt) : new Date()
       }));
+    }
+
+    // Handle profile photo upload
+    if (payload.profilePhoto && isCloudinaryEnabled()) {
+      try {
+        const photoUrl = await uploadBase64File(payload.profilePhoto, 'patient-profiles');
+        patient.profilePhotoUrl = photoUrl;
+        user.avatar = photoUrl;
+      } catch (err) {
+        console.error('Patient profile photo upload failed:', err);
+        // Non-fatal: continue without photo update
+      }
     }
 
     await Promise.all([user.save(), patient.save()]);

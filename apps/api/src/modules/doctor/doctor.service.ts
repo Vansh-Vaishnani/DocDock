@@ -392,6 +392,19 @@ export class DoctorService {
 
 
 
+    const allowedBase64Mimes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    const validateBase64 = (uri?: string, label?: string) => {
+      if (!uri) return;
+      const mime = (uri.match(/^data:([^;]+);/) || [])[1] || '';
+      if (!allowedBase64Mimes.includes(mime)) {
+        throw new ApiError(`Unsupported format for ${label || 'file'}. Only PDF, JPG, JPEG, and PNG are allowed.`, 400, 'UNSUPPORTED_FILE_TYPE');
+      }
+    };
+
+    validateBase64(payload.profilePhoto, 'profile photo');
+    validateBase64(payload.governmentId, 'government ID');
+    validateBase64(payload.medicalLicense, 'medical license');
+
     const [profilePhotoUrl, governmentIdUrl, medicalLicenseUrl] = await Promise.all([
 
       uploadOptional(payload.profilePhoto, 'doctor-profiles'),
@@ -1327,7 +1340,7 @@ export class DoctorService {
 
 
 
-  async uploadDocument(userId: string, payload: { file: { buffer: Buffer; originalname?: string }; documentType: 'profilePhoto' | 'governmentId' | 'medicalLicense' }): Promise<{ url: string; documentType: string }> {
+  async uploadDocument(userId: string, payload: { file: { buffer: Buffer; originalname?: string; mimetype?: string }; documentType: 'profilePhoto' | 'governmentId' | 'medicalLicense' }): Promise<{ url: string; documentType: string }> {
 
     const [doctor, user] = await Promise.all([
 
@@ -1343,7 +1356,16 @@ export class DoctorService {
 
     }
 
+    // Validate file type
+    const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    const mime = payload.file.mimetype || '';
+    const name = (payload.file.originalname || '').toLowerCase();
+    const hasAllowedExt = /\.(pdf|jpg|jpeg|png)$/.test(name);
+    const hasAllowedMime = allowedMimeTypes.includes(mime) || (mime === '' && hasAllowedExt);
 
+    if (!hasAllowedMime) {
+      throw new ApiError('Unsupported file format. Only PDF, JPG, JPEG, and PNG are allowed.', 400, 'UNSUPPORTED_FILE_TYPE');
+    }
 
     const folder = payload.documentType === 'profilePhoto' ? 'doctor-profiles' : 'doctor-documents';
 

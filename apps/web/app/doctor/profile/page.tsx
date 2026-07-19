@@ -10,6 +10,14 @@ import { z } from 'zod';
 import { useToast } from '../../auth/toast-provider';
 import { fetchDoctorProfile, updateDoctorProfile, uploadDoctorDocument, removeDoctorDocument, type DoctorProfile } from '../api';
 
+const getDownloadUrl = (url?: string): string => {
+  if (!url) return '';
+  if (url.includes('/upload/')) {
+    return url.replace('/upload/', '/upload/fl_attachment/');
+  }
+  return url;
+};
+
 const schema = z.object({
   fullName: z.string().min(2),
   email: z.string().email(),
@@ -106,12 +114,35 @@ export default function DoctorProfilePage() {
     }
   };
 
+  const updateStoredAvatar = (avatarUrl: string | null) => {
+    if (typeof window === 'undefined') return;
+    for (const storage of [window.localStorage, window.sessionStorage]) {
+      const raw = storage.getItem('docdock-auth');
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          parsed.user = { ...(parsed.user || {}), avatar: avatarUrl };
+          storage.setItem('docdock-auth', JSON.stringify(parsed));
+        } catch { /* ignore */ }
+      }
+    }
+  };
+
   const handleDocumentUpload = async (file: File, documentType: 'profilePhoto' | 'governmentId' | 'medicalLicense') => {
+    const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (!allowedMimeTypes.includes(file.type)) {
+      showToast('Unsupported file format. Only PDF, JPG, JPEG, and PNG are allowed.', 'error');
+      return;
+    }
     setUploadingDoc(documentType);
     try {
       const result = await uploadDoctorDocument(file, documentType);
       setProfile((prev) => prev ? { ...prev, [documentType === 'profilePhoto' ? 'profilePhotoUrl' : documentType === 'governmentId' ? 'governmentIdUrl' : 'medicalLicenseUrl']: result.url } : null);
       showToast(`${documentType === 'profilePhoto' ? 'Profile photo' : documentType === 'governmentId' ? 'Government ID' : 'Medical license'} uploaded successfully.`, 'success');
+      if (documentType === 'profilePhoto') {
+        updateStoredAvatar(result.url);
+        window.dispatchEvent(new CustomEvent('docdock:profile_photo_updated', { detail: { url: result.url } }));
+      }
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Upload failed.', 'error');
     } finally {
@@ -124,6 +155,10 @@ export default function DoctorProfilePage() {
       await removeDoctorDocument(documentType);
       setProfile((prev) => prev ? { ...prev, [documentType === 'profilePhoto' ? 'profilePhotoUrl' : documentType === 'governmentId' ? 'governmentIdUrl' : 'medicalLicenseUrl']: undefined } : null);
       showToast('Document removed successfully.', 'success');
+      if (documentType === 'profilePhoto') {
+        updateStoredAvatar(null);
+        window.dispatchEvent(new CustomEvent('docdock:profile_photo_updated', { detail: { url: null } }));
+      }
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Removal failed.', 'error');
     }
@@ -287,7 +322,10 @@ export default function DoctorProfilePage() {
             <label className="dd-label">Government ID</label>
             {profile?.governmentIdUrl ? (
               <div className="flex items-center gap-4">
-                <a href={profile.governmentIdUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold hover:underline">View document</a>
+                <div className="flex gap-3">
+                  <a href={profile.governmentIdUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold hover:underline">View ↗</a>
+                  <a href={getDownloadUrl(profile.governmentIdUrl)} download className="text-xs text-slate-500 dark:text-slate-400 font-semibold hover:underline">Download ↓</a>
+                </div>
                 <div className="flex gap-2">
                   <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'governmentId')} className="text-xs" disabled={uploadingDoc === 'governmentId'} />
                   <button type="button" onClick={() => void handleDocumentRemove('governmentId')} disabled={uploadingDoc === 'governmentId'} className="btn-secondary text-xs px-3 py-1 text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/20">Remove</button>
@@ -301,7 +339,10 @@ export default function DoctorProfilePage() {
             <label className="dd-label">Medical Registration Certificate</label>
             {profile?.medicalLicenseUrl ? (
               <div className="flex items-center gap-4">
-                <a href={profile.medicalLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold hover:underline">View document</a>
+                <div className="flex gap-3">
+                  <a href={profile.medicalLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold hover:underline">View ↗</a>
+                  <a href={getDownloadUrl(profile.medicalLicenseUrl)} download className="text-xs text-slate-500 dark:text-slate-400 font-semibold hover:underline">Download ↓</a>
+                </div>
                 <div className="flex gap-2">
                   <input type="file" accept="image/*,application/pdf" onChange={(e) => e.target.files?.[0] && void handleDocumentUpload(e.target.files[0], 'medicalLicense')} className="text-xs" disabled={uploadingDoc === 'medicalLicense'} />
                   <button type="button" onClick={() => void handleDocumentRemove('medicalLicense')} disabled={uploadingDoc === 'medicalLicense'} className="btn-secondary text-xs px-3 py-1 text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/20">Remove</button>

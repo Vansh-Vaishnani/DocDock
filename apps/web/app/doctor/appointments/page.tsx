@@ -99,6 +99,10 @@ function getActions(appt: DoctorAppointment, verified: boolean): ActionButton[] 
 
 export default function DoctorAppointmentsPage() {
   const { showToast } = useToast();
+  const showToastRef = useRef<typeof showToast>(showToast);
+  useEffect(() => { showToastRef.current = showToast; }, [showToast]);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const [appointments, setAppointments] = useState<DoctorAppointment[]>([]);
   const [filter, setFilter] = useState<'today' | 'upcoming' | 'all'>('all');
   const [loading, setLoading] = useState(true);
@@ -178,32 +182,31 @@ export default function DoctorAppointmentsPage() {
     setLoading(true);
     try {
       const [list, profile] = await Promise.all([fetchDoctorAppointments(filter), fetchDoctorProfile()]);
-      setAppointments(list);
-      setVerified(profile.verificationStatus === 'approved');
-      if (profile.location?.coordinates) {
-        setDoctorCoords(profile.location.coordinates);
+      if (mountedRef.current) {
+        setAppointments(list);
+        setVerified(profile.verificationStatus === 'approved');
+        if (profile.location?.coordinates) {
+          setDoctorCoords(profile.location.coordinates);
+        }
       }
     } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Unable to load appointments.', 'error');
+      if (mountedRef.current) {
+        showToastRef.current(err instanceof Error ? err.message : 'Unable to load appointments.', 'error');
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
-  }, [filter, showToast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]); // stable — showToast via ref
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Real-time Socket.IO and 5-second polling fallback effect
+  // Real-time Socket.IO for appointment status updates
   useEffect(() => {
-    // 1. Polling fallback (refetch every 5 seconds)
-    const interval = setInterval(() => {
-      void load();
-    }, 5000);
-
-    // 2. Real-time Socket.IO status updates
     const token = getStoredAccessToken();
-    if (!token) return () => clearInterval(interval);
+    if (!token) return;
 
     const socket = io(`${SOCKET_BASE}/notifications`, {
       transports: ['websocket', 'polling'],
@@ -216,10 +219,7 @@ export default function DoctorAppointmentsPage() {
         if (raw) {
           const parsed = JSON.parse(raw) as { user?: { _id?: string } };
           const userId = parsed.user?._id;
-          if (userId) {
-            socket.emit('join', userId);
-            console.log('Joined doctor appointments notification room:', userId);
-          }
+          if (userId) socket.emit('join', userId);
         }
       } catch (e) {
         console.error('Failed to parse docdock-auth:', e);
@@ -237,20 +237,15 @@ export default function DoctorAppointmentsPage() {
         'admin_suspended_account'
       ];
       if (statusTypes.includes(newNotification.type)) {
-        console.log('Real-time appointment update received on doctor side:', newNotification.type);
         void load();
       }
     });
 
     socket.on('otp:updated', (data: { appointmentId: string; otpCode: string }) => {
-      console.log('Real-time OTP update received on doctor side:', data);
       setAppointments((prev) =>
         prev.map((appt) => {
           if (appt._id === data.appointmentId) {
-            return {
-              ...appt,
-              otpCode: data.otpCode
-            };
+            return { ...appt, otpCode: data.otpCode };
           }
           return appt;
         })
@@ -261,15 +256,15 @@ export default function DoctorAppointmentsPage() {
       setAppointments((prev) =>
         prev.map((appt) => {
           if (appt._id === data.appointmentId) {
-            return {
-              ...appt,
-              unreadMessageCount: ((appt as any).unreadMessageCount || 0) + 1
-            };
+            return { ...appt, unreadMessageCount: ((appt as any).unreadMessageCount || 0) + 1 };
           }
           return appt;
         })
       );
     });
+
+    // Polling fallback every 8 seconds
+    const interval = setInterval(() => { void load(); }, 8000);
 
     return () => {
       clearInterval(interval);

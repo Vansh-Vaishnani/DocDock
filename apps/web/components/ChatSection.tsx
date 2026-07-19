@@ -48,6 +48,7 @@ export default function ChatSection({
 
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -156,9 +157,16 @@ export default function ChatSection({
     };
   }, [roomId, userId, loadMessages]);
 
-  // Auto scroll to bottom
+  // Auto scroll to bottom — scoped strictly to the messages container
+  // Does NOT use scrollIntoView (which would scroll the entire page)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    // Only auto-scroll if the user is within 150px of the bottom
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+    if (isNearBottom) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages, isPeerTyping]);
 
   const handleSend = async (type: 'text' | 'image' | 'prescription' | 'document', mediaUrl?: string) => {
@@ -296,9 +304,9 @@ export default function ChatSection({
 
       {/* Chat messages list */}
       <div
+        ref={messagesContainerRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-5 py-4 space-y-3"
-        style={{ scrollBehavior: 'smooth' }}
       >
         {loadingHistory && (
           <div className="text-center text-xs text-slate-400 py-1">Loading conversation history...</div>

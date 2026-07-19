@@ -72,6 +72,7 @@ export type PatientProfile = {
   email: string;
   phone: string;
   bloodGroup?: string;
+  profilePhotoUrl?: string;
   allergies: string[];
   medicalHistory: MedicalHistoryEntry[];
   addresses: PatientAddress[];

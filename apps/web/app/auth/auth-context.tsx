@@ -136,10 +136,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (stored?.user && stored.accessToken) {
         setState(stored);
       }
-      if (stored?.refreshToken) {
-        await refreshSession();
-      }
+      // Mark hydrated immediately so UI renders with stored auth state
+      // without waiting for the network refresh call
       setIsHydrated(true);
+      // Silently refresh token in background
+      if (stored?.refreshToken) {
+        void refreshSession();
+      }
     };
 
     void initialize();

@@ -249,7 +249,10 @@ export default function PatientDashboardPage() {
             if (!verifyRes.ok) throw new Error('Verification failed.');
             showToast('Payment completed successfully.', 'success');
             setActiveEmergency(null);
-            window.location.reload();
+            // Refresh the appointment list without a page reload
+            const updated = await fetchPatientAppointments('upcoming').catch(() => []);
+            const stillPending = updated.find((a: any) => a.isEmergency && a.paymentStatus !== 'paid');
+            setActiveEmergency(stillPending || null);
           } catch (e: any) {
             showToast(e.message || 'Payment verification failed.', 'error');
           }

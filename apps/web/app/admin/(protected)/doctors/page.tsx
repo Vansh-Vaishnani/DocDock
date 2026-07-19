@@ -225,15 +225,18 @@ export default function AdminDoctorsPage() {
                   {detail.doctor.profilePhotoUrl ? (
                     <div className="mt-2">
                       {isPdfUrl(detail.doctor.profilePhotoUrl) ? (
-                        <div className="flex h-20 w-20 items-center justify-center rounded-lg border bg-slate-100 dark:bg-slate-800">
-                          <span className="text-xs font-semibold">PDF</span>
+                        <div className="flex h-20 w-full items-center justify-center rounded-lg border bg-slate-100 dark:bg-slate-800 gap-2 flex-col">
+                          <span className="text-2xl">📄</span>
+                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">PDF Document</span>
                         </div>
                       ) : (
-                        <img src={detail.doctor.profilePhotoUrl} alt="Profile" className="h-20 w-20 rounded-lg object-cover border" />
+                        <a href={detail.doctor.profilePhotoUrl} target="_blank" rel="noreferrer">
+                          <img src={detail.doctor.profilePhotoUrl} alt="Profile" className="h-20 w-full rounded-lg object-cover border hover:opacity-80 transition-opacity cursor-zoom-in" />
+                        </a>
                       )}
                       <div className="mt-2 flex gap-2">
-                        <a href={detail.doctor.profilePhotoUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Open</a>
-                        <a href={getDownloadUrl(detail.doctor.profilePhotoUrl)} download className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:underline">Download</a>
+                        <a href={detail.doctor.profilePhotoUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Open ↗</a>
+                        <a href={getDownloadUrl(detail.doctor.profilePhotoUrl)} download className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:underline">Download ↓</a>
                       </div>
                     </div>
                   ) : (
@@ -247,15 +250,18 @@ export default function AdminDoctorsPage() {
                   {detail.doctor.governmentIdUrl ? (
                     <div className="mt-2">
                       {isPdfUrl(detail.doctor.governmentIdUrl) ? (
-                        <div className="flex h-20 w-20 items-center justify-center rounded-lg border bg-slate-100 dark:bg-slate-800">
-                          <span className="text-xs font-semibold">PDF</span>
+                        <div className="flex h-20 w-full items-center justify-center rounded-lg border bg-slate-100 dark:bg-slate-800 gap-2 flex-col">
+                          <span className="text-2xl">📄</span>
+                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">PDF Document</span>
                         </div>
                       ) : (
-                        <img src={detail.doctor.governmentIdUrl} alt="Government ID" className="h-20 w-20 rounded-lg object-cover border" />
+                        <a href={detail.doctor.governmentIdUrl} target="_blank" rel="noreferrer">
+                          <img src={detail.doctor.governmentIdUrl} alt="Government ID" className="h-20 w-full rounded-lg object-cover border hover:opacity-80 transition-opacity cursor-zoom-in" />
+                        </a>
                       )}
                       <div className="mt-2 flex gap-2">
-                        <a href={detail.doctor.governmentIdUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Open</a>
-                        <a href={getDownloadUrl(detail.doctor.governmentIdUrl)} download className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:underline">Download</a>
+                        <a href={detail.doctor.governmentIdUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Open ↗</a>
+                        <a href={getDownloadUrl(detail.doctor.governmentIdUrl)} download className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:underline">Download ↓</a>
                       </div>
                     </div>
                   ) : (
@@ -269,15 +275,18 @@ export default function AdminDoctorsPage() {
                   {detail.doctor.medicalLicenseUrl ? (
                     <div className="mt-2">
                       {isPdfUrl(detail.doctor.medicalLicenseUrl) ? (
-                        <div className="flex h-20 w-20 items-center justify-center rounded-lg border bg-slate-100 dark:bg-slate-800">
-                          <span className="text-xs font-semibold">PDF</span>
+                        <div className="flex h-20 w-full items-center justify-center rounded-lg border bg-slate-100 dark:bg-slate-800 gap-2 flex-col">
+                          <span className="text-2xl">📄</span>
+                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">PDF Document</span>
                         </div>
                       ) : (
-                        <img src={detail.doctor.medicalLicenseUrl} alt="Medical License" className="h-20 w-20 rounded-lg object-cover border" />
+                        <a href={detail.doctor.medicalLicenseUrl} target="_blank" rel="noreferrer">
+                          <img src={detail.doctor.medicalLicenseUrl} alt="Medical License" className="h-20 w-full rounded-lg object-cover border hover:opacity-80 transition-opacity cursor-zoom-in" />
+                        </a>
                       )}
                       <div className="mt-2 flex gap-2">
-                        <a href={detail.doctor.medicalLicenseUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Open</a>
-                        <a href={getDownloadUrl(detail.doctor.medicalLicenseUrl)} download className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:underline">Download</a>
+                        <a href={detail.doctor.medicalLicenseUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Open ↗</a>
+                        <a href={getDownloadUrl(detail.doctor.medicalLicenseUrl)} download className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:underline">Download ↓</a>
                       </div>
                     </div>
                   ) : (

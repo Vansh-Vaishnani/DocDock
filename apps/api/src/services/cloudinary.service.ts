@@ -30,7 +30,7 @@ function getResourceType(mimeType?: string, filename?: string): 'image' | 'raw' 
   const name = (filename || '').toLowerCase();
 
   if (
-    mime.startsWith('image/') ||
+    mime.includes('image/') ||
     /\.(jpg|jpeg|png|gif|webp|svg|bmp|tiff|ico)$/.test(name)
   ) {
     return 'image';
@@ -58,14 +58,17 @@ function getMimeFromDataUri(dataUri: string): string {
   return match ? match[1] : '';
 }
 
-/** Map MIME type to file extension hint */
 function getExtFromMime(mimeType: string, filename?: string): string {
   const name = (filename || '').toLowerCase();
-  if (name.match(/\.(pdf|doc|docx|txt|csv|xls|xlsx|jpg|jpeg|png|gif|webp)$/)) {
-    return '';  // filename already has extension, no need to add
+  const match = name.match(/\.(pdf|doc|docx|txt|csv|xls|xlsx|jpg|jpeg|png|gif|webp)$/);
+  if (match) {
+    return match[0];
   }
   const mimeMap: Record<string, string> = {
     'application/pdf': '.pdf',
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/png': '.png',
     'text/plain': '.txt',
     'text/csv': '.csv',
     'application/msword': '.doc',
@@ -80,18 +83,49 @@ export async function uploadBase64File(dataUri: string, folder: string): Promise
   ensureConfigured();
 
   const mimeType = getMimeFromDataUri(dataUri);
-  const resourceType = getResourceType(mimeType);
   const ext = getExtFromMime(mimeType);
   const uid = Math.random().toString(36).substring(2, 15) + '_' + Math.random().toString(36).substring(2, 15);
   const publicId = uid + ext;
 
-  const result = await cloudinary.uploader.upload(dataUri, {
+  let base64Data = '';
+  let extractedMimeType = mimeType;
+
+  const commaIndex = dataUri.indexOf(',');
+  if (commaIndex !== -1) {
+    const header = dataUri.substring(0, commaIndex);
+    if (header.startsWith('data:') && header.includes(';base64')) {
+      base64Data = dataUri.substring(commaIndex + 1);
+      const mimeMatch = header.match(/^data:([^;]+)/);
+      if (mimeMatch) {
+        extractedMimeType = mimeMatch[1];
+      }
+    }
+  }
+
+  if (base64Data) {
+    const buffer = Buffer.from(base64Data, 'base64');
+    return uploadFile({ buffer, originalname: publicId, mimetype: extractedMimeType }, folder);
+  }
+
+  // Fallback if not a valid data URI
+  const resourceType = getResourceType(mimeType);
+  const uploadOptions: Record<string, any> = {
     folder: `docdock/${folder}`,
     resource_type: resourceType,
     public_id: publicId
-  });
+  };
 
-  return result.secure_url;
+  if (resourceType === 'raw') {
+    uploadOptions.allowed_formats = ['pdf', 'doc', 'docx', 'txt', 'csv', 'xls', 'xlsx'];
+  }
+
+  try {
+    const result = await cloudinary.uploader.upload(dataUri, uploadOptions);
+    return result.secure_url;
+  } catch (err: any) {
+    console.error('[Cloudinary] uploadBase64File fallback failed:', { folder, mimeType, resourceType, error: err?.message || err });
+    throw err;
+  }
 }
 
 export async function uploadFile(
@@ -105,15 +139,24 @@ export async function uploadFile(
   const uid = Math.random().toString(36).substring(2, 15) + '_' + Math.random().toString(36).substring(2, 15);
   const publicId = uid + ext;
 
+  const uploadOptions: Record<string, any> = {
+    folder: `docdock/${folder}`,
+    resource_type: resourceType,
+    public_id: publicId
+  };
+
+  if (resourceType === 'raw') {
+    uploadOptions.allowed_formats = ['pdf', 'doc', 'docx', 'txt', 'csv', 'xls', 'xlsx'];
+  }
+
+  console.log('[Cloudinary] uploadFile:', { folder, mimetype: file.mimetype, originalname: file.originalname, resourceType });
+
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder: `docdock/${folder}`,
-        resource_type: resourceType,
-        public_id: publicId
-      },
+      uploadOptions,
       (error, result) => {
         if (error) {
+          console.error('[Cloudinary] uploadFile stream error:', error);
           reject(error);
         } else if (result) {
           resolve(result.secure_url);

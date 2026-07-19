@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 
 import { useToast } from '../../auth/toast-provider';
 import {
@@ -40,10 +40,16 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function PatientAppointmentsPage() {
   const { showToast } = useToast();
+  // Use a ref for showToast so it doesn't re-create load() on every render
+  const showToastRef = useRef(showToast);
+  useEffect(() => { showToastRef.current = showToast; }, [showToast]);
+
   const [filter, setFilter] = useState<'upcoming' | 'completed' | 'cancelled'>('upcoming');
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const mountedRef = useRef(true);
 
   const loadRazorpayScript = (): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -64,7 +70,7 @@ export default function PatientAppointmentsPage() {
     try {
       const detail = await fetchPatientAppointmentDetail(apptId);
       if (!detail.payment || detail.payment.status === 'paid') {
-        showToast('Payment has already been completed or is not initialized.', 'info');
+        showToastRef.current('Payment has already been completed or is not initialized.', 'info');
         return;
       }
 
@@ -75,7 +81,7 @@ export default function PatientAppointmentsPage() {
 
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: detail.payment.amount * 100, // paise
+        amount: detail.payment.amount * 100,
         currency: 'INR',
         name: 'DocDock Emergency Service',
         description: 'Complete pending payment for emergency consultation',
@@ -93,55 +99,57 @@ export default function PatientAppointmentsPage() {
               })
             });
             if (!verifyRes.ok) throw new Error('Verification failed.');
-            showToast('Payment completed successfully.', 'success');
+            showToastRef.current('Payment completed successfully.', 'success');
             await load();
           } catch (e: any) {
-            showToast(e.message || 'Payment verification failed.', 'error');
+            showToastRef.current(e.message || 'Payment verification failed.', 'error');
           }
         },
-        theme: {
-          color: '#10b981'
-        }
+        theme: { color: '#10b981' }
       };
 
       const rzp = new (window as any).Razorpay(options);
       rzp.open();
     } catch (err: any) {
-      showToast(err.message || 'Unable to load payment portal.', 'error');
+      showToastRef.current(err.message || 'Unable to load payment portal.', 'error');
     }
   };
 
+  // Stable load function — filter is captured via closure, showToast via ref
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const list = await fetchPatientAppointments(filter);
-      setAppointments(list);
+      if (mountedRef.current) {
+        setAppointments(list);
+      }
     } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Unable to load appointments.', 'error');
+      if (mountedRef.current) {
+        showToastRef.current(err instanceof Error ? err.message : 'Unable to load appointments.', 'error');
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
-  }, [filter, showToast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]); // only re-create when filter changes
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Real-time Socket.IO and 5-second polling fallback effect
+  // Socket for real-time updates — separate from polling
+  // The shell already handles chat notifications, this just handles appointment status changes
   useEffect(() => {
-    // 1. Polling fallback (refetch every 5 seconds)
-    const interval = setInterval(() => {
-      void load();
-    }, 5000);
-
-    // 2. Real-time Socket.IO updates
     const token = getStoredAccessToken();
-    if (!token) return () => clearInterval(interval);
+    if (!token) return;
 
     const socket = io(`${SOCKET_BASE}/notifications`, {
       transports: ['websocket', 'polling'],
       auth: { token }
     });
+    socketRef.current = socket;
 
     socket.on('connect', () => {
       try {
@@ -149,10 +157,7 @@ export default function PatientAppointmentsPage() {
         if (raw) {
           const parsed = JSON.parse(raw) as { user?: { _id?: string } };
           const userId = parsed.user?._id;
-          if (userId) {
-            socket.emit('join', userId);
-            console.log('Joined patient appointments notification room:', userId);
-          }
+          if (userId) socket.emit('join', userId);
         }
       } catch (e) {
         console.error('Failed to parse docdock-auth:', e);
@@ -162,7 +167,6 @@ export default function PatientAppointmentsPage() {
     socket.on('notification', (newNotification: any) => {
       const statusTypes = ['accepted', 'rejected', 'doctor_on_way', 'arrived', 'in_consultation', 'completed', 'payment_successful', 'refund_processed'];
       if (statusTypes.includes(newNotification.type)) {
-        console.log('Real-time updates received on patient appointments list:', newNotification.type);
         void load();
       }
     });
@@ -171,30 +175,40 @@ export default function PatientAppointmentsPage() {
       setAppointments((prev) =>
         prev.map((appt) => {
           if (appt._id === data.appointmentId) {
-            return {
-              ...appt,
-              unreadMessageCount: ((appt as any).unreadMessageCount || 0) + 1
-            };
+            return { ...appt, unreadMessageCount: ((appt as any).unreadMessageCount || 0) + 1 };
           }
           return appt;
         })
       );
     });
 
+    // Polling fallback every 8 seconds (less aggressive than 5s)
+    const interval = setInterval(() => { void load(); }, 8000);
+
     return () => {
       clearInterval(interval);
       socket.disconnect();
+      socketRef.current = null;
     };
   }, [load]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const handleCancel = async (appointmentId: string) => {
     setActionId(appointmentId);
     try {
       await cancelPatientAppointment(appointmentId);
-      showToast('Appointment cancelled.', 'success');
+      showToastRef.current('Appointment cancelled.', 'success');
+      // Optimistic update — remove from upcoming immediately
+      setAppointments((prev) => prev.filter((a) => a._id !== appointmentId));
+      // Then refetch to get accurate state
       await load();
     } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Unable to cancel appointment.', 'error');
+      showToastRef.current(err instanceof Error ? err.message : 'Unable to cancel appointment.', 'error');
     } finally {
       setActionId(null);
     }
@@ -273,15 +287,12 @@ export default function PatientAppointmentsPage() {
                     </button>
                   )}
                   <Link href={`/patient/appointments/${appt._id}`} className="btn-secondary text-xs px-3.5 py-1.5 relative">
-                    Chat
+                    View & Chat
                     {(appt as any).unreadMessageCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-bold text-white shadow">
                         {(appt as any).unreadMessageCount > 9 ? '9+' : (appt as any).unreadMessageCount}
                       </span>
                     )}
-                  </Link>
-                  <Link href={`/patient/appointments/${appt._id}`} className="btn-secondary text-xs px-3.5 py-1.5">
-                    View details
                   </Link>
                   {filter === 'upcoming' && appt.status === 'pending' && (
                     <button

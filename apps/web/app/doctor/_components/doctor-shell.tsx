@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { type ReactNode, useMemo, useState, useEffect, useCallback } from 'react';
-import { io } from 'socket.io-client';
-import { fetchDoctorAppointments } from '../api';
+import { type ReactNode, useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
+import { fetchDoctorAppointments, fetchDoctorProfile } from '../api';
 
 import { useAuth } from '../../auth/auth-context';
 import { VerificationBanner } from './verification-banner';
@@ -27,7 +27,7 @@ const ICONS: Record<string, string> = {
   appointments: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   prescriptions: 'M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
   earnings: 'M12 1v22M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6',
-  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9',
   menu: 'M3 12h18M3 6h18M3 18h18',
   close: 'M18 6L6 18M6 6l12 12',
@@ -35,10 +35,9 @@ const ICONS: Record<string, string> = {
 
 const navItems = [
   { href: '/doctor/dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { href: '/doctor/profile', label: 'Profile', icon: 'profile' },
   { href: '/doctor/availability', label: 'Availability', icon: 'availability' },
   { href: '/doctor/appointments', label: 'Appointments', icon: 'appointments' },
-  { href: '/doctor/prescriptions', label: 'Prescriptions', icon: 'prescriptions' },
+  { href: '/doctor/prescriptions', label: 'Patients', icon: 'prescriptions' },
   { href: '/doctor/earnings', label: 'Earnings', icon: 'earnings' },
   { href: '/doctor/settings', label: 'Settings', icon: 'settings' },
 ];
@@ -64,12 +63,22 @@ function DocDockLogo() {
   );
 }
 
-function Avatar({ name, role }: { name: string; role: string }) {
+function Avatar({ name, role, profilePhotoUrl }: { name: string; role: string; profilePhotoUrl?: string | null }) {
   const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
   return (
     <div className="flex items-center gap-2.5">
-      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
-        {initials || 'D'}
+      <div className="flex-shrink-0 h-8 w-8 rounded-full overflow-hidden border-2 border-blue-200 dark:border-blue-800">
+        {profilePhotoUrl ? (
+          <img
+            src={profilePhotoUrl}
+            alt={name}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-blue-100 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+            {initials || 'D'}
+          </div>
+        )}
       </div>
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>Dr. {name || 'Doctor'}</p>
@@ -114,6 +123,8 @@ export function DoctorShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [appointmentUnreadCounts, setAppointmentUnreadCounts] = useState<Record<string, number>>({});
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   const totalUnread = useMemo(() => {
     return Object.values(appointmentUnreadCounts).reduce((acc, curr) => acc + curr, 0);
@@ -136,6 +147,43 @@ export function DoctorShell({ children }: { children: ReactNode }) {
     void loadUnreadCounts();
   }, [loadUnreadCounts]);
 
+  // Load profile photo from user avatar and fetch doctor profile to sync
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // 1. Initial load from local storage
+    try {
+      const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setProfilePhotoUrl(parsed.user?.avatar || null);
+      }
+    } catch { /* ignore */ }
+
+    // 2. Fetch doctor profile to sync in background
+    const syncProfile = async () => {
+      try {
+        const profile = await fetchDoctorProfile();
+        if (profile?.profilePhotoUrl) {
+          setProfilePhotoUrl(profile.profilePhotoUrl);
+          // Sync to localStorage
+          for (const storage of [window.localStorage, window.sessionStorage]) {
+            const raw = storage.getItem('docdock-auth');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              parsed.user = { ...(parsed.user || {}), avatar: profile.profilePhotoUrl };
+              storage.setItem('docdock-auth', JSON.stringify(parsed));
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to sync doctor profile photo:', err);
+      }
+    };
+    void syncProfile();
+  }, [user]);
+
+  // Socket connection — connect once on mount, NOT on pathname change
   useEffect(() => {
     const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
     if (!raw) return;
@@ -151,10 +199,14 @@ export function DoctorShell({ children }: { children: ReactNode }) {
     if (!token || !userId) return;
 
     const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
+
+    if (socketRef.current?.connected) return;
+
     const socket = io(`${SOCKET_BASE}/notifications`, {
       transports: ['websocket', 'polling'],
       auth: { token }
     });
+    socketRef.current = socket;
 
     socket.on('connect', () => {
       socket.emit('join', userId);
@@ -181,15 +233,24 @@ export function DoctorShell({ children }: { children: ReactNode }) {
       setAppointmentUnreadCounts({});
     };
 
+    const handleProfilePhotoUpdated = (e: Event) => {
+      const { url } = (e as CustomEvent).detail || {};
+      setProfilePhotoUrl(url || null);
+    };
+
     window.addEventListener('docdock:read_messages', handleReadMessages);
     window.addEventListener('docdock:clear_all_notifications', handleClearAll);
+    window.addEventListener('docdock:profile_photo_updated', handleProfilePhotoUpdated);
 
     return () => {
       socket.disconnect();
+      socketRef.current = null;
       window.removeEventListener('docdock:read_messages', handleReadMessages);
       window.removeEventListener('docdock:clear_all_notifications', handleClearAll);
+      window.removeEventListener('docdock:profile_photo_updated', handleProfilePhotoUpdated);
     };
-  }, [pathname]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally only once on mount
 
   const activeItem = useMemo(() => {
     return navItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ?? navItems[0];
@@ -224,8 +285,19 @@ export function DoctorShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
 
+      {/* User info + logout — clicking avatar area navigates to profile */}
       <div className="border-t px-3 py-3 space-y-2.5" style={{ borderColor: 'var(--border-color)' }}>
-        <Avatar name={user?.fullName || 'Doctor'} role={user?.role || 'doctor'} />
+        <Link
+          href="/doctor/profile"
+          onClick={() => setMobileOpen(false)}
+          className="block rounded-xl px-2 py-1.5 transition-all hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
+          <Avatar
+            name={user?.fullName || 'Doctor'}
+            role={user?.role || 'doctor'}
+            profilePhotoUrl={profilePhotoUrl}
+          />
+        </Link>
         <button
           type="button"
           onClick={logout}

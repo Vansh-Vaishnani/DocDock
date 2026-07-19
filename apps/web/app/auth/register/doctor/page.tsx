@@ -103,6 +103,11 @@ export default function DoctorRegisterPage() {
   };
 
   const handleDocumentUpload = async (file: File, documentType: 'profilePhoto' | 'governmentId' | 'medicalLicense') => {
+    const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (!allowedMimeTypes.includes(file.type)) {
+      showToast('Unsupported file format. Only PDF, JPG, JPEG, and PNG are allowed.', 'error');
+      return;
+    }
     setUploadingDoc(documentType);
     try {
       const base64 = await fileToBase64(file);

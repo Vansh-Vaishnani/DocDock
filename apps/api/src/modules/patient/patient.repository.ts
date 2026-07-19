@@ -3,6 +3,7 @@ import mongoose, { Schema, model } from 'mongoose';
 export interface IPatientDocument extends mongoose.Document {
   userId: mongoose.Types.ObjectId;
   bloodGroup?: string;
+  profilePhotoUrl?: string;
   allergies: string[];
   medicalHistory: Array<{ _id?: mongoose.Types.ObjectId; note: string; createdAt: Date }>;
   addresses: Array<{
@@ -18,6 +19,7 @@ const patientSchema = new Schema<IPatientDocument>(
   {
     userId: { type: Schema.Types.ObjectId, required: true, ref: 'User', unique: true },
     bloodGroup: { type: String },
+    profilePhotoUrl: { type: String },
     allergies: [{ type: String, default: [] }],
     medicalHistory: [
       {
