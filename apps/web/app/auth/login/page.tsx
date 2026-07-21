@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { getRoleHomePath, useAuth } from '../auth-context';
 import { useToast } from '../toast-provider';
 import { DarkModeToggle } from '../../theme-context';
+import { DocDockLogo } from '@/components/DocDockLogo';
 
 const schema = z.object({
   email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
@@ -20,10 +21,10 @@ const schema = z.object({
 type LoginForm = z.infer<typeof schema>;
 
 const features = [
-  { icon: '🏥', text: 'Verified doctors, background-checked and credentials-reviewed' },
-  { icon: '📍', text: 'Live GPS tracking so you know exactly when your doctor arrives' },
-  { icon: '🔐', text: 'OTP-secured consultations for your privacy and safety' },
-  { icon: '💊', text: 'Digital prescriptions and medical records in one place' },
+  { icon: 'M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5', text: 'Verified doctors, background-checked and credentials-reviewed' },
+  { icon: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', text: 'Live GPS tracking so you know exactly when your doctor arrives' },
+  { icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', text: 'OTP-secured consultations for your privacy and safety' },
+  { icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6', text: 'Digital prescriptions and medical records in one place' },
 ];
 
 function LoginPageContent() {
@@ -92,29 +93,27 @@ function LoginPageContent() {
           </div>
         </div>
       )}
-      {/* ── Left panel (branding) ─────────────── */}
+      {/* ── Left panel (branding) ─────────────────────── */}
       <div
-        className="hidden lg:flex lg:w-[45%] flex-col justify-between p-10 xl:p-14"
+        className="hidden lg:flex lg:w-[45%] flex-col justify-between p-10 xl:p-14 relative overflow-hidden"
         style={{ background: 'linear-gradient(150deg, #0f172a 0%, #1e3a5f 50%, #0f4c35 100%)' }}
       >
+        {/* Decoration orbs */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+          <div className="absolute -top-32 -right-32 h-80 w-80 rounded-full" style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.15), transparent 70%)' }} />
+          <div className="absolute bottom-0 -left-24 h-72 w-72 rounded-full" style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.1), transparent 70%)' }} />
+        </div>
+
         {/* Logo */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /><path d="M12 8v4M12 16h.01" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-base font-bold text-white leading-none">DocDock</p>
-            <p className="text-[10px] text-slate-400 leading-none mt-0.5">Knock-Knock, your doctor is here.</p>
-          </div>
+        <div className="relative">
+          <DocDockLogo href="/" size={38} />
         </div>
 
         {/* Main copy */}
-        <div>
-          <h1 className="text-3xl xl:text-4xl font-bold text-white leading-snug">
+        <div className="relative">
+          <h1 className="text-3xl xl:text-4xl font-bold text-white leading-tight" style={{ letterSpacing: '-0.03em' }}>
             Your health,<br />
-            <span className="text-emerald-400">our priority.</span>
+            <span style={{ color: '#34d399' }}>our priority.</span>
           </h1>
           <p className="mt-4 text-slate-300 text-sm leading-relaxed max-w-xs">
             Connecting patients with verified doctors for safe, convenient home consultations.
@@ -122,14 +121,18 @@ function LoginPageContent() {
           <ul className="mt-8 space-y-4">
             {features.map(f => (
               <li key={f.text} className="flex items-start gap-3">
-                <span className="text-xl flex-shrink-0 mt-0.5">{f.icon}</span>
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-emerald-400 mt-0.5" style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.25)' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={f.icon} />
+                  </svg>
+                </span>
                 <span className="text-sm text-slate-300 leading-relaxed">{f.text}</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="text-xs text-slate-500">© {new Date().getFullYear()} DocDock. All rights reserved.</p>
+        <p className="relative text-xs text-slate-600">© {new Date().getFullYear()} DocDock. All rights reserved.</p>
       </div>
 
       {/* ── Right panel (form) ────────────────── */}
@@ -137,14 +140,9 @@ function LoginPageContent() {
         {/* Top bar */}
         <div className="flex h-14 items-center justify-between px-6 border-b" style={{ borderColor: 'var(--border-color)' }}>
           {/* Logo for mobile */}
-          <Link href="/" className="flex items-center gap-2 lg:hidden">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /><path d="M12 8v4M12 16h.01" />
-              </svg>
-            </div>
-            <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>DocDock</span>
-          </Link>
+          <div className="lg:hidden">
+            <DocDockLogo href="/" size={28} showSubtitle={false} />
+          </div>
           <div className="hidden lg:block" />
           <div className="flex items-center gap-3">
             <DarkModeToggle />
@@ -167,8 +165,10 @@ function LoginPageContent() {
             <button
               type="button"
               onClick={handleGoogleLogin}
-              className="flex w-full items-center justify-center gap-3 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all hover:bg-slate-50 dark:hover:bg-slate-800"
-              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              className="flex w-full items-center justify-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-all"
+              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--card-bg)' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#cbd5e1'; (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-secondary)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-color)'; (e.currentTarget as HTMLButtonElement).style.background = 'var(--card-bg)'; }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>

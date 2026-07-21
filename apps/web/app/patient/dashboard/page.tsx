@@ -39,14 +39,16 @@ function StatCard({ label, value, detail, icon, color }: {
   icon: string; color: string;
 }) {
   return (
-    <div className="dd-card hover-lift flex flex-col gap-3">
-      <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${color}`}>
-        <Icon path={icon} size={16} />
-      </div>
-      <div>
-        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{label}</p>
-        <p className="mt-1.5 text-3xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>{value}</p>
-        <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{detail}</p>
+    <div className="stat-card">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)', letterSpacing: '0.07em' }}>{label}</p>
+          <p className="mt-2 text-3xl font-bold" style={{ color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>{value}</p>
+          <p className="mt-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>{detail}</p>
+        </div>
+        <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl ${color}`}>
+          <Icon path={icon} size={18} />
+        </div>
       </div>
     </div>
   );

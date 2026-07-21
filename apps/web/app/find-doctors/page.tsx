@@ -16,6 +16,7 @@ import { calculateDistanceKm, formatDistanceKm } from '@/lib/locationUtils';
 import { fetchPatientProfile } from '../patient/api';
 import { useAuth, getRoleHomePath } from '../auth/auth-context';
 import { DarkModeToggle } from '../theme-context';
+import { DocDockLogo } from '@/components/DocDockLogo';
 import 'leaflet/dist/leaflet.css';
 
 const Marker = nextDynamic(() => import('react-leaflet').then((m) => m.Marker), { ssr: false });
@@ -162,19 +163,7 @@ function FindDoctorsPageContent() {
       >
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-600">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /><path d="M12 8v4M12 16h.01" />
-              </svg>
-            </div>
-            <div>
-              <div className="text-base font-bold leading-none" style={{ color: 'var(--text-primary)' }}>DocDock</div>
-              <div className="hidden sm:block mt-0.5 text-[10px] leading-none" style={{ color: 'var(--text-muted)' }}>
-                Knock-Knock, your doctor is here.
-              </div>
-            </div>
-          </Link>
+          <DocDockLogo href="/" size={34} />
 
           {/* Actions */}
           <div className="flex items-center gap-2">

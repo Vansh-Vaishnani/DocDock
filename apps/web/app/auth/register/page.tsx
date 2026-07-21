@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { getRoleHomePath, useAuth } from '../auth-context';
 import { useToast } from '../toast-provider';
 import { DarkModeToggle } from '../../theme-context';
+import { DocDockLogo } from '@/components/DocDockLogo';
 
 const schema = z.object({
   fullName: z.string().trim().min(2, 'Full name is required'),
@@ -21,8 +22,8 @@ const schema = z.object({
 type RegisterForm = z.infer<typeof schema>;
 
 const roleOptions = [
-  { id: 'patient', label: 'Patient', emoji: '🧑‍⚕️', desc: 'Book home visits and manage your health' },
-  { id: 'doctor', label: 'Doctor', emoji: '👨‍⚕️', desc: 'Manage appointments and prescriptions' },
+  { id: 'patient', label: 'Patient', iconPath: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', desc: 'Book home visits and manage your health' },
+  { id: 'doctor', label: 'Doctor', iconPath: 'M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5', desc: 'Manage appointments and prescriptions' },
 ];
 export default function RegisterPage() {
   const router = useRouter();
@@ -99,53 +100,46 @@ export default function RegisterPage() {
       )}
       {/* ── Left branding panel ────────────────── */}
       <div
-        className="hidden lg:flex lg:w-[42%] flex-col justify-between p-10 xl:p-14"
+        className="hidden lg:flex lg:w-[42%] flex-col justify-between p-10 xl:p-14 relative overflow-hidden"
         style={{ background: 'linear-gradient(150deg, #0f172a 0%, #0f4c35 60%, #1e3a5f 100%)' }}
       >
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /><path d="M12 8v4M12 16h.01" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-base font-bold text-white leading-none">DocDock</p>
-            <p className="text-[10px] text-slate-400 leading-none mt-0.5">Knock-Knock, your doctor is here.</p>
-          </div>
+        {/* Orbs */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+          <div className="absolute -top-32 -right-32 h-80 w-80 rounded-full" style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.15), transparent 70%)' }} />
+          <div className="absolute bottom-0 -left-24 h-72 w-72 rounded-full" style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.1), transparent 70%)' }} />
         </div>
 
-        <div>
-          <h1 className="text-3xl xl:text-4xl font-bold text-white leading-snug">
+        <div className="relative">
+          <DocDockLogo href="/" size={38} />
+        </div>
+
+        <div className="relative">
+          <h1 className="text-3xl xl:text-4xl font-bold text-white leading-tight" style={{ letterSpacing: '-0.03em' }}>
             Join thousands<br />
-            <span className="text-emerald-400">already on DocDock.</span>
+            <span style={{ color: '#34d399' }}>already on DocDock.</span>
           </h1>
           <p className="mt-4 text-slate-300 text-sm leading-relaxed max-w-xs">
             Create your account in under 2 minutes and start your healthcare journey today.
           </p>
           <div className="mt-8 grid grid-cols-2 gap-3">
             {[['10,000+', 'Consultations'], ['500+', 'Verified Doctors'], ['50+', 'Specialties'], ['4.8★', 'Avg Rating']].map(([val, label]) => (
-              <div key={label} className="rounded-2xl bg-white/10 p-4 text-center">
-                <p className="text-xl font-bold text-emerald-400">{val}</p>
+              <div key={label} className="rounded-2xl p-4 text-center" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <p className="text-xl font-bold" style={{ color: '#34d399' }}>{val}</p>
                 <p className="text-xs text-slate-400 mt-0.5">{label}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="text-xs text-slate-500">© {new Date().getFullYear()} DocDock. All rights reserved.</p>
+        <p className="relative text-xs text-slate-600">© {new Date().getFullYear()} DocDock. All rights reserved.</p>
       </div>
 
       {/* ── Right form panel ───────────────────── */}
       <div className="flex flex-1 flex-col">
         <div className="flex h-14 items-center justify-between px-6 border-b" style={{ borderColor: 'var(--border-color)' }}>
-          <Link href="/" className="flex items-center gap-2 lg:hidden">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /><path d="M12 8v4M12 16h.01" />
-              </svg>
-            </div>
-            <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>DocDock</span>
-          </Link>
+          <div className="lg:hidden">
+            <DocDockLogo href="/" size={28} showSubtitle={false} />
+          </div>
           <div className="hidden lg:block" />
           <div className="flex items-center gap-3">
             <DarkModeToggle />
@@ -182,7 +176,11 @@ export default function RegisterPage() {
                   }`}
                   style={{ backgroundColor: selectedRole !== opt.id ? 'var(--bg-tertiary)' : undefined }}
                 >
-                  <span className="text-2xl">{opt.emoji}</span>
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${selectedRole === opt.id ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'}`}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d={opt.iconPath} />
+                    </svg>
+                  </div>
                   <span className="text-xs font-semibold" style={{ color: selectedRole === opt.id ? '#10b981' : 'var(--text-primary)' }}>{opt.label}</span>
                   <span className="text-[10px] leading-tight" style={{ color: 'var(--text-muted)' }}>{opt.desc}</span>
                 </button>

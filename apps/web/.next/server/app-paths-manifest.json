@@ -1,11 +1,10 @@
 {
-  "/patient/appointments/[appointmentId]/page": "app/patient/appointments/[appointmentId]/page.js",
-  "/patient/dashboard/page": "app/patient/dashboard/page.js",
-  "/doctor/prescriptions/page": "app/doctor/prescriptions/page.js",
-  "/doctor/appointments/page": "app/doctor/appointments/page.js",
-  "/doctor/availability/page": "app/doctor/availability/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/find-doctors/page": "app/find-doctors/page.js",
   "/doctor/dashboard/page": "app/doctor/dashboard/page.js",
-  "/admin/(protected)/audit-logs/page": "app/admin/(protected)/audit-logs/page.js",
-  "/admin/(protected)/users/page": "app/admin/(protected)/users/page.js",
-  "/admin/(protected)/dashboard/page": "app/admin/(protected)/dashboard/page.js"
+  "/patient/dashboard/page": "app/patient/dashboard/page.js",
+  "/doctor/appointments/page": "app/doctor/appointments/page.js",
+  "/patient/ai-assistant/page": "app/patient/ai-assistant/page.js",
+  "/patient/appointments/page": "app/patient/appointments/page.js",
+  "/patient/allergies/page": "app/patient/allergies/page.js"
 }

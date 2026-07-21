@@ -153,28 +153,18 @@ export default function NotificationBell() {
       {/* Bell Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none"
-        style={{ color: 'var(--text-secondary)' }}
-        aria-label="View Notifications"
+        className="btn-icon relative"
+        aria-label={`View Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={2}
-          stroke="currentColor"
-          className="h-5 w-5"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-          />
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
-
         {unreadCount > 0 && (
-          <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white ring-2 ring-white dark:ring-slate-900 animate-pulse">
-            {unreadCount > 9 ? '9+' : unreadCount}
+          <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white ring-2 ring-white dark:ring-slate-900">
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
@@ -182,88 +172,89 @@ export default function NotificationBell() {
       {/* Dropdown Menu */}
       {isOpen && (
         <div
-          className="absolute right-0 mt-2 w-80 sm:w-96 origin-top-right rounded-2xl border p-4 shadow-large backdrop-blur-xl animate-slide-up"
-          style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+          className="absolute right-0 mt-2 w-80 sm:w-96 origin-top-right rounded-2xl border shadow-xl animate-fade-in-down"
+          style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', boxShadow: 'var(--shadow-xl)' }}
+          role="dialog"
+          aria-label="Notifications"
         >
-          <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'var(--border-color)' }}>
-            <div>
-              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Notifications</h3>
-              <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {isSocketConnected ? (
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Live
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span> Polling
-                  </span>
-                )}
-              </p>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <div className="flex items-center gap-2.5">
+              <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Notifications</h3>
+              {unreadCount > 0 && (
+                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">
+                  {unreadCount}
+                </span>
+              )}
             </div>
-            {unreadCount > 0 && (
-              <button
-                onClick={markAllAsRead}
-                className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
-              >
-                Mark all read
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                <span className={`h-1.5 w-1.5 rounded-full ${isSocketConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
+                {isSocketConnected ? 'Live' : 'Polling'}
+              </span>
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+                  aria-label="Mark all notifications as read"
+                >
+                  Mark all read
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="mt-3 max-h-80 overflow-y-auto space-y-1 pr-0.5">
+          <div className="max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
-              <div className="py-10 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl mx-auto mb-3" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)' }}>
+              <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl mb-3"
+                  style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.05))', border: '1px solid rgba(16,185,129,0.15)' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#10b981' }}>
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                     <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                   </svg>
                 </div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>All caught up!</p>
-                <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>No notifications at this time.</p>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>All caught up!</p>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>No new notifications at this time.</p>
               </div>
             ) : (
-              notifications.map((notification) => (
-                <div
-                  key={notification._id}
-                  className={`group relative flex gap-3 rounded-xl p-3 text-left transition cursor-default`}
-                  style={{
-                    backgroundColor: !notification.isRead ? 'rgba(16,185,129,0.06)' : 'transparent',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-tertiary)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = !notification.isRead ? 'rgba(16,185,129,0.06)' : 'transparent'; }}
-                >
-                  {!notification.isRead && (
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
-                  )}
-                  <div className={`flex-1 min-w-0 ${!notification.isRead ? 'pl-2' : ''}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
-                        {notification.title}
+              <div className="px-2 py-1.5 space-y-0.5">
+                {notifications.map((notification) => (
+                  <div
+                    key={notification._id}
+                    className="group relative flex gap-3 rounded-xl px-3 py-3 transition-colors cursor-default"
+                    style={{ backgroundColor: !notification.isRead ? 'rgba(16,185,129,0.05)' : 'transparent' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-secondary)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = !notification.isRead ? 'rgba(16,185,129,0.05)' : 'transparent'; }}
+                  >
+                    {!notification.isRead && (
+                      <span className="absolute left-1.5 top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                    )}
+                    <div className={`flex-1 min-w-0 ${!notification.isRead ? 'pl-1.5' : ''}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
+                          {notification.title}
+                        </p>
+                        {!notification.isRead && (
+                          <button
+                            onClick={() => void markAsRead(notification._id)}
+                            className="text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                            aria-label={`Mark notification as read: ${notification.title}`}
+                          >
+                            Mark read
+                          </button>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                        {notification.message}
                       </p>
-                      {!notification.isRead && (
-                        <button
-                          onClick={() => void markAsRead(notification._id)}
-                          className="text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 opacity-0 group-hover:opacity-100 transition duration-150 shrink-0"
-                        >
-                          Read
-                        </button>
-                      )}
+                      <p className="mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                        {new Date(notification.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     </div>
-                    <p className="mt-0.5 text-[11px] leading-relaxed break-words" style={{ color: 'var(--text-secondary)' }}>
-                      {notification.message}
-                    </p>
-                    <p className="mt-1 text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                      {new Date(notification.createdAt).toLocaleDateString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         </div>

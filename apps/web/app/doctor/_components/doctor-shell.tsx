@@ -12,9 +12,9 @@ import { VerificationBanner } from './verification-banner';
 import NotificationBell from '@/components/NotificationBell';
 import { DarkModeToggle } from '../../theme-context';
 
-function Icon({ path, size = 18 }: { path: string; size?: number }) {
+function Icon({ path, size = 18, className = '' }: { path: string; size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d={path} />
     </svg>
   );
@@ -44,45 +44,38 @@ const navItems = [
 
 function DocDockLogo() {
   return (
-    <div className="flex items-center gap-2.5">
-      <div style={{ width: 36, height: 36, borderRadius: 14, overflow: "hidden", flexShrink: 0, display: "inline-flex" }}>
-        <Image
-          src="/logo.png"
-          alt="DocDock Logo"
-          width={36}
-          height={36}
-          style={{ display: "block", width: 36, height: 36 }}
-          priority
-        />
+    <div className="flex items-center gap-3">
+      <div style={{ width: 34, height: 34, borderRadius: 12, overflow: 'hidden', flexShrink: 0, display: 'inline-flex', boxShadow: '0 2px 8px rgba(59,130,246,0.25)' }}>
+        <Image src="/logo.png" alt="DocDock Logo" width={34} height={34} style={{ display: 'block', width: 34, height: 34 }} priority />
       </div>
       <div>
-        <div className="text-base font-bold leading-none" style={{ color: 'var(--text-primary)' }}>DocDock</div>
-        <div className="mt-0.5 text-[10px] leading-none" style={{ color: 'var(--text-muted)' }}>Knock-Knock, your doctor is here.</div>
+        <div className="text-[15px] font-bold leading-none tracking-tight" style={{ color: 'var(--text-primary)' }}>DocDock</div>
+        <div className="mt-0.5 text-[10px] leading-none font-medium" style={{ color: 'var(--text-muted)' }}>Knock-Knock, your doctor is here.</div>
       </div>
     </div>
   );
 }
 
-function Avatar({ name, role, profilePhotoUrl }: { name: string; role: string; profilePhotoUrl?: string | null }) {
+function SidebarProfile({ name, role, profilePhotoUrl }: { name: string; role: string; profilePhotoUrl?: string | null }) {
   const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="flex-shrink-0 h-8 w-8 rounded-full overflow-hidden border-2 border-blue-200 dark:border-blue-800">
-        {profilePhotoUrl ? (
-          <img
-            src={profilePhotoUrl}
-            alt={name}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-blue-100 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
-            {initials || 'D'}
-          </div>
-        )}
+    <div className="flex items-center gap-3">
+      <div className="relative flex-shrink-0">
+        <div className="h-10 w-10 rounded-xl overflow-hidden" style={{ border: '2px solid rgba(59,130,246,0.3)' }}>
+          {profilePhotoUrl ? (
+            <img src={profilePhotoUrl} alt={name} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-sm font-bold"
+              style={{ background: 'linear-gradient(135deg, #dbeafe, #bfdbfe)', color: '#1d4ed8' }}>
+              {initials || 'D'}
+            </div>
+          )}
+        </div>
+        <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-blue-500 ring-2 ring-white dark:ring-slate-900" />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>Dr. {name || 'Doctor'}</p>
-        <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400 capitalize">{role}</p>
+        <p className="text-[11px] font-medium capitalize" style={{ color: '#3b82f6' }}>{role}</p>
       </div>
     </div>
   );
@@ -100,19 +93,17 @@ function NavItem({ href, label, icon, isActive, onClick, badgeCount }: {
     <Link
       href={href}
       onClick={onClick}
-      className={`nav-link ${isActive ? 'active' : ''} relative`}
+      className={`nav-link ${isActive ? 'active-blue' : ''} group`}
+      aria-current={isActive ? 'page' : undefined}
     >
-      <span className="flex-shrink-0">
+      <span className={`flex-shrink-0 transition-transform duration-200 ${isActive ? '' : 'group-hover:scale-110'}`}>
         <Icon path={ICONS[icon]} size={17} />
       </span>
       <span className="flex-1 truncate">{label}</span>
       {badgeCount !== undefined && badgeCount > 0 && (
-        <span className="ml-2 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">
-          {badgeCount}
+        <span className="ml-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white animate-pop-in">
+          {badgeCount > 99 ? '99+' : badgeCount}
         </span>
-      )}
-      {isActive && (
-        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-white opacity-80" />
       )}
     </Link>
   );
@@ -134,39 +125,27 @@ export function DoctorShell({ children }: { children: ReactNode }) {
     try {
       const appointmentsList = await fetchDoctorAppointments('all');
       const counts: Record<string, number> = {};
-      appointmentsList.forEach((appt: any) => {
-        counts[appt._id] = appt.unreadMessageCount || 0;
-      });
+      appointmentsList.forEach((appt: any) => { counts[appt._id] = appt.unreadMessageCount || 0; });
       setAppointmentUnreadCounts(counts);
     } catch (err) {
       console.error('Failed to load initial unread counts:', err);
     }
   }, []);
 
-  useEffect(() => {
-    void loadUnreadCounts();
-  }, [loadUnreadCounts]);
+  useEffect(() => { void loadUnreadCounts(); }, [loadUnreadCounts]);
 
-  // Load profile photo from user avatar and fetch doctor profile to sync
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    
-    // 1. Initial load from local storage
     try {
       const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setProfilePhotoUrl(parsed.user?.avatar || null);
-      }
+      if (raw) { const parsed = JSON.parse(raw); setProfilePhotoUrl(parsed.user?.avatar || null); }
     } catch { /* ignore */ }
 
-    // 2. Fetch doctor profile to sync in background
     const syncProfile = async () => {
       try {
         const profile = await fetchDoctorProfile();
         if (profile?.profilePhotoUrl) {
           setProfilePhotoUrl(profile.profilePhotoUrl);
-          // Sync to localStorage
           for (const storage of [window.localStorage, window.sessionStorage]) {
             const raw = storage.getItem('docdock-auth');
             if (raw) {
@@ -176,81 +155,47 @@ export function DoctorShell({ children }: { children: ReactNode }) {
             }
           }
         }
-      } catch (err) {
-        console.error('Failed to sync doctor profile photo:', err);
-      }
+      } catch (err) { console.error('Failed to sync doctor profile photo:', err); }
     };
     void syncProfile();
   }, [user]);
 
-  // Socket connection — connect once on mount, NOT on pathname change
   useEffect(() => {
     const raw = window.localStorage.getItem('docdock-auth') || window.sessionStorage.getItem('docdock-auth');
     if (!raw) return;
-    let token = '';
-    let userId = '';
-    try {
-      const parsed = JSON.parse(raw);
-      token = parsed.accessToken || '';
-      userId = parsed.user?._id || '';
-    } catch (e) {
-      return;
-    }
+    let token = ''; let userId = '';
+    try { const parsed = JSON.parse(raw); token = parsed.accessToken || ''; userId = parsed.user?._id || ''; } catch (e) { return; }
     if (!token || !userId) return;
 
     const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
-
     if (socketRef.current?.connected) return;
 
-    const socket = io(`${SOCKET_BASE}/notifications`, {
-      transports: ['websocket', 'polling'],
-      auth: { token }
-    });
+    const socket = io(`${SOCKET_BASE}/notifications`, { transports: ['websocket', 'polling'], auth: { token } });
     socketRef.current = socket;
-
-    socket.on('connect', () => {
-      socket.emit('join', userId);
-    });
-
+    socket.on('connect', () => { socket.emit('join', userId); });
     socket.on('chat:message_received', (data: { roomId: string; appointmentId: string; message: any }) => {
-      setAppointmentUnreadCounts((prev) => ({
-        ...prev,
-        [data.appointmentId]: (prev[data.appointmentId] || 0) + 1
-      }));
+      setAppointmentUnreadCounts((prev) => ({ ...prev, [data.appointmentId]: (prev[data.appointmentId] || 0) + 1 }));
     });
 
     const handleReadMessages = (e: Event) => {
       const { appointmentId } = (e as CustomEvent).detail || {};
-      if (appointmentId) {
-        setAppointmentUnreadCounts((prev) => ({
-          ...prev,
-          [appointmentId]: 0
-        }));
-      }
+      if (appointmentId) setAppointmentUnreadCounts((prev) => ({ ...prev, [appointmentId]: 0 }));
     };
-
-    const handleClearAll = () => {
-      setAppointmentUnreadCounts({});
-    };
-
-    const handleProfilePhotoUpdated = (e: Event) => {
-      const { url } = (e as CustomEvent).detail || {};
-      setProfilePhotoUrl(url || null);
-    };
+    const handleClearAll = () => { setAppointmentUnreadCounts({}); };
+    const handleProfilePhotoUpdated = (e: Event) => { const { url } = (e as CustomEvent).detail || {}; setProfilePhotoUrl(url || null); };
 
     window.addEventListener('docdock:read_messages', handleReadMessages);
     window.addEventListener('docdock:clear_all_notifications', handleClearAll);
     window.addEventListener('docdock:profile_photo_updated', handleProfilePhotoUpdated);
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      socket.disconnect(); socketRef.current = null;
       window.removeEventListener('docdock:read_messages', handleReadMessages);
       window.removeEventListener('docdock:clear_all_notifications', handleClearAll);
       window.removeEventListener('docdock:profile_photo_updated', handleProfilePhotoUpdated);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally only once on mount
+  }, []);
 
   const activeItem = useMemo(() => {
     return navItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ?? navItems[0];
@@ -258,20 +203,18 @@ export function DoctorShell({ children }: { children: ReactNode }) {
 
   const sidebarContent = (
     <div className="flex h-full flex-col">
-      <div className="px-3 py-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
-        <Link href="/" onClick={() => setMobileOpen(false)}>
-          <DocDockLogo />
-        </Link>
+      <div className="px-4 py-5" style={{ borderBottom: '1px solid var(--border-color)' }}>
+        <Link href="/" onClick={() => setMobileOpen(false)}><DocDockLogo /></Link>
       </div>
 
-      <div className="px-3 pt-4 pb-2">
-        <div className="flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 px-3 py-2">
-          <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-          <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">Doctor Portal</span>
+      <div className="px-4 pt-4 pb-2">
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(59,130,246,0.05) 100%)', border: '1px solid rgba(59,130,246,0.15)' }}>
+          <span className="dot-pulse bg-blue-500" />
+          <span className="text-[11px] font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">Doctor Portal</span>
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5" aria-label="Doctor navigation">
         {navItems.map((item) => (
           <NavItem
             key={item.href}
@@ -285,23 +228,20 @@ export function DoctorShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
 
-      {/* User info + logout — clicking avatar area navigates to profile */}
-      <div className="border-t px-3 py-3 space-y-2.5" style={{ borderColor: 'var(--border-color)' }}>
+      <div className="px-4 py-4 mt-auto" style={{ borderTop: '1px solid var(--border-color)' }}>
         <Link
           href="/doctor/profile"
           onClick={() => setMobileOpen(false)}
-          className="block rounded-xl px-2 py-1.5 transition-all hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="block rounded-xl p-3 transition-all"
+          style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
         >
-          <Avatar
-            name={user?.fullName || 'Doctor'}
-            role={user?.role || 'doctor'}
-            profilePhotoUrl={profilePhotoUrl}
-          />
+          <SidebarProfile name={user?.fullName || 'Doctor'} role={user?.role || 'doctor'} profilePhotoUrl={profilePhotoUrl} />
         </Link>
         <button
           type="button"
           onClick={logout}
-          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30"
+          className="mt-2 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-rose-500 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/25"
+          aria-label="Sign out"
         >
           <Icon path={ICONS.logout} size={15} />
           <span>Sign out</span>
@@ -312,43 +252,55 @@ export function DoctorShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
-      <aside className="fixed top-0 left-0 z-40 hidden h-full w-[240px] lg:flex flex-col border-r"
-        style={{ backgroundColor: 'var(--sidebar-bg)', borderColor: 'var(--border-color)' }}>
-        {sidebarContent}
-      </aside>
-
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} />
-      )}
-
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-[240px] flex-col border-r transition-transform duration-300 lg:hidden ${
-          mobileOpen ? 'flex translate-x-0' : 'hidden -translate-x-full'
-        }`}
-        style={{ backgroundColor: 'var(--sidebar-bg)', borderColor: 'var(--border-color)' }}
+        className="fixed top-0 left-0 z-40 hidden h-full lg:flex flex-col"
+        style={{ width: 'var(--sidebar-width)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)' }}
+        aria-label="Sidebar"
       >
         {sidebarContent}
       </aside>
 
-      <div className="lg:ml-[240px] flex flex-col min-h-screen">
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden animate-fade-in" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+      )}
+
+      <aside
+        className={`fixed top-0 left-0 z-50 h-full flex-col border-r lg:hidden transition-all duration-300 ease-out ${mobileOpen ? 'flex translate-x-0 shadow-xl' : 'hidden -translate-x-full'}`}
+        style={{ width: 'var(--sidebar-width)', backgroundColor: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border)' }}
+        aria-hidden={!mobileOpen}
+      >
+        {sidebarContent}
+      </aside>
+
+      <div className="lg:ml-[var(--sidebar-width)] flex flex-col min-h-screen">
         <header
-          className="sticky top-0 z-30 flex h-14 items-center justify-between border-b px-4 sm:px-6"
-          style={{ backgroundColor: 'var(--header-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(20px)' }}
+          className="sticky top-0 z-30 flex items-center justify-between border-b px-4 sm:px-6"
+          style={{
+            height: 'var(--header-height)',
+            backgroundColor: 'var(--header-bg)',
+            borderColor: 'var(--border-color)',
+            backdropFilter: 'blur(20px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+          }}
+          aria-label="Top navigation"
         >
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg lg:hidden transition-all hover:bg-slate-100 dark:hover:bg-slate-800 relative"
-              aria-label="Toggle menu"
+              className="btn-icon lg:hidden relative"
+              aria-label="Toggle navigation menu"
+              aria-expanded={mobileOpen}
             >
               <Icon path={mobileOpen ? ICONS.close : ICONS.menu} size={18} />
               {totalUnread > 0 && !mobileOpen && (
-                <span className="absolute -top-1 -right-1 flex h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white animate-pulse" />
+                <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900 animate-pulse" aria-hidden="true" />
               )}
             </button>
-            <div className="hidden sm:block">
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{activeItem.label}</p>
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Doctor</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--border-color)' }}><path d="M9 18l6-6-6-6" /></svg>
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{activeItem.label}</span>
             </div>
             <div className="block sm:hidden">
               <Link href="/"><DocDockLogo /></Link>
@@ -362,7 +314,7 @@ export function DoctorShell({ children }: { children: ReactNode }) {
 
         <VerificationBanner />
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 animate-fade-in">
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 animate-fade-in" id="main-content">
           {children}
         </main>
       </div>

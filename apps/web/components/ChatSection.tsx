@@ -280,60 +280,88 @@ export default function ChatSection({
   };
 
   return (
-    <div className="flex flex-col h-[420px] sm:h-[550px] w-full rounded-3xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+    <div
+      className="flex flex-col h-[420px] sm:h-[550px] w-full overflow-hidden"
+      style={{
+        borderRadius: '20px',
+        border: '1px solid var(--border-color)',
+        backgroundColor: 'var(--card-bg)',
+        boxShadow: 'var(--shadow-md)',
+      }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-4">
-        <div>
-          <h4 className="font-semibold text-slate-800 flex items-center gap-2">
-            {peerName}
-            <span className={`inline-block h-2 w-2 rounded-full ${isPeerOnline ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-          </h4>
-          <p className="text-xs text-slate-500">{isPeerOnline ? 'Online' : 'Offline'}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="rounded-full p-2 hover:bg-slate-200 text-slate-500 text-sm font-semibold transition"
+      <div
+        className="flex items-center justify-between px-5 py-4"
+        style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold"
+              style={{ background: 'linear-gradient(135deg, #d1fae5, #a7f3d0)', color: '#065f46' }}
             >
-              Close
-            </button>
-          )}
+              {peerName.charAt(0).toUpperCase()}
+            </div>
+            <span
+              className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ${isPeerOnline ? 'bg-emerald-500' : 'bg-slate-400'}`}
+              style={{ '--tw-ring-color': 'var(--bg-secondary)' } as React.CSSProperties}
+            />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>{peerName}</h4>
+            <p className="text-[11px] font-medium" style={{ color: isPeerOnline ? '#10b981' : 'var(--text-muted)' }}>
+              {isPeerOnline ? 'Online' : 'Offline'}
+            </p>
+          </div>
         </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="btn-icon"
+            aria-label="Close chat"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Chat messages list */}
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-5 py-4 space-y-3"
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-3"
+        style={{ background: 'var(--bg-primary)' }}
       >
         {loadingHistory && (
-          <div className="text-center text-xs text-slate-400 py-1">Loading conversation history...</div>
+          <div className="flex items-center justify-center gap-2 py-2">
+            <div className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: 'var(--text-muted)' }} />
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Loading history...</p>
+          </div>
         )}
+
         {messages.map((msg) => {
           const isOwn = msg.senderId === userId;
           return (
             <div key={msg._id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[75%] rounded-[20px] px-4 py-2.5 text-sm shadow-sm ${
-                  isOwn ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none'
-                }`}
-              >
-                {msg.type === 'text' && <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
+              <div className={isOwn ? 'chat-bubble-out' : 'chat-bubble-in'}>
+                {msg.type === 'text' && (
+                  <p className="leading-relaxed whitespace-pre-wrap text-sm">{msg.content}</p>
+                )}
 
                 {msg.type === 'image' && msg.mediaUrl && (
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <img
                       src={msg.mediaUrl}
                       alt="Shared attachment"
-                      className="max-w-full max-h-[220px] rounded-lg object-cover"
+                      className="max-w-full max-h-[220px] rounded-xl object-cover"
                     />
                     <a
                       href={msg.mediaUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block text-xs font-semibold underline text-white hover:opacity-90"
+                      className="block text-[11px] font-semibold opacity-80 hover:opacity-100 underline"
                     >
                       View Original
                     </a>
@@ -341,8 +369,16 @@ export default function ChatSection({
                 )}
 
                 {(msg.type === 'prescription' || msg.type === 'document') && msg.mediaUrl && (
-                  <div className="flex items-center gap-2 py-1">
-                    <span className="text-lg">📄</span>
+                  <div className="flex items-center gap-2.5 py-0.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        {msg.type === 'prescription' ? (
+                          <path d="M10.5 20.5L3 13l7.5-7.5 7.5 7.5-7.5 7.5z M14 6l6 6-6 6" />
+                        ) : (
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
+                        )}
+                      </svg>
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-xs truncate">
                         {msg.type === 'prescription' ? 'Prescription.pdf' : 'Document.pdf'}
@@ -351,7 +387,7 @@ export default function ChatSection({
                         href={msg.mediaUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[11px] font-semibold underline text-emerald-200"
+                        className="text-[11px] font-semibold underline opacity-75 hover:opacity-100"
                       >
                         Download / View file
                       </a>
@@ -359,10 +395,10 @@ export default function ChatSection({
                   </div>
                 )}
 
-                <div className="mt-1 flex items-center justify-end gap-1.5 text-[9px] opacity-75">
+                <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] opacity-65">
                   <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   {isOwn && (
-                    <span>{msg.deliveryStatus === 'read' ? '✓✓ Read' : '✓ Sent'}</span>
+                    <span>{msg.deliveryStatus === 'read' ? '✓✓' : '✓'}</span>
                   )}
                 </div>
               </div>
@@ -370,10 +406,13 @@ export default function ChatSection({
           );
         })}
 
+        {/* Typing indicator */}
         {isPeerTyping && (
           <div className="flex justify-start">
-            <div className="bg-slate-100 text-slate-500 rounded-[20px] rounded-tl-none px-4 py-2.5 text-xs italic shadow-sm animate-pulse">
-              {peerName} is typing...
+            <div className="chat-bubble-in flex items-center gap-1.5 px-4 py-3">
+              <div className="typing-dot" />
+              <div className="typing-dot" />
+              <div className="typing-dot" />
             </div>
           </div>
         )}
@@ -382,10 +421,13 @@ export default function ChatSection({
       </div>
 
       {/* Footer / Input area */}
-      <div className="border-t border-slate-100 px-4 py-3 bg-slate-50">
+      <div
+        className="px-4 py-3"
+        style={{ borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}
+      >
         {!isActive ? (
-          <div className="text-center text-xs font-semibold text-rose-500 py-2">
-            This consultation has completed. Chat is now read-only.
+          <div className="rounded-xl px-4 py-2.5 text-center text-xs font-semibold text-rose-500" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
+            Consultation completed — chat is now read-only.
           </div>
         ) : (
           <div className="flex items-center gap-2">
@@ -401,10 +443,20 @@ export default function ChatSection({
               type="button"
               disabled={uploadingFile}
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-full bg-slate-200 p-2.5 hover:bg-slate-300 text-slate-600 disabled:opacity-50 transition"
+              className="btn-icon flex-shrink-0 disabled:opacity-40"
               title="Attach File"
+              aria-label="Attach file"
             >
-              {uploadingFile ? '⏳' : '📎'}
+              {uploadingFile ? (
+                <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+              )}
             </button>
 
             {/* Input Field */}
@@ -413,8 +465,17 @@ export default function ChatSection({
               value={text}
               onChange={handleInputChange}
               onKeyDown={(e) => e.key === 'Enter' && handleSend('text')}
-              placeholder="Type your message..."
-              className="flex-1 rounded-full border border-slate-300 px-4 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-800"
+              placeholder="Type a message..."
+              className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none transition-all"
+              style={{
+                background: 'var(--input-bg)',
+                borderColor: 'var(--input-border)',
+                color: 'var(--text-primary)',
+                fontFamily: 'inherit',
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.1)'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--input-border)'; e.currentTarget.style.boxShadow = 'none'; }}
+              aria-label="Message input"
             />
 
             {/* Send Button */}
@@ -422,9 +483,13 @@ export default function ChatSection({
               type="button"
               onClick={() => handleSend('text')}
               disabled={!text.trim()}
-              className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300 disabled:opacity-55 transition"
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-white transition-all disabled:opacity-40 active:scale-95 hover:opacity-90"
+              style={{ background: text.trim() ? 'linear-gradient(135deg, #10b981, #059669)' : 'var(--bg-tertiary)', color: text.trim() ? 'white' : 'var(--text-muted)' }}
+              aria-label="Send message"
             >
-              Send
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 19-7z" />
+              </svg>
             </button>
           </div>
         )}

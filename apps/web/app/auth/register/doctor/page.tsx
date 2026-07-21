@@ -14,6 +14,7 @@ import { useToast } from '../../toast-provider';
 import { fileToBase64, registerDoctor } from '../../../doctor/api';
 import { COMMON_SPECIALIZATIONS } from '@/components/doctor-discovery/DoctorFilters';
 import { DarkModeToggle } from '../../../theme-context';
+import { DocDockLogo } from '@/components/DocDockLogo';
 
 const schema = z.object({
   fullName: z.string().min(2, 'Full name is required'),
@@ -140,14 +141,7 @@ export default function DoctorRegisterPage() {
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--bg-primary)' }}>
       {/* Top Header */}
       <header className="flex h-14 items-center justify-between px-6 border-b" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--header-bg)' }}>
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /><path d="M12 8v4M12 16h.01" />
-            </svg>
-          </div>
-          <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>DocDock</span>
-        </Link>
+        <DocDockLogo href="/" size={30} showSubtitle={false} />
         <div className="flex items-center gap-3">
           <DarkModeToggle />
           <Link href="/auth/login" className="btn-secondary text-sm">Sign in</Link>

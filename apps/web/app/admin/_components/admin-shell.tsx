@@ -3,15 +3,15 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState, useEffect } from 'react';
 
 import { useAuth } from '../../auth/auth-context';
 import NotificationBell from '@/components/NotificationBell';
 import { DarkModeToggle } from '../../theme-context';
 
-function Icon({ path, size = 18 }: { path: string; size?: number }) {
+function Icon({ path, size = 18, className = '' }: { path: string; size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d={path} />
     </svg>
   );
@@ -25,7 +25,7 @@ const ICONS: Record<string, string> = {
   payments: 'M12 1v22M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6',
   reviews: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
   analytics: 'M18 20V10M12 20V4M6 20v-6',
-  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
   audit: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9',
   menu: 'M3 12h18M3 6h18M3 18h18',
@@ -46,20 +46,13 @@ const navItems = [
 
 function DocDockLogo() {
   return (
-    <div className="flex items-center gap-2.5">
-      <div style={{ width: 36, height: 36, borderRadius: 14, overflow: "hidden", flexShrink: 0, display: "inline-flex" }}>
-        <Image
-          src="/logo.png"
-          alt="DocDock Logo"
-          width={36}
-          height={36}
-          style={{ display: "block", width: 36, height: 36 }}
-          priority
-        />
+    <div className="flex items-center gap-3">
+      <div style={{ width: 34, height: 34, borderRadius: 12, overflow: 'hidden', flexShrink: 0, display: 'inline-flex', boxShadow: '0 2px 8px rgba(139,92,246,0.25)' }}>
+        <Image src="/logo.png" alt="DocDock Logo" width={34} height={34} style={{ display: 'block', width: 34, height: 34 }} priority />
       </div>
       <div>
-        <div className="text-base font-bold leading-none" style={{ color: 'var(--text-primary)' }}>DocDock</div>
-        <div className="mt-0.5 text-[10px] leading-none" style={{ color: 'var(--text-muted)' }}>Knock-Knock, your doctor is here.</div>
+        <div className="text-[15px] font-bold leading-none tracking-tight" style={{ color: 'var(--text-primary)' }}>DocDock</div>
+        <div className="mt-0.5 text-[10px] leading-none font-medium" style={{ color: 'var(--text-muted)' }}>Admin Control Panel</div>
       </div>
     </div>
   );
@@ -76,13 +69,13 @@ function NavItem({ href, label, icon, isActive, onClick }: {
     <Link
       href={href}
       onClick={onClick}
-      className={`nav-link ${isActive ? 'active' : ''}`}
+      className={`nav-link ${isActive ? 'active-violet' : ''} group`}
+      aria-current={isActive ? 'page' : undefined}
     >
-      <span className="flex-shrink-0">
+      <span className={`flex-shrink-0 transition-transform duration-200 ${isActive ? '' : 'group-hover:scale-110'}`}>
         <Icon path={ICONS[icon]} size={16} />
       </span>
-      <span className="flex-1 truncate text-sm">{label}</span>
-      {isActive && <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-white opacity-80" />}
+      <span className="flex-1 truncate">{label}</span>
     </Link>
   );
 }
@@ -96,22 +89,22 @@ export function AdminShell({ children }: { children: ReactNode }) {
     return navItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ?? navItems[0];
   }, [pathname]);
 
+  const initials = (user?.fullName || 'A').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+
   const sidebarContent = (
     <div className="flex h-full flex-col">
-      <div className="px-3 py-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
-        <Link href="/" onClick={() => setMobileOpen(false)}>
-          <DocDockLogo />
-        </Link>
+      <div className="px-4 py-5" style={{ borderBottom: '1px solid var(--border-color)' }}>
+        <Link href="/" onClick={() => setMobileOpen(false)}><DocDockLogo /></Link>
       </div>
 
-      <div className="px-3 pt-3 pb-2">
-        <div className="flex items-center gap-2 rounded-lg bg-violet-50 dark:bg-violet-950/30 px-3 py-2">
-          <div className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-pulse" />
-          <span className="text-xs font-semibold text-violet-700 dark:text-violet-400 uppercase tracking-wide">Admin Portal</span>
+      <div className="px-4 pt-4 pb-2">
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(139,92,246,0.05) 100%)', border: '1px solid rgba(139,92,246,0.15)' }}>
+          <span className="dot-pulse bg-violet-500" />
+          <span className="text-[11px] font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">Admin Portal</span>
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-1.5 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5" aria-label="Admin navigation">
         {navItems.map((item) => (
           <NavItem
             key={item.href}
@@ -124,20 +117,27 @@ export function AdminShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
 
-      <div className="border-t px-3 py-3 space-y-2.5" style={{ borderColor: 'var(--border-color)' }}>
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-700 dark:bg-violet-950/60 dark:text-violet-400">
-            {(user?.fullName || 'A').charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{user?.fullName || 'Admin'}</p>
-            <p className="text-[11px] font-medium text-violet-600 dark:text-violet-400 capitalize">Administrator</p>
+      <div className="px-4 py-4 mt-auto" style={{ borderTop: '1px solid var(--border-color)' }}>
+        <div className="rounded-xl p-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+          <div className="flex items-center gap-3">
+            <div className="relative flex-shrink-0">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold"
+                style={{ background: 'linear-gradient(135deg, #ede9fe, #ddd6fe)', color: '#6d28d9' }}>
+                {initials}
+              </div>
+              <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-violet-500 ring-2 ring-white dark:ring-slate-900" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{user?.fullName || 'Admin'}</p>
+              <p className="text-[11px] font-medium" style={{ color: '#7c3aed' }}>Administrator</p>
+            </div>
           </div>
         </div>
         <button
           type="button"
           onClick={logout}
-          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30"
+          className="mt-2 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-rose-500 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/25"
+          aria-label="Sign out"
         >
           <Icon path={ICONS.logout} size={15} />
           <span>Sign out</span>
@@ -146,42 +146,65 @@ export function AdminShell({ children }: { children: ReactNode }) {
     </div>
   );
 
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileOpen]);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
-      <aside className="fixed top-0 left-0 z-40 hidden h-full w-[240px] lg:flex flex-col border-r"
-        style={{ backgroundColor: 'var(--sidebar-bg)', borderColor: 'var(--border-color)' }}>
-        {sidebarContent}
-      </aside>
-
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} />
-      )}
-
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-[240px] flex-col border-r transition-transform duration-300 lg:hidden ${
-          mobileOpen ? 'flex translate-x-0' : 'hidden -translate-x-full'
-        }`}
-        style={{ backgroundColor: 'var(--sidebar-bg)', borderColor: 'var(--border-color)' }}
+        className="fixed top-0 left-0 z-40 hidden h-full lg:flex flex-col"
+        style={{ width: 'var(--sidebar-width)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)' }}
+        aria-label="Sidebar"
       >
         {sidebarContent}
       </aside>
 
-      <div className="lg:ml-[240px] flex flex-col min-h-screen">
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden animate-fade-in" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+      )}
+
+      <aside
+        className={`fixed top-0 left-0 z-50 h-full flex-col border-r lg:hidden transition-all duration-300 ease-out ${mobileOpen ? 'flex translate-x-0 shadow-xl' : 'hidden -translate-x-full'}`}
+        style={{ width: 'var(--sidebar-width)', backgroundColor: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border)' }}
+        aria-hidden={!mobileOpen}
+      >
+        {sidebarContent}
+      </aside>
+
+      <div className="lg:ml-[var(--sidebar-width)] flex flex-col min-h-screen">
         <header
-          className="sticky top-0 z-30 flex h-14 items-center justify-between border-b px-4 sm:px-6"
-          style={{ backgroundColor: 'var(--header-bg)', borderColor: 'var(--border-color)', backdropFilter: 'blur(20px)' }}
+          className="sticky top-0 z-30 flex items-center justify-between border-b px-4 sm:px-6"
+          style={{
+            height: 'var(--header-height)',
+            backgroundColor: 'var(--header-bg)',
+            borderColor: 'var(--border-color)',
+            backdropFilter: 'blur(20px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+          }}
+          aria-label="Top navigation"
         >
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg lg:hidden transition-all hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Toggle menu"
+              className="btn-icon lg:hidden"
+              aria-label="Toggle navigation menu"
+              aria-expanded={mobileOpen}
             >
               <Icon path={mobileOpen ? ICONS.close : ICONS.menu} size={18} />
             </button>
-            <div className="hidden sm:block">
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{activeItem.label}</p>
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Admin</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--border-color)' }}><path d="M9 18l6-6-6-6" /></svg>
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{activeItem.label}</span>
             </div>
             <div className="block sm:hidden">
               <Link href="/"><DocDockLogo /></Link>
@@ -193,7 +216,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 animate-fade-in">
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 animate-fade-in" id="main-content">
           {children}
         </main>
       </div>

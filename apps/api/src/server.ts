@@ -88,19 +88,23 @@ app.get('/api/v1/maps/reverse', async (req, res, next) => {
     if (!lat || !lng) {
       return res.json({ display_name: '' });
     }
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
-      {
-        headers: {
-          'User-Agent': 'DocDock/1.0 (vanshvaishnani@gmail.com)'
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+        {
+          headers: {
+            'User-Agent': 'DocDock/1.0 (vanshvaishnani@gmail.com)'
+          }
         }
+      );
+      if (!response.ok) {
+        return res.json({ display_name: '' });
       }
-    );
-    if (!response.ok) {
-      return res.json({ display_name: '' });
+      const data = await response.json();
+      return res.json(data);
+    } catch {
+      return res.json({ display_name: `Location (${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)})` });
     }
-    const data = await response.json();
-    res.json(data);
   } catch (err) {
     next(err);
   }
