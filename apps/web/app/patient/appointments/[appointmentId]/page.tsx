@@ -29,7 +29,7 @@ import { useToast } from '../../../auth/toast-provider';
 
 import { fetchPatientAppointmentDetail, submitReview, type AppointmentDetail } from '../../api';
 import ChatSection from '../../../../components/ChatSection';
-import VideoConsultation from '../../../../components/VideoConsultation';
+
 
 import LeafletMap, { createSvgIcon } from '@/components/map/LeafletMap';
 
@@ -303,7 +303,6 @@ export default function AppointmentDetailsPage() {
   const [resendingOtp, setResendingOtp] = useState(false);
 
   const [showChat, setShowChat] = useState(false);
-  const [showVideoCall, setShowVideoCall] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const showChatRef = useRef(showChat);
@@ -322,7 +321,21 @@ export default function AppointmentDetailsPage() {
   const [aiSummary, setAiSummary] = useState<any | null>(null);
 
   const handleVideoCall = () => {
-    setShowVideoCall(true);
+    if (!appointmentId || !detail) return;
+    const doctorUserId = (detail.doctor as any)?.userId?._id || (detail.doctor as any)?.userId;
+    const doctorName = (detail.doctor as any)?.userId?.fullName || detail.doctor?.fullName || 'Doctor';
+    if (!doctorUserId) {
+      showToast('Unable to find doctor contact info.', 'error');
+      return;
+    }
+    // Dispatch via CallOverlay so signaling uses the shared socket
+    window.dispatchEvent(new CustomEvent('docdock:initiate-video-call', {
+      detail: {
+        appointmentId,
+        calleeId: doctorUserId,
+        calleeName: doctorName
+      }
+    }));
   };
 
   const handleCall = () => {
@@ -1340,15 +1353,6 @@ export default function AppointmentDetailsPage() {
 
       </section>
 
-      {showVideoCall && detail && (
-        <VideoConsultation
-          appointmentId={appointmentId as string}
-          peerId={(detail.doctor as any)?.userId?._id || (detail.doctor as any)?.userId || ''}
-          peerName={detail.doctor?.fullName || 'Doctor'}
-          isCaller={false}
-          onClose={() => setShowVideoCall(false)}
-        />
-      )}
 
     </div>
 

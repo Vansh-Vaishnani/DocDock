@@ -1,24 +1,32 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 import { useAuth } from '@/app/auth/auth-context';
 import { useToast } from '@/app/auth/toast-provider';
-import { useRouter } from 'next/navigation';
 
 interface VideoConsultationProps {
   appointmentId: string;
   peerId: string;        // userId of the other party
   peerName: string;
   isCaller: boolean;
+  /** Shared socket from CallOverlay. If provided, we reuse it instead of creating a new one. */
+  sharedSocket?: Socket | null;
   onClose: () => void;
 }
 
-const ICE_SERVERS = {
-  iceServers: [
+const getIceServers = (): RTCConfiguration => {
+  const servers: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
-  ]
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ];
+  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+  const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
+  const turnCredential = process.env.NEXT_PUBLIC_TURN_PASSWORD || process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+  if (turnUrl) {
+    servers.push({ urls: turnUrl, username: turnUsername || '', credential: turnCredential || '' });
+  }
+  return { iceServers: servers };
 };
 
 export default function VideoConsultation({
@@ -26,23 +34,39 @@ export default function VideoConsultation({
   peerId,
   peerName,
   isCaller,
-  onClose
+  sharedSocket,
+  onClose,
 }: VideoConsultationProps) {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const router = useRouter();
 
   const [status, setStatus] = useState<'connecting' | 'connected' | 'ended'>('connecting');
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [duration, setDuration] = useState(0);
 
-  const socketRef = useRef<Socket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Stable refs
+  const peerIdRef = useRef(peerId);
+  const appointmentIdRef = useRef(appointmentId);
+  const isCallerRef = useRef(isCaller);
+  const candidatesQueueRef = useRef<RTCIceCandidateInit[]>([]);
+  const pendingSignalsRef = useRef<any[]>([]);
+  const statusRef = useRef<'connecting' | 'connected' | 'ended'>('connecting');
+
+  useEffect(() => { peerIdRef.current = peerId; }, [peerId]);
+  useEffect(() => { appointmentIdRef.current = appointmentId; }, [appointmentId]);
+  useEffect(() => { isCallerRef.current = isCaller; }, [isCaller]);
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
 
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -50,133 +74,112 @@ export default function VideoConsultation({
     return `${m}:${s}`;
   };
 
-  const cleanup = useCallback(() => {
+  // ── Cleanup — does NOT disconnect the shared socket ─────────────────────────
+  const cleanup = useCallback((hangupSocket?: boolean) => {
     if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
       durationTimerRef.current = null;
     }
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => {
-        try { t.stop(); } catch (e) {}
-      });
+      localStreamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch {} });
       localStreamRef.current = null;
     }
     if (pcRef.current) {
-      try { pcRef.current.close(); } catch (e) {}
+      try { pcRef.current.close(); } catch {}
       pcRef.current = null;
     }
-    if (socketRef.current) {
-      try { socketRef.current.disconnect(); } catch (e) {}
-      socketRef.current = null;
-    }
+    candidatesQueueRef.current = [];
+    pendingSignalsRef.current = [];
   }, []);
 
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const showToastRef = useRef(showToast);
-  showToastRef.current = showToast;
-  const peerNameRef = useRef(peerName);
-  peerNameRef.current = peerName;
-
   const handleHangup = useCallback(() => {
-    socketRef.current?.emit('call:hangup', { appointmentId, to: peerId });
+    if (sharedSocket) {
+      sharedSocket.emit('call:hangup', { appointmentId: appointmentIdRef.current, to: peerIdRef.current });
+    }
     setStatus('ended');
+    statusRef.current = 'ended';
     cleanup();
     setTimeout(() => {
       onCloseRef.current();
       if (user?.role === 'patient') {
-        window.location.href = `/patient/appointments/${appointmentId}`;
+        window.location.href = `/patient/appointments/${appointmentIdRef.current}`;
       }
     }, 1500);
-  }, [appointmentId, peerId, cleanup, user?.role]);
+  }, [sharedSocket, cleanup, user?.role]);
 
-  const candidatesQueueRef = useRef<RTCIceCandidateInit[]>([]);
-
-  const getIceServers = () => {
-    const servers: RTCIceServer[] = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ];
-    const turnUrl = process.env.NEXT_PUBLIC_TURN_URL || (process.env as any).TURN_URL;
-    const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME || (process.env as any).TURN_USERNAME;
-    const turnCredential = process.env.NEXT_PUBLIC_TURN_PASSWORD || process.env.NEXT_PUBLIC_TURN_CREDENTIAL || (process.env as any).TURN_PASSWORD || (process.env as any).TURN_CREDENTIAL;
-    if (turnUrl) {
-      servers.push({
-        urls: turnUrl,
-        username: turnUsername || '',
-        credential: turnCredential || ''
-      });
+  // ── Process an incoming WebRTC signal ───────────────────────────────────────
+  const processSignal = useCallback(async (signalData: any) => {
+    const pc = pcRef.current;
+    if (!pc) {
+      pendingSignalsRef.current.push(signalData);
+      return;
     }
-    return { iceServers: servers };
-  };
 
-  useEffect(() => {
-    if (!user) return;
+    try {
+      const { sdp, candidate } = signalData;
+      if (sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
 
-    const token =
-      typeof window !== 'undefined'
-        ? (JSON.parse(localStorage.getItem('docdock-auth') || sessionStorage.getItem('docdock-auth') || '{}') as any)?.accessToken
-        : null;
-
-    const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
-    const socket = io(`${SOCKET_BASE}/notifications`, {
-      transports: ['websocket', 'polling'],
-      auth: { token }
-    });
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      socket.emit('join', user._id);
-    });
-
-    // Handle WebRTC signaling
-    socket.on('webrtc:signal', async (payload: { signalData: any; from: string }) => {
-      if (!pcRef.current) return;
-      try {
-        const { sdp, candidate } = payload.signalData;
-        if (sdp) {
-          await pcRef.current.setRemoteDescription(new RTCSessionDescription(sdp));
-          if (sdp.type === 'offer') {
-            const answer = await pcRef.current.createAnswer();
-            await pcRef.current.setLocalDescription(answer);
-            socket.emit('webrtc:signal', {
-              appointmentId,
-              to: peerId,
-              signalData: { sdp: answer }
-            });
-          }
-          // Process queued candidates
-          while (candidatesQueueRef.current.length > 0) {
-            const cand = candidatesQueueRef.current.shift();
-            if (cand) {
-              await pcRef.current.addIceCandidate(new RTCIceCandidate(cand));
-            }
-          }
-        } else if (candidate) {
-          if (pcRef.current.remoteDescription) {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-          } else {
-            candidatesQueueRef.current.push(candidate);
-          }
+        if (sdp.type === 'offer') {
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          sharedSocket?.emit('webrtc:signal', {
+            appointmentId: appointmentIdRef.current,
+            to: peerIdRef.current,
+            signalData: { sdp: answer },
+          });
         }
-      } catch (err) {
-        console.error('VideoConsultation signal error:', err);
-      }
-    });
 
-    socket.on('call:hungup', () => {
-      showToastRef.current(`Consultation ended.`, 'info');
+        // Drain queued candidates
+        while (candidatesQueueRef.current.length > 0) {
+          const cand = candidatesQueueRef.current.shift();
+          if (cand) { try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {} }
+        }
+      } else if (candidate) {
+        if (pc.remoteDescription) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+        } else {
+          candidatesQueueRef.current.push(candidate);
+        }
+      }
+    } catch (err) {
+      console.error('[VideoConsultation] Signal error:', err);
+    }
+  }, [sharedSocket]);
+
+  // ── Main session setup ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user || !sharedSocket) return;
+
+    const socket = sharedSocket;
+
+    // ── Handle WebRTC signals forwarded to us ──
+    const onSignal = (payload: { appointmentId: string; signalData: any; from: string }) => {
+      // Only handle signals for this video session
+      if (payload.appointmentId === appointmentIdRef.current) {
+        processSignal(payload.signalData);
+      }
+    };
+
+    // ── Handle remote hangup ──
+    const onHungup = () => {
+      if (statusRef.current === 'ended') return;
+      showToastRef.current('Consultation ended.', 'info');
       setStatus('ended');
+      statusRef.current = 'ended';
       cleanup();
       setTimeout(() => {
         onCloseRef.current();
         if (user?.role === 'patient') {
-          window.location.href = `/patient/appointments/${appointmentId}`;
+          window.location.href = `/patient/appointments/${appointmentIdRef.current}`;
         }
       }, 2000);
-    });
+    };
 
-    // Start media + WebRTC
+    socket.on('webrtc:signal', onSignal);
+    socket.on('call:hungup', onHungup);
+
+    // ── Start media and WebRTC ──
     const startSession = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
@@ -193,7 +196,10 @@ export default function VideoConsultation({
         pc.ontrack = (event) => {
           if (remoteVideoRef.current && event.streams[0]) {
             remoteVideoRef.current.srcObject = event.streams[0];
+            // Ensure video plays
+            remoteVideoRef.current.play().catch(() => {});
             setStatus('connected');
+            statusRef.current = 'connected';
             if (durationTimerRef.current) clearInterval(durationTimerRef.current);
             durationTimerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
           }
@@ -202,33 +208,40 @@ export default function VideoConsultation({
         pc.onicecandidate = (event) => {
           if (event.candidate) {
             socket.emit('webrtc:signal', {
-              appointmentId,
-              to: peerId,
-              signalData: { candidate: event.candidate }
+              appointmentId: appointmentIdRef.current,
+              to: peerIdRef.current,
+              signalData: { candidate: event.candidate },
             });
           }
         };
 
-        if (isCaller) {
-          // Notify the peer first
-          socket.emit('call:initiate', {
-            appointmentId,
-            callerId: user._id,
-            callerName: user.fullName,
-            calleeId: peerId,
-            callType: 'video'
-          });
+        pc.oniceconnectionstatechange = () => {
+          if (pc.iceConnectionState === 'failed') {
+            console.warn('[VideoConsultation] ICE connection failed');
+            showToastRef.current('Video connection failed. Please retry.', 'error');
+          }
+        };
 
-          const offer = await pc.createOffer();
+        // Process any signals buffered before PC was created
+        const buffered = [...pendingSignalsRef.current];
+        pendingSignalsRef.current = [];
+        for (const sig of buffered) {
+          await processSignal(sig);
+        }
+
+        if (isCallerRef.current) {
+          // Caller creates the offer
+          const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
           await pc.setLocalDescription(offer);
           socket.emit('webrtc:signal', {
-            appointmentId,
-            to: peerId,
-            signalData: { sdp: offer }
+            appointmentId: appointmentIdRef.current,
+            to: peerIdRef.current,
+            signalData: { sdp: offer },
           });
         }
+        // If not caller: wait for offer from remote peer via webrtc:signal
       } catch (err) {
-        console.error('VideoConsultation media error:', err);
+        console.error('[VideoConsultation] Media error:', err);
         showToastRef.current('Camera/Microphone access is required for video consultation.', 'error');
         cleanup();
         onCloseRef.current();
@@ -237,64 +250,53 @@ export default function VideoConsultation({
 
     startSession();
 
-    // Tab close / refresh handler
     const handleBeforeUnload = () => {
-      try {
-        socket.emit('call:hangup', { appointmentId, to: peerId });
-      } catch (e) {}
+      try { socket.emit('call:hangup', { appointmentId: appointmentIdRef.current, to: peerIdRef.current }); } catch {}
       cleanup();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Remove only the listeners we added (don't disconnect shared socket)
+      socket.off('webrtc:signal', onSignal);
+      socket.off('call:hungup', onHungup);
       cleanup();
     };
-  }, [user?._id, appointmentId, peerId, isCaller, cleanup]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id, sharedSocket]);
 
   const toggleMute = () => {
     const stream = localStreamRef.current;
     if (!stream) return;
-    stream.getAudioTracks().forEach((t) => {
-      t.enabled = !t.enabled;
-    });
+    stream.getAudioTracks().forEach((t) => { t.enabled = !t.enabled; });
     setIsMuted((m) => !m);
   };
 
   const toggleVideo = () => {
     const stream = localStreamRef.current;
     if (!stream) return;
-    stream.getVideoTracks().forEach((t) => {
-      t.enabled = !t.enabled;
-    });
+    stream.getVideoTracks().forEach((t) => { t.enabled = !t.enabled; });
     setIsVideoOff((v) => !v);
   };
 
   return (
     <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 9999,
-      background: '#0a0a0a',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden'
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: '#0a0a0a', display: 'flex',
+      flexDirection: 'column', overflow: 'hidden'
     }}>
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '14px 24px',
-        background: 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(255,255,255,0.08)'
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 24px', background: 'rgba(255,255,255,0.04)',
+        backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.08)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
             width: 10, height: 10, borderRadius: '50%',
             background: status === 'connected' ? '#22c55e' : status === 'ended' ? '#ef4444' : '#f59e0b',
-            boxShadow: `0 0 8px ${status === 'connected' ? '#22c55e' : '#f59e0b'}`
+            boxShadow: `0 0 8px ${status === 'connected' ? '#22c55e80' : '#f59e0b80'}`
           }} />
           <div>
             <div style={{ color: '#fff', fontWeight: 600, fontSize: 15 }}>
@@ -310,38 +312,32 @@ export default function VideoConsultation({
         </div>
       </div>
 
-      {/* Video Area */}
-      <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {/* Remote Video */}
+      {/* ── Video area ── */}
+      <div style={{ flex: 1, position: 'relative', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+
+        {/* Remote video — always rendered so srcObject assignment works */}
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
           style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
+            width: '100%', height: '100%', objectFit: 'cover',
             display: status === 'connected' ? 'block' : 'none'
           }}
         />
 
-        {/* Connecting/Ended Overlay */}
+        {/* Connecting / ended overlay */}
         {status !== 'connected' && (
           <div style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 20
+            position: 'absolute', inset: 0, display: 'flex',
+            flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20
           }}>
-            {/* Avatar */}
             <div style={{
               width: 100, height: 100, borderRadius: '50%',
               background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 38, color: '#fff', fontWeight: 700
+              fontSize: 38, color: '#fff', fontWeight: 700,
+              boxShadow: '0 0 40px rgba(99,102,241,0.4)'
             }}>
               {peerName.charAt(0).toUpperCase()}
             </div>
@@ -350,8 +346,7 @@ export default function VideoConsultation({
               <div style={{ display: 'flex', gap: 6 }}>
                 {[0, 1, 2].map((i) => (
                   <div key={i} style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: '#6366f1',
+                    width: 8, height: 8, borderRadius: '50%', background: '#6366f1',
                     animation: `vcPulse 1.4s ease-in-out ${i * 0.2}s infinite`
                   }} />
                 ))}
@@ -363,30 +358,21 @@ export default function VideoConsultation({
           </div>
         )}
 
-        {/* Local Video (Picture-in-Picture) */}
+        {/* Local video (picture-in-picture) */}
         <div style={{
-          position: 'absolute',
-          bottom: 24,
-          right: 24,
-          width: 160,
-          height: 120,
-          borderRadius: 12,
-          overflow: 'hidden',
-          border: '2px solid rgba(255,255,255,0.2)',
-          background: '#1a1a2e',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.6)'
+          position: 'absolute', bottom: 24, right: 24, width: 160, height: 120,
+          borderRadius: 12, overflow: 'hidden', border: '2px solid rgba(255,255,255,0.2)',
+          background: '#1a1a2e', boxShadow: '0 8px 32px rgba(0,0,0,0.6)'
         }}>
           <video
             ref={localVideoRef}
-            autoPlay
-            muted
-            playsInline
+            autoPlay muted playsInline
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: isVideoOff ? 'none' : 'block' }}
           />
           {isVideoOff && (
             <div style={{
-              width: '100%', height: '100%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '100%', height: '100%', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
               background: '#1a1a2e', color: '#6b7280', fontSize: 12
             }}>
               Camera Off
@@ -395,16 +381,11 @@ export default function VideoConsultation({
         </div>
       </div>
 
-      {/* Controls */}
+      {/* ── Controls ── */}
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 20,
-        padding: '20px 24px',
-        background: 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(12px)',
-        borderTop: '1px solid rgba(255,255,255,0.08)'
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20,
+        padding: '20px 24px', background: 'rgba(255,255,255,0.04)',
+        backdropFilter: 'blur(12px)', borderTop: '1px solid rgba(255,255,255,0.08)'
       }}>
         {/* Mute */}
         <button
@@ -415,16 +396,16 @@ export default function VideoConsultation({
             background: isMuted ? '#ef4444' : 'rgba(255,255,255,0.12)',
             border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'background 0.2s',
-            color: '#fff',
-            fontSize: 20
+            transition: 'background 0.2s, transform 0.1s', color: '#fff'
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
             {isMuted ? (
-              <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>
+              <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z" />
             ) : (
-              <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+              <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" />
             )}
           </svg>
         </button>
@@ -438,16 +419,16 @@ export default function VideoConsultation({
             background: isVideoOff ? '#ef4444' : 'rgba(255,255,255,0.12)',
             border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'background 0.2s',
-            color: '#fff',
-            fontSize: 20
+            transition: 'background 0.2s, transform 0.1s', color: '#fff'
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
             {isVideoOff ? (
-              <path d="M21 6.5l-4-4-9.45 9.46-1.55-1.55L4.27 12.73 6 14.5l-4 4 1.41 1.41L21 8.5V6.5zm-10 1L9 9l-2-2-1.5 1.5 2 2L4 14h10l-3-3-2-2 2-1.5zm8 10.5H5c-1.1 0-2-.9-2-2V8h2v8h14v-8h2v8c0 1.1-.9 2-2 2z"/>
+              <path d="M21 6.5l-4-4-9.45 9.46-1.55-1.55L4.27 12.73 6 14.5l-4 4 1.41 1.41L21 8.5V6.5zm-10 1L9 9l-2-2-1.5 1.5 2 2L4 14h10l-3-3-2-2 2-1.5zm8 10.5H5c-1.1 0-2-.9-2-2V8h2v8h14v-8h2v8c0 1.1-.9 2-2 2z" />
             ) : (
-              <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+              <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
             )}
           </svg>
         </button>
@@ -462,8 +443,7 @@ export default function VideoConsultation({
             border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 4px 20px rgba(239,68,68,0.5)',
-            transition: 'transform 0.1s',
-            transform: 'scale(1)'
+            transition: 'transform 0.1s', transform: 'scale(1)'
           }}
           onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
           onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
@@ -476,7 +456,7 @@ export default function VideoConsultation({
         </button>
       </div>
 
-      {/* CSS Animation */}
+      {/* CSS animation for connecting dots */}
       <style>{`
         @keyframes vcPulse {
           0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }

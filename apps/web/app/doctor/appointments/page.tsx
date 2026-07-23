@@ -6,7 +6,7 @@ import { io } from 'socket.io-client';
 import { useToast } from '../../auth/toast-provider';
 import { createOrUpdatePrescription, fetchDoctorAppointments, fetchDoctorProfile, updateAppointmentStatus, updateTrackingLocation, type DoctorAppointment } from '../api';
 import ChatSection from '../../../components/ChatSection';
-import VideoConsultation from '../../../components/VideoConsultation';
+
 
 const SOCKET_BASE = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
 
@@ -139,7 +139,6 @@ export default function DoctorAppointmentsPage() {
   const [resendingOtp, setResendingOtp] = useState(false);
 
   const [activeChatApptId, setActiveChatApptId] = useState<string | null>(null);
-  const [videoCallAppt, setVideoCallAppt] = useState<DoctorAppointment | null>(null);
 
   const handleCallPatient = (appointmentId: string, appointment: any) => {
     const patientUserId = appointment?.patientId || appointment?.patient?._id;
@@ -149,6 +148,22 @@ export default function DoctorAppointmentsPage() {
       return;
     }
     window.dispatchEvent(new CustomEvent('docdock:initiate-call', {
+      detail: {
+        appointmentId,
+        calleeId: patientUserId,
+        calleeName: patientName
+      }
+    }));
+  };
+
+  const handleStartVideoCall = (appointmentId: string, appointment: any) => {
+    const patientUserId = appointment?.patientId || appointment?.patient?._id;
+    const patientName = appointment?.patient?.fullName || appointment?.patientName || 'Patient';
+    if (!patientUserId) {
+      showToast('Unable to find patient contact info.', 'error');
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('docdock:initiate-video-call', {
       detail: {
         appointmentId,
         calleeId: patientUserId,
@@ -561,7 +576,7 @@ export default function DoctorAppointmentsPage() {
                       {(appt as any).consultationMode === 'online' && appt.status === 'in_consultation' && (
                         <button
                           type="button"
-                          onClick={() => setVideoCallAppt(appt)}
+                          onClick={() => handleStartVideoCall(appt._id, appt)}
                           className="rounded-full bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 transition"
                         >
                           Start Video Call
@@ -840,16 +855,7 @@ export default function DoctorAppointmentsPage() {
           </div>
         );
       })()}
-      {/* Video Consultation Overlay */}
-      {videoCallAppt && (
-        <VideoConsultation
-          appointmentId={videoCallAppt._id}
-          peerId={(videoCallAppt as any).patientUserId || (videoCallAppt as any).patientId || ''}
-          peerName={videoCallAppt.patientName || 'Patient'}
-          isCaller={true}
-          onClose={() => setVideoCallAppt(null)}
-        />
-      )}
+
     </div>
   );
 }
