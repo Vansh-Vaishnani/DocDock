@@ -193,8 +193,8 @@ export default function DoctorAppointmentsPage() {
     }
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const [list, profile] = await Promise.all([fetchDoctorAppointments(filter), fetchDoctorProfile()]);
       if (mountedRef.current) {
@@ -205,11 +205,11 @@ export default function DoctorAppointmentsPage() {
         }
       }
     } catch (err: unknown) {
-      if (mountedRef.current) {
+      if (mountedRef.current && !isSilent) {
         showToastRef.current(err instanceof Error ? err.message : 'Unable to load appointments.', 'error');
       }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && !isSilent) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]); // stable — showToast via ref
@@ -252,7 +252,7 @@ export default function DoctorAppointmentsPage() {
         'admin_suspended_account'
       ];
       if (statusTypes.includes(newNotification.type)) {
-        void load();
+        void load(true);
       }
     });
 
@@ -278,8 +278,8 @@ export default function DoctorAppointmentsPage() {
       );
     });
 
-    // Polling fallback every 8 seconds
-    const interval = setInterval(() => { void load(); }, 8000);
+    // Polling fallback every 8 seconds (silent update without showing skeleton loader)
+    const interval = setInterval(() => { void load(true); }, 8000);
 
     return () => {
       clearInterval(interval);

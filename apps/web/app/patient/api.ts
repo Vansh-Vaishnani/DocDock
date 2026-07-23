@@ -21,6 +21,48 @@ const getStoredAccessToken = (): string | null => {
   }
 };
 
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+const refreshAccessToken = async (): Promise<boolean> => {
+  if (typeof window === 'undefined') return false;
+  if (isRefreshing && refreshPromise) return refreshPromise;
+
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const raw = window.localStorage.getItem(AUTH_STORAGE_KEY) || window.sessionStorage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (!parsed.refreshToken) return false;
+
+      const res = await fetch(`${API_BASE}/auth/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: parsed.refreshToken })
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (data?.data?.accessToken) {
+        parsed.accessToken = data.data.accessToken;
+        if (data.data.refreshToken) parsed.refreshToken = data.data.refreshToken;
+        const isLocal = !!window.localStorage.getItem(AUTH_STORAGE_KEY);
+        const storage = isLocal ? window.localStorage : window.sessionStorage;
+        storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsed));
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+};
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
@@ -37,6 +79,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers
   });
+
+  if (response.status === 401 && !(init as any)._isRetry) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      return request<T>(path, { ...init, _isRetry: true } as any);
+    }
+  }
 
   const payload = await response.json().catch(() => null);
 

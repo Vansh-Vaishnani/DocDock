@@ -239,9 +239,16 @@ export default function CallOverlay() {
 
     socketRef.current = socket;
 
-    socket.on('connect', () => {
-      socket.emit('join', user._id);
-    });
+    const joinRoom = () => {
+      if (user?._id) {
+        socket.emit('join', user._id);
+      }
+    };
+
+    socket.on('connect', joinRoom);
+    if (socket.connected) {
+      joinRoom();
+    }
 
     // ── Incoming call ─────────────────────────────────────────────────────────
     socket.on('call:incoming', (payload: {

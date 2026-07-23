@@ -914,7 +914,7 @@ export class DoctorService {
         doctorId: appt.doctorId.toString(),
         isEmergency: appt.isEmergency,
         consultationMode: appt.consultationMode,
-        unreadMessageCount: (unreadCountMap[rId] || 0) + (notificationCountMap[apptIdStr] || 0),
+        unreadMessageCount: unreadCountMap[rId] || 0,
         prescription: prescription
           ? {
               _id: prescription._id.toString(),

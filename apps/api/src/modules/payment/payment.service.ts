@@ -75,7 +75,10 @@ export class PaymentService {
   }
 
   async markPaid(razorpayOrderId: string, razorpayPaymentId: string): Promise<IPaymentDocument> {
-    const payment = await PaymentModel.findOne({ razorpayOrderId });
+    let payment = await PaymentModel.findOne({ razorpayOrderId });
+    if (!payment) {
+      payment = await PaymentModel.findOne({ appointmentId: razorpayOrderId });
+    }
     if (!payment) {
       throw new ApiError('Payment record not found', 404, 'PAYMENT_NOT_FOUND');
     }

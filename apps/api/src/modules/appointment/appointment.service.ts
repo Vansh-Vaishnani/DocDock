@@ -421,7 +421,7 @@ export class AppointmentService {
         paymentStatus: payment?.status ?? null,
         refundStatus: (payment as any)?.refundStatus ?? null,
         consultationMode: appt.consultationMode,
-        unreadMessageCount: (countMap[rId] || 0) + (notificationCountMap[apptIdStr] || 0),
+        unreadMessageCount: countMap[rId] || 0,
         isEmergency: appt.isEmergency || false
       };
     });

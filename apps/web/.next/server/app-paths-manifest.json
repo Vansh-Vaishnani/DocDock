@@ -1,5 +1,8 @@
 {
-  "/doctor/appointments/page": "app/doctor/appointments/page.js",
+  "/find-doctors/page": "app/find-doctors/page.js",
+  "/find-doctors/[id]/page": "app/find-doctors/[id]/page.js",
   "/doctor/dashboard/page": "app/doctor/dashboard/page.js",
-  "/doctor/availability/page": "app/doctor/availability/page.js"
+  "/doctor/appointments/page": "app/doctor/appointments/page.js",
+  "/patient/appointments/[appointmentId]/page": "app/patient/appointments/[appointmentId]/page.js",
+  "/auth/login/page": "app/auth/login/page.js"
 }

@@ -194,14 +194,24 @@ export default function VideoConsultation({
         stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
         pc.ontrack = (event) => {
-          if (remoteVideoRef.current && event.streams[0]) {
-            remoteVideoRef.current.srcObject = event.streams[0];
-            // Ensure video plays
+          const stream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = stream;
             remoteVideoRef.current.play().catch(() => {});
+          }
+          setStatus('connected');
+          statusRef.current = 'connected';
+          if (!durationTimerRef.current) {
+            durationTimerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
+          }
+        };
+
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === 'connected') {
             setStatus('connected');
             statusRef.current = 'connected';
-            if (durationTimerRef.current) clearInterval(durationTimerRef.current);
-            durationTimerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
+          } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+            console.warn('[VideoConsultation] Connection state:', pc.connectionState);
           }
         };
 
@@ -216,7 +226,10 @@ export default function VideoConsultation({
         };
 
         pc.oniceconnectionstatechange = () => {
-          if (pc.iceConnectionState === 'failed') {
+          if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            setStatus('connected');
+            statusRef.current = 'connected';
+          } else if (pc.iceConnectionState === 'failed') {
             console.warn('[VideoConsultation] ICE connection failed');
             showToastRef.current('Video connection failed. Please retry.', 'error');
           }
