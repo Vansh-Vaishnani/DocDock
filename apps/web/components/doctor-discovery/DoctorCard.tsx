@@ -22,6 +22,7 @@ interface DoctorCardProps {
   };
   location?: { lat: number; lng: number } | null;
   locationLabel?: string | null;
+  isSelected?: boolean;
 }
 
 const formatFee = (fee: number) => `₹${fee.toLocaleString('en-IN')}`;
@@ -52,7 +53,7 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
-export function DoctorCard({ doctor, location, locationLabel }: DoctorCardProps) {
+export function DoctorCard({ doctor, location, locationLabel, isSelected }: DoctorCardProps) {
   const name = doctor.userId?.fullName || `Dr. ${doctor.specialization}`;
   const isAvailable = doctor.availability?.isAvailable ?? false;
   const distanceValue = typeof doctor.distance === 'number' || typeof doctor.distance === 'string' ? Number(doctor.distance) : NaN;
@@ -102,24 +103,44 @@ export function DoctorCard({ doctor, location, locationLabel }: DoctorCardProps)
 
   return (
     <article
-      className="group flex h-full flex-col overflow-hidden transition-all duration-300 hover:-translate-y-2"
+      className={`group relative flex h-full flex-col overflow-hidden transition-all duration-300 ${
+        isSelected ? 'ring-2 ring-emerald-500 shadow-xl scale-[1.01]' : 'hover:-translate-y-1.5 hover:shadow-md'
+      }`}
       style={{
-        borderRadius: '20px',
-        border: '1px solid var(--card-border)',
+        borderRadius: '24px',
+        border: isSelected ? '1px solid #10b981' : '1px solid var(--card-border)',
         backgroundColor: 'var(--card-bg)',
-        boxShadow: 'var(--card-shadow)',
+        boxShadow: isSelected ? '0 12px 30px -8px rgba(16, 185, 129, 0.25)' : 'var(--card-shadow)',
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.boxShadow = 'var(--card-shadow-hover)';
-        (e.currentTarget as HTMLElement).style.borderColor = 'rgba(16,185,129,0.3)';
+        if (!isSelected) {
+          (e.currentTarget as HTMLElement).style.boxShadow = 'var(--card-shadow-hover)';
+          (e.currentTarget as HTMLElement).style.borderColor = 'rgba(16,185,129,0.3)';
+        }
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.boxShadow = 'var(--card-shadow)';
-        (e.currentTarget as HTMLElement).style.borderColor = 'var(--card-border)';
+        if (!isSelected) {
+          (e.currentTarget as HTMLElement).style.boxShadow = 'var(--card-shadow)';
+          (e.currentTarget as HTMLElement).style.borderColor = 'var(--card-border)';
+        }
       }}
     >
+      {/* Selected Indicator Ribbon Badge */}
+      {isSelected && (
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white shadow-md animate-pulse">
+          <span>📍</span> Map Selected
+        </div>
+      )}
+
       {/* Gradient top accent */}
-      <div className="h-1.5 w-full" style={{ background: 'linear-gradient(90deg, #10b981 0%, #059669 50%, #0d9488 100%)' }} />
+      <div 
+        className="h-2 w-full transition-all duration-300" 
+        style={{ 
+          background: isSelected 
+            ? 'linear-gradient(90deg, #059669 0%, #10b981 50%, #34d399 100%)' 
+            : 'linear-gradient(90deg, #10b981 0%, #059669 50%, #0d9488 100%)' 
+        }} 
+      />
 
       <div className="flex flex-col flex-1 p-5">
         {/* Header: Avatar + Info */}

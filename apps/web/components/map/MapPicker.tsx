@@ -18,6 +18,40 @@ export function createSvgIcon(color: string, size = 28) {
   return leaflet.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size / 2, size] });
 }
 
+export function createDoctorMarkerIcon(isSelected = false, isAvailable = true) {
+  if (typeof window === 'undefined') return undefined;
+  const leaflet = require('leaflet');
+  
+  const width = isSelected ? 42 : 36;
+  const height = isSelected ? 52 : 46;
+  const primaryColor = isSelected ? '#059669' : '#0d9488';
+  const pulseClass = isSelected ? 'animate-bounce' : '';
+  const borderRing = isSelected ? '#34d399' : '#ffffff';
+  
+  const svg = `
+    <div style="position: relative; width: ${width}px; height: ${height}px; filter: drop-shadow(0 4px 10px rgba(13, 148, 136, 0.4)); display: flex; align-items: center; justify-content: center;" class="${pulseClass}">
+      <svg width="${width}" height="${height}" viewBox="0 0 38 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Pin Base Shape -->
+        <path d="M19 0C8.50659 0 0 8.50659 0 19C0 31.5 19 48 19 48C19 48 38 31.5 38 19C38 8.50659 29.4934 0 19 0Z" fill="${primaryColor}"/>
+        <!-- Inner Border Ring -->
+        <circle cx="19" cy="18" r="14" fill="#ffffff" stroke="${borderRing}" stroke-width="2"/>
+        <!-- Doctor Stethoscope / Medical Cross Icon Symbol -->
+        <path d="M19 11V25M12 18H26" stroke="${primaryColor}" stroke-width="3.5" stroke-linecap="round"/>
+        <!-- Availability Status Dot -->
+        <circle cx="30" cy="8" r="5" fill="${isAvailable ? '#10b981' : '#f59e0b'}" stroke="#ffffff" stroke-width="1.5"/>
+      </svg>
+    </div>
+  `;
+
+  return leaflet.divIcon({
+    html: svg,
+    className: '',
+    iconSize: [width, height],
+    iconAnchor: [width / 2, height],
+    popupAnchor: [0, -height + 6]
+  });
+}
+
 interface LeafletModule {
   MapContainer: any;
   TileLayer: any;

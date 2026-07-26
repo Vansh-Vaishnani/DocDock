@@ -10,7 +10,7 @@ import { useSearchParams } from 'next/navigation';
 
 import { DoctorCard } from '@/components/doctor-discovery/DoctorCard';
 import { DoctorFilters } from '@/components/doctor-discovery/DoctorFilters';
-import MapPicker, { createSvgIcon } from '@/components/map/MapPicker';
+import MapPicker, { createSvgIcon, createDoctorMarkerIcon } from '@/components/map/MapPicker';
 import { buildDoctorSearchParams } from '@/lib/doctorSearch';
 import { calculateDistanceKm, formatDistanceKm } from '@/lib/locationUtils';
 import { fetchPatientProfile } from '../patient/api';
@@ -276,23 +276,65 @@ function FindDoctorsPageContent() {
                     const distanceLabel = Number.isFinite(backendDistance) && backendDistance > 0
                       ? formatDistanceKm(backendDistance, true)
                       : (location && Array.isArray(doctor.location?.coordinates) ? formatDistanceKm(calculateDistanceKm(location.lat, location.lng, doctor.location.coordinates[1], doctor.location.coordinates[0]), false) : '—');
+                    const isSelected = selectedDoctorId === doctor._id;
+                    const doctorName = doctor.userId?.fullName || `Dr. ${doctor.specialization}`;
+                    const initials = doctorName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+                    const profilePhoto = doctor.profilePhotoUrl || doctor.user?.avatar || null;
+                    const isAvailable = doctor.availability?.isAvailable ?? true;
+
                     return (
                       <Marker 
                         key={doctor._id} 
-                        {...({ position: [lat, lng], icon: createSvgIcon('#f59e0b', 30) } as any)}
+                        {...({ position: [lat, lng], icon: createDoctorMarkerIcon(isSelected, isAvailable) } as any)}
+                        eventHandlers={{
+                          click: () => handleMarkerClick(doctor)
+                        }}
                       >
                         <Popup>
                           <div 
-                            className="min-w-[220px] text-sm cursor-pointer hover:opacity-90 transition-opacity"
+                            className="p-1 min-w-[240px] text-sm cursor-pointer select-none"
                             onClick={() => handleMarkerClick(doctor)}
                           >
-                            <p className="font-semibold text-slate-900">{doctor.userId?.fullName || `Dr. ${doctor.specialization}`}</p>
-                            <p className="mt-1 font-medium text-slate-800">{doctor.clinicName || 'Clinic'}</p>
-                            <p className="mt-1 text-slate-600">{doctor.clinicAddress || 'Clinic address available on request'}</p>
-                            <p className="mt-2 font-semibold text-emerald-700">₹{doctor.consultationFee} Consultation</p>
-                            <p className="mt-1 text-slate-600">Distance: {distanceLabel}</p>
-                            <p className="mt-1 text-slate-600">{doctor.availability?.isAvailable ? 'Available Now' : 'On request'}</p>
-                            <p className="mt-2 text-xs font-semibold text-emerald-600 underline">Click card to highlight doctor</p>
+                            <div className="flex items-center gap-3">
+                              <div className="h-11 w-11 rounded-full overflow-hidden flex-shrink-0 border-2 border-emerald-500 bg-emerald-100 flex items-center justify-center font-bold text-emerald-800 text-xs shadow-sm">
+                                {profilePhoto ? (
+                                  <img src={profilePhoto} alt={doctorName} className="h-full w-full object-cover" />
+                                ) : (
+                                  <span>{initials}</span>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-bold text-slate-900 text-sm truncate">{doctorName}</p>
+                                <p className="text-xs text-emerald-600 font-semibold truncate">{doctor.specialization}</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-1 text-xs text-slate-600">
+                              <p className="flex items-center gap-1.5 font-medium text-slate-800">
+                                <span>🏥</span> <span className="truncate">{doctor.clinicName || 'Clinic'}</span>
+                              </p>
+                              {doctor.clinicAddress && (
+                                <p className="text-slate-500 text-[11px] line-clamp-1">{doctor.clinicAddress}</p>
+                              )}
+                              <div className="flex items-center justify-between mt-2 pt-1">
+                                <span className="font-bold text-emerald-700 text-sm">₹{doctor.consultationFee}</span>
+                                <span className="text-[11px] bg-slate-100 text-slate-700 font-medium px-2 py-0.5 rounded-md">📍 {distanceLabel}</span>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between text-xs pt-2 border-t border-slate-100">
+                              <span className={`inline-flex items-center gap-1 font-semibold ${isAvailable ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                <span className={`h-2 w-2 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                                {isAvailable ? 'Available Now' : 'On request'}
+                              </span>
+                              <Link 
+                                href={buildDoctorHref(doctor._id)} 
+                                onClick={(e) => e.stopPropagation()}
+                                className="font-semibold text-emerald-600 hover:text-emerald-700 hover:underline text-[11px] flex items-center gap-0.5"
+                              >
+                                View Profile &rarr;
+                              </Link>
+                            </div>
                           </div>
                         </Popup>
                       </Marker>
@@ -364,9 +406,14 @@ function FindDoctorsPageContent() {
                       id={`doctor-card-${doctor._id}`} 
                       key={doctor._id} 
                       onClick={() => handleDoctorCardClick(doctor)}
-                      className={`cursor-pointer transition duration-200 hover-lift rounded-3xl ${selectedDoctorId === doctor._id ? 'ring-2 ring-emerald-500' : ''}`}
+                      className="cursor-pointer transition duration-200"
                     >
-                      <DoctorCard doctor={doctor} location={location} locationLabel={locationLabel} />
+                      <DoctorCard 
+                        doctor={doctor} 
+                        location={location} 
+                        locationLabel={locationLabel} 
+                        isSelected={selectedDoctorId === doctor._id}
+                      />
                     </div>
                   );
                 })}
