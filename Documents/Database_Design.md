@@ -34,18 +34,21 @@
 
 DocDock uses **MongoDB Atlas** as its primary database. The schema is designed around the on-demand healthcare domain, where geospatial proximity search, real-time availability, and transactional integrity are first-class concerns.
 
-The database is split into **8 core collections** that mirror the bounded contexts of the platform:
+The database is split into **11 core collections** that mirror the bounded contexts of the platform:
 
-| Collection      | Primary Role                                    |
-|-----------------|--------------------------------------------------|
-| `users`         | Unified authentication identity store            |
-| `doctors`       | Doctor profiles, availability, geo-location      |
-| `patients`      | Patient profiles, medical history                |
-| `appointments`  | Booking lifecycle management                     |
-| `prescriptions` | Digital prescriptions linked to appointments     |
-| `reviews`       | Doctor ratings and patient feedback              |
-| `payments`      | Razorpay transaction records                     |
-| `notifications` | In-app and push notification queue               |
+| Collection         | Primary Role                                       |
+|--------------------|----------------------------------------------------|
+| `users`            | Unified authentication identity store             |
+| `doctors`          | Doctor profiles, availability, geo-location        |
+| `patients`         | Patient profiles, medical history                  |
+| `appointments`     | Booking lifecycle management                       |
+| `prescriptions`    | Digital prescriptions linked to appointments       |
+| `reviews`          | Doctor ratings and patient feedback                |
+| `payments`         | Razorpay transaction records                       |
+| `notifications`    | In-app and push notification queue                 |
+| `chat_messages`    | Real-time chat messages per appointment            |
+| `call_logs`        | Online consultation call records                   |
+| `appointment_otps` | Time-limited OTP records for online session start  |
 
 ---
 
@@ -150,6 +153,34 @@ erDiagram
         date createdAt
     }
 
+    CHAT_MESSAGES {
+        ObjectId _id PK
+        ObjectId appointmentId FK
+        ObjectId senderId FK
+        string senderRole
+        string message
+        date createdAt
+    }
+
+    CALL_LOGS {
+        ObjectId _id PK
+        ObjectId appointmentId FK
+        ObjectId callerId FK
+        ObjectId calleeId FK
+        string callerRole
+        date startedAt
+        date endedAt
+        number durationSeconds
+    }
+
+    APPOINTMENT_OTPS {
+        ObjectId _id PK
+        ObjectId appointmentId FK
+        string hashedOtp
+        date expiresAt
+        date createdAt
+    }
+
     USERS ||--o| DOCTORS : "has profile"
     USERS ||--o| PATIENTS : "has profile"
     PATIENTS ||--o{ APPOINTMENTS : "books"
@@ -157,6 +188,9 @@ erDiagram
     APPOINTMENTS ||--o| PRESCRIPTIONS : "generates"
     APPOINTMENTS ||--o| PAYMENTS : "requires"
     APPOINTMENTS ||--o| REVIEWS : "results in"
+    APPOINTMENTS ||--o{ CHAT_MESSAGES : "has"
+    APPOINTMENTS ||--o| CALL_LOGS : "records"
+    APPOINTMENTS ||--o| APPOINTMENT_OTPS : "has"
     DOCTORS ||--o{ REVIEWS : "receives"
     USERS ||--o{ NOTIFICATIONS : "receives"
 ```
@@ -288,7 +322,7 @@ db.users.createIndex({ passwordResetToken: 1 }, { sparse: true, expireAfterSecon
   },
 
   // Admin Verification
-  verificationStatus: String,         // Enum: "pending" | "verified" | "rejected"
+  verificationStatus: String,         // Enum: "pending" | "approved" | "rejected"
   verificationNote: String,           // Admin rejection reason
   verifiedAt: Date,
   verifiedBy: ObjectId,              // Ref: users._id (admin)
@@ -312,7 +346,7 @@ db.users.createIndex({ passwordResetToken: 1 }, { sparse: true, expireAfterSecon
 | `location.coordinates`| Array of 2 numbers: `[lng, lat]`; lng ∈ [-180,180], lat ∈ [-90,90] |
 | `consultationFee`     | Required, number ≥ 0                              |
 | `avgRating`           | Float between 0.0 and 5.0                         |
-| `verificationStatus`  | Enum: `["pending", "verified", "rejected"]`       |
+| `verificationStatus`  | Enum: `["pending", "approved", "rejected"]`       |
 
 #### Indexes
 
@@ -433,57 +467,34 @@ db.patients.createIndex({ createdAt: -1 })
   _id: ObjectId,
 
   // References
-  patientId: ObjectId,               // Ref: patients._id
+  patientId: ObjectId,               // Ref: users._id (patient user)
   doctorId: ObjectId,                // Ref: doctors._id
   paymentId: ObjectId,               // Ref: payments._id (set after payment)
+  prescriptionId: ObjectId,         // Ref: prescriptions._id (set after consultation)
 
   // Scheduling
   scheduledAt: Date,                 // Appointment start datetime
-  estimatedDuration: Number,         // Minutes (default: 30)
-  actualStartTime: Date,             // Set when doctor starts
-  actualEndTime: Date,               // Set when consultation ends
 
-  // Location (where the doctor will visit)
-  visitAddress: {
-    street: String,
-    city: String,
-    state: String,
-    pincode: String,
-    coordinates: {
-      type: { type: String, enum: ["Point"] },
+  // Address (where the consultation takes place)
+  address: {
+    label: String,                   // Human-readable address label
+    location: {
+      type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: [Number]          // [lng, lat]
     }
   },
 
+  // Consultation Mode
+  consultationMode: String,          // Enum: "clinic" | "home" | "online"
+  isEmergency: Boolean,             // true for emergency (bypasses payment)
+
   // Status Lifecycle
   status: String,                    // Enum below
-  statusHistory: [
-    {
-      status: String,
-      changedAt: Date,
-      changedBy: ObjectId,           // userId who triggered change
-      note: String
-    }
-  ],
 
-  // Patient Notes
-  symptoms: String,                  // Patient-provided symptoms
-  notes: String,                     // Additional booking notes
-
-  // Doctor Tracking (for live tracking feature)
-  doctorCurrentLocation: {
-    type: { type: String, enum: ["Point"] },
-    coordinates: [Number],
-    updatedAt: Date
-  },
-
-  // Cancellation
-  cancelledBy: String,               // Enum: "patient" | "doctor" | "admin"
-  cancellationReason: String,
-  cancelledAt: Date,
-
-  // Prescription
-  prescriptionId: ObjectId,         // Ref: prescriptions._id (set after consultation)
+  // Notes & Rejection
+  notes: String,                     // Patient-provided booking notes
+  rejectionReason: String,          // Doctor-provided reason when status = rejected
+  cancellationReason: String,        // Reason when cancelled by doctor
 
   createdAt: Date,
   updatedAt: Date
@@ -493,51 +504,51 @@ db.patients.createIndex({ createdAt: -1 })
 #### Status Enum
 
 ```
-pending_payment → payment_confirmed → doctor_assigned → doctor_en_route
-  → doctor_arrived → in_consultation → completed → cancelled → refunded
+pending
+  → accepted
+    → doctor_on_way
+      → arrived
+        → in_consultation
+          → completed
+  → rejected              (terminal)
+  → auto_rejected         (terminal, system job)
+  → cancelled_by_patient  (terminal)
+  → cancelled_by_doctor   (terminal)
+  → doctor_no_show        (terminal)
 ```
+
+> **Note:** `statusHistory` and `doctorCurrentLocation` embedded on the appointment document were planned but are **not stored in the appointment document** in the implemented build. Status history is inferred from notification records. Doctor GPS location is streamed via Socket.io `/tracking` namespace and stored in the `tracking` collection separately.
 
 #### Validation Rules
 
-| Field          | Rule                                                              |
-|----------------|-------------------------------------------------------------------|
-| `patientId`    | Required, valid ObjectId                                          |
-| `doctorId`     | Required, valid ObjectId                                          |
-| `scheduledAt`  | Required, must be a future datetime at time of booking            |
-| `status`       | Enum of valid lifecycle states                                    |
-| `symptoms`     | Max 1000 characters                                               |
-| `cancelledBy`  | Enum: `["patient", "doctor", "admin"]` when present              |
+| Field | Rule |
+|---|---|
+| `patientId` | Required, valid ObjectId |
+| `doctorId` | Required, valid ObjectId |
+| `scheduledAt` | Required, must be a future datetime or within the currently running slot |
+| `status` | Enum: `pending`, `accepted`, `rejected`, `auto_rejected`, `doctor_on_way`, `arrived`, `in_consultation`, `completed`, `cancelled_by_patient`, `cancelled_by_doctor`, `doctor_no_show` |
+| `address.label` | Required string |
+| `address.location.type` | Must be `"Point"` |
+| `consultationMode` | Enum: `clinic`, `home`, `online` |
+| `notes` | Optional, max 1000 characters |
 
 #### Indexes
 
 ```javascript
 // Core query patterns
-db.appointments.createIndex({ patientId: 1, status: 1, scheduledAt: -1 })
-db.appointments.createIndex({ doctorId: 1, status: 1, scheduledAt: 1 })
-db.appointments.createIndex({ status: 1, scheduledAt: 1 })
-
-// Admin dashboard
-db.appointments.createIndex({ createdAt: -1 })
-
-// Prescription and payment lookups
-db.appointments.createIndex({ prescriptionId: 1 }, { sparse: true })
-db.appointments.createIndex({ paymentId: 1 }, { sparse: true })
-
-// Geospatial index on visit address (optional: for area-based admin reports)
-db.appointments.createIndex({ "visitAddress.coordinates": "2dsphere" })
-
-// TTL: Auto-archive very old cancelled/refunded records after 2 years
-db.appointments.createIndex(
-  { updatedAt: 1 },
-  { expireAfterSeconds: 63072000, partialFilterExpression: { status: { $in: ["cancelled", "refunded"] } } }
-)
+db.appointments.createIndex({ doctorId: 1, status: 1 })
+db.appointments.createIndex({ patientId: 1 })
+db.appointments.createIndex({ scheduledAt: 1 })
 ```
 
 #### Relationships
 
-- Belongs to one `patient`
-- Belongs to one `doctor`
+- Belongs to one `patient` (via `patientId` → `users._id`)
+- Belongs to one `doctor` (via `doctorId` → `doctors._id`)
 - Has one `payment`
+- Has one `prescription` (optional)
+- Has many `reviews` (via `appointmentId` on `reviews` collection)
+- Has many `notifications` (via `metadata.appointmentId`)
 - Has one `prescription`
 - Has one `review`
 
@@ -824,22 +835,24 @@ db.payments.createIndex({ refundStatus: 1 }, { sparse: true })
 
 #### Notification Type Enum
 
-| Type                       | Trigger                                         |
-|----------------------------|-------------------------------------------------|
-| `appointment_booked`       | Patient books appointment                       |
-| `appointment_confirmed`    | Payment captured successfully                   |
-| `appointment_cancelled`    | Either party cancels                            |
-| `doctor_en_route`          | Doctor starts travelling to patient             |
-| `doctor_arrived`           | Doctor marks arrival                            |
-| `consultation_started`     | Doctor begins consultation                      |
-| `prescription_issued`      | Doctor issues prescription                      |
-| `payment_success`          | Payment captured                                |
-| `payment_failed`           | Payment capture failed                          |
-| `refund_initiated`         | Refund initiated                                |
-| `refund_processed`         | Refund completed                                |
-| `review_received`          | Doctor receives a new review                    |
-| `verification_approved`    | Admin approves doctor registration              |
-| `verification_rejected`    | Admin rejects doctor registration               |
+| Type | Trigger |
+|---|---|
+| `appointment_pending` | Doctor notified of new appointment after patient payment |
+| `appointment_booked` | Patient notified after successful booking and payment |
+| `payment_successful` | Patient notified of payment success |
+| `payment_received` | Doctor notified of received payment |
+| `accepted` | Patient notified when doctor accepts |
+| `rejected` | Patient notified when doctor rejects (with reason) |
+| `auto_rejected` | Patient notified when appointment auto-rejected by system |
+| `doctor_on_way` | Patient notified when doctor marks On The Way |
+| `arrived` | Patient notified when doctor marks Arrived |
+| `in_consultation` | Both parties notified when consultation starts |
+| `completed` | Both parties notified when consultation completes |
+| `cancelled_by_patient` | Doctor notified when patient cancels |
+| `cancelled_by_doctor` | Patient notified when doctor cancels |
+| `payment_refund` | Patient notified when refund is initiated |
+| `verification_approved` | Doctor notified when admin approves registration |
+| `verification_rejected` | Doctor notified when admin rejects registration |
 
 #### Validation Rules
 
@@ -870,7 +883,142 @@ db.notifications.createIndex({ createdAt: 1 }, { expireAfterSeconds: 7776000 })
 
 ---
 
-## Geospatial Index Design
+### 9. `chat_messages` Collection
+
+**Purpose:** Stores all chat messages exchanged between a patient and doctor within the context of an appointment. Delivered in real time via Socket.io `/chat` namespace; persisted for history and audit.
+
+#### Schema
+
+```javascript
+{
+  _id: ObjectId,
+  appointmentId: ObjectId,           // Ref: appointments._id
+  senderId: ObjectId,                // Ref: users._id (patient or doctor)
+  senderRole: String,                // Enum: "patient" | "doctor"
+  message: String,                   // Message text content
+  messageType: String,               // Enum: "text" | "image" | "file" (default: "text")
+  isRead: Boolean,                   // Read receipt from recipient
+  readAt: Date,
+  createdAt: Date                    // Auto timestamp
+}
+```
+
+#### Validation Rules
+
+| Field | Rule |
+|---|---|
+| `appointmentId` | Required, valid ObjectId |
+| `senderId` | Required, valid ObjectId |
+| `senderRole` | Enum: `["patient", "doctor"]` |
+| `message` | Required, max 2000 characters |
+
+#### Indexes
+
+```javascript
+// Primary read pattern: all messages for an appointment, chronological
+db.chat_messages.createIndex({ appointmentId: 1, createdAt: 1 })
+
+// Unread message counts per user
+db.chat_messages.createIndex({ appointmentId: 1, senderId: 1, isRead: 1 })
+
+// TTL: Auto-delete messages older than 365 days (optional, configurable)
+db.chat_messages.createIndex({ createdAt: 1 }, { expireAfterSeconds: 31536000 })
+```
+
+#### Relationships
+
+- Belongs to one `appointment`
+- Sent by one `user` (patient or doctor)
+
+---
+
+### 10. `call_logs` Collection
+
+**Purpose:** Records metadata for each WebRTC call session in online consultations. Stores who called whom, when, and how long the call lasted. Does not store media — only call lifecycle metadata.
+
+#### Schema
+
+```javascript
+{
+  _id: ObjectId,
+  appointmentId: ObjectId,           // Ref: appointments._id
+  callerId: ObjectId,                // Ref: users._id (typically the doctor)
+  calleeId: ObjectId,                // Ref: users._id (typically the patient)
+  callerRole: String,                // Enum: "patient" | "doctor"
+  startedAt: Date,                   // When call was connected (both parties joined)
+  endedAt: Date,                     // When call:hangup was emitted
+  durationSeconds: Number,           // Computed: endedAt - startedAt in seconds
+  callStatus: String,                // Enum: "completed" | "missed" | "rejected" | "failed"
+  createdAt: Date
+}
+```
+
+#### Validation Rules
+
+| Field | Rule |
+|---|---|
+| `appointmentId` | Required, valid ObjectId |
+| `callerId` | Required, valid ObjectId |
+| `calleeId` | Required, valid ObjectId |
+| `callerRole` | Enum: `["patient", "doctor"]` |
+| `callStatus` | Enum: `["completed", "missed", "rejected", "failed"]` |
+
+#### Indexes
+
+```javascript
+db.call_logs.createIndex({ appointmentId: 1 }, { unique: true })
+db.call_logs.createIndex({ callerId: 1, createdAt: -1 })
+db.call_logs.createIndex({ calleeId: 1, createdAt: -1 })
+```
+
+#### Relationships
+
+- Belongs to one `appointment` (one-to-one for online mode)
+- Has one `caller` (user)
+- Has one `callee` (user)
+
+---
+
+### 11. `appointment_otps` Collection
+
+**Purpose:** Stores time-limited OTP records for online consultation session start verification. The OTP is generated by the backend, hashed (SHA-256), and delivered to the patient via SMS. The doctor enters the OTP to verify the patient's presence before the WebRTC session begins.
+
+#### Schema
+
+```javascript
+{
+  _id: ObjectId,
+  appointmentId: ObjectId,           // Ref: appointments._id (unique index)
+  hashedOtp: String,                 // SHA-256 hash of the 6-digit OTP
+  expiresAt: Date,                   // 10 minutes from creation
+  createdAt: Date                    // Auto timestamp
+}
+```
+
+#### Validation Rules
+
+| Field | Rule |
+|---|---|
+| `appointmentId` | Required, unique, valid ObjectId |
+| `hashedOtp` | Required, SHA-256 hex string |
+| `expiresAt` | Required, must be > createdAt |
+
+#### Indexes
+
+```javascript
+// Primary lookup
+db.appointment_otps.createIndex({ appointmentId: 1 }, { unique: true })
+
+// TTL: Auto-delete expired OTP records 10 minutes after creation
+db.appointment_otps.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+```
+
+#### Relationships
+
+- Belongs to one `appointment` (one-to-one)
+
+---
+
 
 DocDock's core differentiator is nearby doctor discovery. MongoDB's `2dsphere` index enables this natively.
 
@@ -1094,12 +1242,12 @@ db.createCollection("appointments", {
         status: {
           bsonType: "string",
           enum: [
-            "pending_payment", "payment_confirmed", "doctor_assigned",
-            "doctor_en_route", "doctor_arrived", "in_consultation",
-            "completed", "cancelled", "refunded"
+            "pending", "accepted", "rejected", "auto_rejected",
+            "doctor_on_way", "arrived", "in_consultation",
+            "completed", "cancelled_by_patient", "cancelled_by_doctor", "doctor_no_show"
           ]
         },
-        symptoms: { bsonType: "string", maxLength: 1000 }
+        notes: { bsonType: "string", maxLength: 1000 }
       }
     }
   },

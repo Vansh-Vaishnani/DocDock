@@ -19,11 +19,13 @@
 
 ## 1. Executive Summary
 
-**DocDock** is a Doctor-on-Demand web platform that connects patients with verified, nearby doctors for home consultations — on-demand or scheduled. Inspired by the simplicity and trust of ride-hailing platforms like Uber, DocDock eliminates the friction of traditional healthcare access by bringing the consultation to the patient's doorstep.
+**DocDock** is a Doctor-on-Demand web platform that connects patients with verified, nearby doctors for three types of consultations: **Home Visit**, **Clinic Visit**, and **Online Video Consultation** — on-demand or scheduled. Inspired by the simplicity and trust of ride-hailing platforms like Uber, DocDock eliminates the friction of traditional healthcare access by bringing the consultation to the patient's location or screen.
 
-Patients open DocDock, see available doctors nearby on a live map, book in seconds, and track their doctor's arrival in real time. Doctors get a streamlined dashboard to manage availability, appointments, prescriptions, and earnings. Admins maintain platform integrity through a verification system that ensures only licensed practitioners are listed.
+Patients open DocDock, see available doctors nearby on a live map, select a consultation mode and time slot, book in seconds, and track their doctor's arrival in real time. Doctors get a streamlined dashboard to manage their per-day schedule, availability, appointments, prescriptions, and earnings. Admins maintain platform integrity through a verification system that ensures only licensed practitioners are listed.
 
-DocDock is being built as a **portfolio-grade, production-ready full-stack application** using a modern MERN-based stack (Next.js, Node.js, Express, MongoDB), targeting the standard of quality expected from funded startup engineering teams.
+A built-in **AI Symptom Checker** (Google Gemini) helps patients triage their symptoms and find the right specialist before booking. An **OTP-verified WebRTC video consultation** system enables fully remote care with no app download required.
+
+DocDock is built as a **portfolio-grade, production-ready full-stack application** using a modern MERN-based stack (Next.js, Node.js, Express, MongoDB), targeting the standard of quality expected from funded startup engineering teams.
 
 ---
 
@@ -88,13 +90,19 @@ DocDock is built on a production-grade MERN-adjacent stack:
 | Concern | Technology |
 |---|---|
 | Frontend | Next.js 14 (App Router) + Tailwind CSS |
-| Backend | Node.js + Express.js |
-| Database | MongoDB Atlas (Geospatial indexing) |
-| Real-Time | Socket.io (tracking + chat) |
-| Authentication | JWT + bcrypt |
-| Payments | Razorpay |
-| Storage | Cloudinary |
-| Deployment | Vercel + Railway/Render + MongoDB Atlas |
+| Backend | Node.js + Express.js (TypeScript) |
+| Database | MongoDB Atlas (Geospatial indexing, 11 collections) |
+| Real-Time | Socket.io (/tracking, /chat, /availability, /notifications namespaces) |
+| WebRTC | Browser WebRTC API; Socket.io as signalling relay |
+| Authentication | JWT + bcrypt + Google OAuth 2.0 |
+| Payments | Razorpay (order creation, webhooks, automatic refunds) |
+| Storage | Cloudinary (doctor docs, prescriptions, photos) |
+| AI | Google Gemini API (symptom check, doctor recommendation, AI chat with rule-based fallback) |
+| Background Jobs | BullMQ (Redis-backed: reminders, notifications, cleanup) |
+| Email | SendGrid (transactional email via Nodemailer transport) |
+| SMS / OTP | Twilio (OTP delivery, appointment reminders) |
+| Maps | OpenStreetMap + React Leaflet + Nominatim geocoding |
+| Deployment | Vercel + Railway/Render + MongoDB Atlas + Redis Cloud |
 
 ---
 
@@ -211,24 +219,26 @@ DocDock is built on a production-grade MERN-adjacent stack:
 
 | # | Feature | Description | Priority |
 |---|---|---|---|
-| F-01 | **Patient Auth** | Registration, login, JWT session management | P0 |
-| F-02 | **Doctor Auth** | Registration with credential upload, login | P0 |
-| F-03 | **Admin Verification** | Review and approve/reject doctor profiles | P0 |
+| F-01 | **Patient Auth** | Registration, login, JWT session management, Google OAuth 2.0 | P0 |
+| F-02 | **Doctor Auth** | Registration with credential upload, login, profile completion | P0 |
+| F-03 | **Admin Verification** | Review and approve/reject doctor profiles with reasons | P0 |
 | F-04 | **Geo-based Discovery** | Find available doctors within custom radius using MongoDB 2dsphere | P0 |
-| F-05 | **Real-time Availability** | Doctors toggle availability; map updates live | P0 |
-| F-06 | **Appointment Booking** | Instant or scheduled; full lifecycle management | P0 |
-| F-07 | **Razorpay Payment** | Secure payment before appointment confirmation | P0 |
-| F-08 | **Live Doctor Tracking** | Socket.io-powered real-time location stream on Leaflet map | P1 |
-| F-09 | **In-App Chat** | Bidirectional patient–doctor messaging via Socket.io | P1 |
-| F-10 | **Digital Prescription** | Doctor generates structured prescription; PDF download for patient | P1 |
-| F-11 | **Ratings & Reviews** | Post-visit star rating and text review system | P1 |
-| F-12 | **Notification System** | Email/SMS alerts for booking events, doctor arrival, prescription ready | P2 |
-| F-13 | **Admin Analytics** | Platform health dashboard — bookings, revenue, active users | P2 |
+| F-05 | **Real-time Availability** | Doctors toggle availability per-day schedule; map updates live | P0 |
+| F-06 | **Appointment Booking** | Clinic, home visit, or online; full lifecycle management (11 status states) | P0 |
+| F-07 | **Razorpay Payment** | Secure payment before appointment confirmation; automatic refunds on cancellation | P0 |
+| F-08 | **Live Doctor Tracking** | Socket.io-powered real-time GPS location stream on Leaflet map | P1 |
+| F-09 | **In-App Chat** | Bidirectional patient–doctor messaging via Socket.io; typing indicators; read receipts | P1 |
+| F-10 | **Digital Prescription** | Doctor generates structured prescription; stored in MongoDB | P1 |
+| F-11 | **Ratings & Reviews** | Post-visit star rating and text review system; doctor aggregate rating | P1 |
+| F-12 | **Notification System** | In-app + email alerts for booking events; SMS/OTP for appointment verification | P2 |
+| F-13 | **Admin Analytics** | Platform health dashboard — bookings, revenue, active users, audit logs | P2 |
+| F-14 | **AI Assistant** | Gemini-powered symptom check, doctor recommendations, and streaming AI chat | P2 |
+| F-15 | **Video/Audio Consultation** | WebRTC-based video and audio calling via Socket.io signalling for online appointments | P2 |
 
 ### 6.2 Feature Dependency Map
 
 ```
-[Auth (F-01, F-02)]
+[Auth (F-01, F-02)] + [Google OAuth (F-01)]
         ↓
 [Admin Verification (F-03)]
         ↓
@@ -236,11 +246,11 @@ DocDock is built on a production-grade MERN-adjacent stack:
         ↓
 [Appointment Booking (F-06) + Payment (F-07)]
         ↓
-[Live Tracking (F-08)] + [Chat (F-09)]
+[Live Tracking (F-08)] + [Chat (F-09)] + [Video/Audio (F-15)]
         ↓
 [Prescription (F-10)] + [Review (F-11)]
         ↓
-[Notifications (F-12)] + [Analytics (F-13)]
+[Notifications (F-12)] + [Analytics (F-13)] + [AI Assistant (F-14)]
 ```
 
 ---
@@ -253,24 +263,25 @@ DocDock is built on a production-grade MERN-adjacent stack:
 |---|---|
 | **Platform Type** | Web application (responsive, mobile-first) |
 | **User Roles** | Patient, Doctor, Admin |
-| **Consultation Type** | Home visit (in-person) |
+| **Consultation Types** | Home visit (in-person), Clinic visit, Online (video/audio) |
 | **Geography** | India — initial cities; nationwide-ready architecture |
-| **Booking Modes** | Instant on-demand + scheduled |
-| **Payment** | Razorpay (INR), digital receipts |
-| **Prescription** | Digital only — PDF generation and download |
+| **Booking Modes** | Instant on-demand + scheduled slots |
+| **Payment** | Razorpay (INR), automatic refunds on cancellation |
+| **Prescription** | Digital only — stored in MongoDB; PDF generation and download |
 | **Maps** | OpenStreetMap + React Leaflet |
-| **Notifications** | In-app, email; SMS (Phase 2) |
+| **Auth** | JWT + bcrypt + Google OAuth 2.0 |
+| **AI** | Google Gemini API — symptom check, doctor recommendation, streaming chat |
+| **Notifications** | In-app (Socket.io); email (SendGrid via Nodemailer); SMS/OTP (Twilio); BullMQ-dispatched |
+| **Video/Audio** | WebRTC via Socket.io signalling for online consultation mode |
 
 ### 7.2 Out of Scope (Current Version)
 
 | Item | Reason / Phase |
 |---|---|
 | Native iOS / Android apps | Phase 2 — web-first strategy |
-| Video / audio telemedicine | Phase 2 — separate infrastructure |
 | Insurance & claim processing | Phase 3 — regulatory complexity |
 | Lab test or pharmacy integration | Phase 3 |
 | Multi-language support | Phase 2 |
-| AI-based doctor recommendation | Phase 3 |
 | Doctor SaaS billing (subscription) | Phase 3 |
 
 ### 7.3 System Boundaries
@@ -324,8 +335,8 @@ DocDock is built on a production-grade MERN-adjacent stack:
 
 | ID | Objective |
 |---|---|
-| P-01 | Demonstrate full-stack architecture decision-making (MERN + Socket.io + Redis) |
-| P-02 | Showcase real-world patterns: geo queries, real-time systems, async job queues |
+| P-01 | Demonstrate full-stack architecture decision-making (MERN + Socket.io + Redis + BullMQ) |
+| P-02 | Showcase real-world patterns: geo queries, real-time systems, WebRTC, async job queues, AI integration |
 | P-03 | Production deployment on live URLs with monitoring |
 | P-04 | Codebase follows enterprise conventions: modular, documented, testable |
 

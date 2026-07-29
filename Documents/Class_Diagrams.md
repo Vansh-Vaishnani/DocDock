@@ -90,23 +90,20 @@ classDiagram
 
     class User {
         <<abstract>>
-        +String name
+        +String fullName
         +String email
-        +String mobile
+        +String phone
         +String passwordHash
         +String role
-        +String status
+        +Boolean isVerified
+        +Boolean isActive
+        +String verificationStatus
+        +String googleId
+        +String avatar
         +Date lastLogin
-        +Int loginAttempts
-        +Date lockUntil
+        +String passwordResetToken
+        +Date passwordResetExpiry
         +String refreshTokenHash
-        +Date refreshTokenExpiry
-        +comparePassword(plain) Promise~Boolean~
-        +generateAccessToken() String
-        +generateRefreshToken() String
-        +revokeRefreshToken() Promise~void~
-        +incrementLoginAttempts() Promise~void~
-        +resetLoginAttempts() Promise~void~
     }
 
     class Patient {
@@ -121,31 +118,34 @@ classDiagram
         +getPrescriptions() Promise~Prescription[]~
         +submitReview(appointmentId, rating, comment) Promise~Review~
         +getNotifications() Promise~Notification[]~
+        +requestEmergency(lat, lng) Promise~EmergencyRequest~
     }
 
     class Doctor {
-        +String specialisation
-        +String registrationNumber
-        +Int experienceYears
+        +String specialization
+        +String licenseNumber
+        +String[] qualifications
+        +String medicalDegree
+        +Int experience
         +Float consultationFee
         +String profilePhotoUrl
-        +String degreeDocUrl
-        +String govIdDocUrl
+        +String governmentIdUrl
+        +String medicalLicenseUrl
+        +String clinicAddress
+        +Float serviceRadius
+        +String consultationType
+        +String[] consultationModes
         +Boolean isAvailable
         +GeoLocation location
         +Float averageRating
         +Int reviewCount
-        +Float totalEarnings
-        +Float pendingPayout
         +String bio
-        +String[] languagesSpoken
+        +String[] languages
         +toggleAvailability() Promise~void~
         +updateLocation(lat, lng) Promise~void~
         +acceptAppointment(appointmentId) Promise~Appointment~
         +declineAppointment(appointmentId, reason) Promise~void~
         +getActiveAppointment() Promise~Appointment~
-        +getEarnings() Promise~EarningsSummary~
-        +updateAvailabilitySchedule(schedule) Promise~void~
     }
 
     class Admin {
@@ -157,41 +157,71 @@ classDiagram
         +moderateReview(reviewId, action) Promise~void~
         +overrideAppointment(appointmentId, action) Promise~void~
         +getPlatformMetrics() Promise~PlatformMetrics~
-        +updatePlatformConfig(config) Promise~void~
     }
 
     class Appointment {
         +String _id
         +String patientId
         +String doctorId
-        +Address consultationAddress
-        +GeoLocation consultationCoordinates
+        +ConsultationAddress address
         +String status
-        +Float fee
-        +String razorOrderId
-        +String razorPaymentId
+        +String notes
+        +String rejectionReason
+        +String cancellationReason
+        +String paymentId
+        +String prescriptionId
+        +Boolean isEmergency
+        +String consultationMode
         +Date scheduledAt
-        +Date acceptedAt
-        +Date arrivedAt
-        +Date consultationStartedAt
-        +Date completedAt
-        +Date cancelledAt
-        +String cancelReason
-        +GeoLocation doctorLastLocation
-        +Date locationUpdatedAt
-        +Date paymentTimeoutAt
         +Date createdAt
-        +confirm() Promise~void~
-        +accept(doctorId) Promise~void~
-        +decline(doctorId, reason) Promise~void~
-        +markEnRoute() Promise~void~
-        +markArrived(currentLat, currentLng) Promise~void~
-        +startConsultation() Promise~void~
-        +complete() Promise~void~
-        +cancel(reason, initiator) Promise~void~
-        +updateDoctorLocation(lat, lng) Promise~void~
-        +isWithinGeoFence(lat, lng, radiusMetres) Boolean
-        +getStatusHistory() StatusEvent[]
+        +Date updatedAt
+    }
+
+    class AppointmentOtp {
+        +String _id
+        +String appointmentId
+        +String otpHash
+        +String plainTextOtp
+        +Date expiresAt
+        +Int attempts
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class CallLog {
+        +String _id
+        +String appointmentId
+        +String callerId
+        +String receiverId
+        +String status
+        +String twilioCallSid
+        +Int duration
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class Tracking {
+        +String _id
+        +String appointmentId
+        +String doctorId
+        +String patientId
+        +String status
+        +GeoLocation doctorCurrentLocation
+        +GeoLocation patientLocation
+        +Date lastHeartbeatAt
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class EmergencyRequest {
+        +String _id
+        +String patientId
+        +GeoLocation location
+        +String assignedDoctorId
+        +String appointmentId
+        +String status
+        +Date createdAt
+        +Date updatedAt
     }
 
     class Prescription {
@@ -200,20 +230,16 @@ classDiagram
         +String doctorId
         +String patientId
         +String diagnosis
+        +String chiefComplaints
         +Medication[] medications
-        +String additionalNotes
-        +String followUpInstructions
+        +String[] labTests
+        +String advice
         +Date followUpDate
+        +String doctorSignature
+        +String doctorStamp
         +String prescriptionPdfUrl
-        +String qrCodeUrl
-        +String verificationCode
-        +Boolean isVerified
+        +Boolean isValid
         +Date issuedAt
-        +generate(data) Promise~Prescription~
-        +generatePDF() Promise~String~
-        +generateQRCode() Promise~String~
-        +getVerificationStatus() Object
-        +downloadUrl(requestingUserId) Promise~String~
     }
 
     class Medication {
@@ -221,8 +247,8 @@ classDiagram
         +String dosage
         +String frequency
         +String duration
-        +String route
-        +String specialInstructions
+        +String instructions
+        +Int quantity
     }
 
     class Review {
@@ -237,9 +263,6 @@ classDiagram
         +String moderatedBy
         +Date moderatedAt
         +Date createdAt
-        +submit() Promise~Review~
-        +moderate(adminId, action, note) Promise~void~
-        +updateDoctorAggregateRating() Promise~void~
     }
 
     class Payment {
@@ -257,14 +280,10 @@ classDiagram
         +String refundId
         +Float refundAmount
         +String refundStatus
+        +String refundReason
         +Date refundInitiatedAt
         +Date refundProcessedAt
-        +createOrder(appointmentId, amount) Promise~RazorOrder~
-        +verifySignature(orderId, paymentId, signature) Boolean
-        +capture() Promise~void~
-        +initiateRefund(amount, reason) Promise~String~
-        +getReceipt() Promise~Receipt~
-        +calculateRefundAmount(policy) Float
+        +Date createdAt
     }
 
     class Notification {
@@ -279,28 +298,20 @@ classDiagram
         +String channel
         +Date readAt
         +Date createdAt
-        +markAsRead() Promise~void~
-        +markAllRead(userId) Promise~void~
-        +send() Promise~void~
     }
 
     class Message {
         +String _id
+        +String roomId
         +String appointmentId
         +String senderId
         +String senderRole
+        +String type
         +String content
-        +String messageType
         +String mediaUrl
-        +String mediaType
-        +Long fileSizeBytes
-        +String status
-        +Date deliveredAt
-        +Date readAt
+        +Boolean isRead
+        +String deliveryStatus
         +Date createdAt
-        +send() Promise~Message~
-        +markDelivered() Promise~void~
-        +markRead() Promise~void~
     }
 
     class AuditLog {
@@ -315,9 +326,6 @@ classDiagram
         +String ipAddress
         +String userAgent
         +Date timestamp
-        +create(entry) Promise~AuditLog~
-        +findByResource(type, id) Promise~AuditLog[]~
-        +findByActor(actorId) Promise~AuditLog[]~
     }
 
     class PlatformConfig {
@@ -333,13 +341,15 @@ classDiagram
         +String maintenanceMessage
         +Date updatedAt
         +String updatedBy
-        +getInstance() Promise~PlatformConfig~
-        +update(fields, adminId) Promise~void~
     }
 
     %% ── Inheritance ──
     BaseEntity <|-- User
     BaseEntity <|-- Appointment
+    BaseEntity <|-- AppointmentOtp
+    BaseEntity <|-- CallLog
+    BaseEntity <|-- Tracking
+    BaseEntity <|-- EmergencyRequest
     BaseEntity <|-- Prescription
     BaseEntity <|-- Review
     BaseEntity <|-- Payment
@@ -356,10 +366,15 @@ classDiagram
     %% ── Associations ──
     Patient "1" --> "0..*" Appointment : books
     Doctor "1" --> "0..*" Appointment : fulfils
+    Appointment "1" --> "0..1" AppointmentOtp : verifies with
+    Appointment "1" --> "0..1" CallLog : logs session with
+    Appointment "1" --> "0..1" Tracking : has active
     Appointment "1" --> "0..1" Prescription : generates
     Appointment "1" --> "0..1" Review : receives
     Appointment "1" --> "1" Payment : requires
     Appointment "1" --> "0..*" Message : contains
+    Patient "1" --> "0..*" EmergencyRequest : initiates
+    Doctor "1" --> "0..*" EmergencyRequest : handles
     Patient "1" --> "0..*" Notification : receives
     Doctor "1" --> "0..*" Notification : receives
     Admin "1" --> "0..*" AuditLog : generates
@@ -390,17 +405,6 @@ classDiagram
         +toJSON() Object
     }
 
-    class UserStatus {
-        <<enumeration>>
-        UNVERIFIED
-        VERIFIED
-        PENDING_VERIFICATION
-        RESUBMISSION_REQUIRED
-        SUSPENDED
-        REJECTED
-        DEACTIVATED
-    }
-
     class UserRole {
         <<enumeration>>
         PATIENT
@@ -410,24 +414,24 @@ classDiagram
 
     class User {
         <<abstract>>
-        +String name
+        +String fullName
         +String email
-        +String mobile
+        +String phone
         -String passwordHash
         +UserRole role
-        +UserStatus status
+        +Boolean isVerified
+        +Boolean isActive
+        +String verificationStatus
+        +String googleId
+        +String avatar
         +Date lastLogin
-        -Int loginAttempts
-        -Date lockUntil
+        -String passwordResetToken
+        -Date passwordResetExpiry
         -String refreshTokenHash
-        -Date refreshTokenExpiry
         +comparePassword(plain String) Promise~Boolean~
         +generateAccessToken() String
         +generateRefreshToken() String
         +revokeRefreshToken() Promise~void~
-        +incrementLoginAttempts() Promise~void~
-        +resetLoginAttempts() Promise~void~
-        +isAccountLocked() Boolean
         +updateProfile(fields Object) Promise~void~
         +changePassword(current String, newPass String) Promise~void~
     }
@@ -482,6 +486,7 @@ classDiagram
         +getPrescriptions() Promise~Prescription[]~
         +submitReview(appointmentId String, rating Int, comment String) Promise~Review~
         +getNotifications(page Int) Promise~Notification[]~
+        +requestEmergency(lat Float, lng Float) Promise~EmergencyRequest~
         +addSavedAddress(address Address) Promise~void~
         +removeSavedAddress(addressId String) Promise~void~
         +updateMedicalHistory(data MedicalHistory) Promise~void~
@@ -495,31 +500,26 @@ classDiagram
         +Boolean isAvailable
     }
 
-    class EarningsSummary {
-        +Float totalEarnings
-        +Float pendingPayout
-        +Float totalPaid
-        +Int completedConsultations
-        +Float averagePerConsultation
-        +Object[] monthlyBreakdown
-    }
-
     class Doctor {
-        +String specialisation
-        +String registrationNumber
-        +Int experienceYears
+        +String specialization
+        +String licenseNumber
+        +String[] qualifications
+        +String medicalDegree
+        +Int experience
         +Float consultationFee
         +String profilePhotoUrl
-        +String degreeDocUrl
-        +String govIdDocUrl
-        +String bio
-        +String[] languagesSpoken
+        +String governmentIdUrl
+        +String medicalLicenseUrl
+        +String clinicAddress
+        +Float serviceRadius
+        +String consultationType
+        +String[] consultationModes
         +Boolean isAvailable
         +GeoLocation location
         +Float averageRating
         +Int reviewCount
-        +Float totalEarnings
-        +Float pendingPayout
+        +String bio
+        +String[] languages
         +AvailabilitySchedule[] schedule
         +NotificationPreferences notificationPrefs
         +String bankAccountNumber
@@ -535,7 +535,6 @@ classDiagram
         +startConsultation(appointmentId String) Promise~void~
         +completeConsultation(appointmentId String) Promise~void~
         +getActiveAppointment() Promise~Appointment~
-        +getEarnings(dateRange Object) Promise~EarningsSummary~
         +updateSchedule(schedule AvailabilitySchedule[]) Promise~void~
         +getReviews(page Int) Promise~Review[]~
     }
@@ -569,15 +568,26 @@ classDiagram
         +hasPermission(permission AdminPermission) Boolean
     }
 
+    class EmergencyRequest {
+        +String _id
+        +String patientId
+        +GeoLocation location
+        +String assignedDoctorId
+        +String appointmentId
+        +String status
+        +Date createdAt
+        +Date updatedAt
+    }
+
     %% Inheritance
     BaseEntity <|-- User
+    BaseEntity <|-- EmergencyRequest
     User <|-- Patient
     User <|-- Doctor
     User <|-- Admin
 
     %% Enumerations
     User --> UserRole
-    User --> UserStatus
     Admin --> AdminPermission
 
     %% Composition
@@ -588,6 +598,9 @@ classDiagram
     Doctor *-- "0..*" AvailabilitySchedule
     Doctor *-- "1" NotificationPreferences
     Address *-- "1" GeoLocation
+    Patient "1" --> "0..*" EmergencyRequest : initiates
+    Doctor "1" --> "0..*" EmergencyRequest : handles
+
 ```
 
 ---
@@ -606,117 +619,106 @@ classDiagram
 
     class AppointmentStatus {
         <<enumeration>>
-        PENDING_PAYMENT
-        CONFIRMED
-        EN_ROUTE
+        PENDING
+        ACCEPTED
+        REJECTED
+        AUTO_REJECTED
+        DOCTOR_ON_WAY
         ARRIVED
         IN_CONSULTATION
         COMPLETED
-        CANCELLED
-        EXPIRED
+        CANCELLED_BY_PATIENT
+        CANCELLED_BY_DOCTOR
+        DOCTOR_NO_SHOW
     }
 
-    class CancellationInitiator {
+    class ConsultationMode {
         <<enumeration>>
-        PATIENT
-        DOCTOR
-        ADMIN
-        SYSTEM
-    }
-
-    class StatusEvent {
-        +AppointmentStatus from
-        +AppointmentStatus to
-        +String triggeredBy
-        +String triggeredByRole
-        +String note
-        +Date timestamp
+        CLINIC
+        HOME
+        ONLINE
     }
 
     class ConsultationAddress {
         +String label
-        +String line1
-        +String city
-        +String state
-        +String pincode
-        +Float lat
-        +Float lng
+        +GeoLocation location
     }
 
     class Appointment {
         +String _id
         +String patientId
         +String doctorId
-        +ConsultationAddress consultationAddress
+        +ConsultationAddress address
         +AppointmentStatus status
-        +Float fee
-        +Float platformCommission
-        +Float doctorEarnings
-        +String razorOrderId
-        +String razorPaymentId
-        +StatusEvent[] statusHistory
-        +GeoLocation doctorLastLocation
-        +Date locationUpdatedAt
-        +Date paymentTimeoutAt
-        +Date acceptedAt
-        +Date arrivedAt
-        +Date consultationStartedAt
-        +Date completedAt
-        +Date cancelledAt
-        +String cancelReason
-        +CancellationInitiator cancelledBy
+        +String notes
+        +String rejectionReason
+        +String cancellationReason
+        +String paymentId
+        +String prescriptionId
+        +Boolean isEmergency
+        +ConsultationMode consultationMode
+        +Date scheduledAt
         +Date createdAt
         +Date updatedAt
-        +confirm() Promise~void~
         +accept(doctorId String) Promise~void~
         +decline(doctorId String, reason String) Promise~void~
         +markEnRoute() Promise~void~
-        +markArrived(lat Float, lng Float) Promise~void~
+        +markArrived() Promise~void~
         +startConsultation() Promise~void~
         +complete() Promise~void~
-        +cancel(reason String, initiator CancellationInitiator) Promise~void~
-        +expire() Promise~void~
-        +updateDoctorLocation(lat Float, lng Float) Promise~void~
-        +isWithinGeoFence(lat Float, lng Float, radiusM Int) Boolean
-        +canTransitionTo(status AppointmentStatus) Boolean
-        +calculateRefundAmount() Float
-        +getStatusHistory() StatusEvent[]
-        +getDuration() Int
-        +toPatientDTO() Object
-        +toDoctorDTO() Object
+        +cancel(reason String, role String) Promise~void~
+    }
+
+    class AppointmentOtp {
+        +String _id
+        +String appointmentId
+        +String otpHash
+        +String plainTextOtp
+        +Date expiresAt
+        +Int attempts
+        +Date createdAt
+        +Date updatedAt
+        +generateOtp(appointmentId String) Promise~AppointmentOtp~
+        +verifyOtp(otp String) Promise~Boolean~
+    }
+
+    class CallLog {
+        +String _id
+        +String appointmentId
+        +String callerId
+        +String receiverId
+        +String status
+        +String twilioCallSid
+        +Int duration
+        +Date createdAt
+        +Date updatedAt
+        +logCall(appointmentId String, callerId String, receiverId String, status String) Promise~CallLog~
     }
 
     class AppointmentService {
         <<interface>>
-        +createAppointment(patientId, doctorId, addressId) Promise~Appointment~
-        +getAppointmentById(id, requestingUserId) Promise~Appointment~
-        +getNearbyDoctors(lat, lng, radius, filters) Promise~Doctor[]~
-        +processAcceptance(appointmentId, doctorId) Promise~void~
-        +processDecline(appointmentId, doctorId, reason) Promise~void~
-        +processArrival(appointmentId, lat, lng) Promise~void~
-        +checkAndExpireTimeouts() Promise~void~
-        +getPatientAppointments(patientId, filters) Promise~Appointment[]~
-        +getDoctorAppointments(doctorId, filters) Promise~Appointment[]~
+        +createAppointment(patientId, doctorId, data) Promise~Appointment~
+        +getAppointmentById(id) Promise~Appointment~
+        +acceptAppointment(appointmentId, doctorId) Promise~void~
+        +rejectAppointment(appointmentId, doctorId, reason) Promise~void~
+        +startCall(appointmentId, userId) Promise~void~
+        +verifyOtp(appointmentId, otp) Promise~Boolean~
     }
 
     class AppointmentRepository {
         +findById(id String) Promise~Appointment~
-        +findByPatient(patientId String, filters Object) Promise~Appointment[]~
-        +findByDoctor(doctorId String, filters Object) Promise~Appointment[]~
-        +findPendingTimeouts() Promise~Appointment[]~
-        +findActiveByDoctor(doctorId String) Promise~Appointment~
+        +findByPatient(patientId String) Promise~Appointment[]~
+        +findByDoctor(doctorId String) Promise~Appointment[]~
         +updateStatus(id String, status AppointmentStatus, meta Object) Promise~void~
-        +updateDoctorLocation(id String, lat Float, lng Float) Promise~void~
-        +countByStatus(status AppointmentStatus, dateRange Object) Promise~Int~
     }
 
     Appointment --> AppointmentStatus
-    Appointment --> CancellationInitiator
-    Appointment *-- "0..*" StatusEvent
+    Appointment --> ConsultationMode
     Appointment *-- "1" ConsultationAddress
+    Appointment "1" --> "0..1" AppointmentOtp : verified by
+    Appointment "1" --> "0..1" CallLog : call log
     AppointmentService ..> Appointment
     AppointmentRepository ..> Appointment
-    StatusEvent --> AppointmentStatus
 ```
 
 ---
@@ -1048,8 +1050,8 @@ classDiagram
         <<enumeration>>
         TEXT
         IMAGE
-        FILE
-        SYSTEM
+        PRESCRIPTION
+        DOCUMENT
     }
 
     class MessageStatus {
@@ -1057,77 +1059,64 @@ classDiagram
         SENT
         DELIVERED
         READ
-        FAILED
     }
 
     class NotificationType {
         <<enumeration>>
-        APPOINTMENT_CONFIRMED
-        APPOINTMENT_CANCELLED
-        DOCTOR_EN_ROUTE
-        DOCTOR_ARRIVED
-        CONSULTATION_STARTED
-        CONSULTATION_COMPLETED
-        PRESCRIPTION_ISSUED
+        APPOINTMENT_PENDING
+        APPOINTMENT_BOOKED
+        PAYMENT_SUCCESSFUL
         PAYMENT_RECEIVED
-        PAYMENT_FAILED
-        REFUND_INITIATED
-        REFUND_PROCESSED
-        REVIEW_REQUESTED
-        DOCTOR_VERIFIED
-        DOCTOR_REJECTED
-        ACCOUNT_SUSPENDED
-        NEW_CHAT_MESSAGE
-        SYSTEM_ALERT
+        ACCEPTED
+        REJECTED
+        AUTO_REJECTED
+        DOCTOR_ON_WAY
+        ARRIVED
+        IN_CONSULTATION
+        COMPLETED
+        CANCELLED_BY_PATIENT
+        CANCELLED_BY_DOCTOR
+        PAYMENT_REFUND
+        VERIFICATION_APPROVED
+        VERIFICATION_REJECTED
     }
 
     class NotificationChannel {
         <<enumeration>>
         IN_APP
-        PUSH
         EMAIL
         SMS
     }
 
     class Message {
         +String _id
+        +String roomId
         +String appointmentId
         +String senderId
         +String senderRole
-        +String senderName
-        +String senderAvatarUrl
+        +MessageType type
         +String content
-        +MessageType messageType
         +String mediaUrl
-        +String mediaPublicId
-        +String mediaType
-        +Long fileSizeBytes
-        +String fileName
-        +MessageStatus status
-        +Date deliveredAt
-        +Date readAt
+        +Boolean isRead
+        +MessageStatus deliveryStatus
         +Date createdAt
         +send() Promise~Message~
-        +markDelivered() Promise~void~
         +markRead() Promise~void~
-        +uploadMedia(file File) Promise~String~
-        +toDTO() Object
-        +isFromPatient() Boolean
-        +isFromDoctor() Boolean
     }
 
-    class ChatRoom {
+    class Tracking {
+        +String _id
         +String appointmentId
-        +String patientId
         +String doctorId
-        +Boolean isActive
-        +Date activatedAt
-        +Date closedAt
-        +getMessage(page Int, limit Int) Promise~Message[]~
-        +sendMessage(senderId String, content String, type MessageType) Promise~Message~
-        +markAllRead(userId String) Promise~void~
-        +close() Promise~void~
-        +getUnreadCount(userId String) Promise~Int~
+        +String patientId
+        +String status
+        +GeoLocation doctorCurrentLocation
+        +GeoLocation patientLocation
+        +Date lastHeartbeatAt
+        +Date createdAt
+        +Date updatedAt
+        +updateLocation(lat Float, lng Float) Promise~void~
+        +heartbeat() Promise~void~
     }
 
     class Notification {
@@ -1141,60 +1130,35 @@ classDiagram
         +NotificationChannel channel
         +Boolean isRead
         +Date readAt
-        +String deepLinkPath
         +Date createdAt
         +markAsRead() Promise~void~
         +send() Promise~void~
-        +toDTO() Object
-    }
-
-    class NotificationFactory {
-        <<abstract>>
-        +createAppointmentConfirmed(patientId, doctorId, appointmentId) Notification[]
-        +createDoctorEnRoute(patientId, appointmentId, eta) Notification[]
-        +createDoctorArrived(patientId, appointmentId) Notification[]
-        +createConsultationCompleted(patientId, doctorId, appointmentId) Notification[]
-        +createPrescriptionIssued(patientId, appointmentId, prescriptionId) Notification[]
-        +createPaymentReceived(patientId, appointmentId, amount) Notification[]
-        +createRefundInitiated(patientId, amount, refundId) Notification[]
-        +createDoctorVerified(doctorId) Notification[]
-        +createReviewRequest(patientId, appointmentId) Notification[]
-        +create(type NotificationType, recipientId, data Object) Notification
     }
 
     class NotificationService {
         <<interface>>
         +send(notification Notification) Promise~void~
         +sendBulk(notifications Notification[]) Promise~void~
-        +sendInApp(notification Notification) Promise~void~
-        +sendPush(notification Notification) Promise~void~
-        +sendEmail(notification Notification) Promise~void~
         +markRead(notificationId String, userId String) Promise~void~
         +markAllRead(userId String) Promise~void~
-        +getUnread(userId String, role String) Promise~Notification[]~
-        +getAll(userId String, page Int) Promise~Notification[]~
+        +getUnread(userId String) Promise~Notification[]~
     }
 
     class SocketEventEmitter {
         <<interface>>
         +emitToRoom(room String, event String, data Object) void
         +emitToUser(userId String, event String, data Object) void
-        +emitToRole(role String, event String, data Object) void
-        +joinRoom(socketId String, room String) void
-        +leaveRoom(socketId String, room String) void
         +broadcastAvailabilityUpdate(doctorId String, isAvailable Boolean, location GeoLocation) void
         +broadcastLocationUpdate(appointmentId String, lat Float, lng Float) void
     }
 
     Message --> MessageType
     Message --> MessageStatus
-    ChatRoom *-- "0..*" Message
     Notification --> NotificationType
     Notification --> NotificationChannel
-    NotificationFactory ..> Notification
     NotificationService ..> Notification
-    NotificationService ..> NotificationFactory
     NotificationService ..> SocketEventEmitter
+    Tracking ..> SocketEventEmitter
 ```
 
 ---
@@ -1219,54 +1183,103 @@ Detailed attribute and method reference for each primary class.
 
 | Member | Type | Visibility | Description |
 |---|---|---|---|
-| `name` | `String` | `+` | Full legal name |
+| `fullName` | `String` | `+` | Full legal name |
 | `email` | `String` | `+` | Unique, indexed, lowercase |
-| `mobile` | `String` | `+` | Unique, E.164 format |
+| `phone` | `String` | `+` | Unique, phone format |
 | `passwordHash` | `String` | `-` | bcrypt hash, never serialised to JSON |
-| `role` | `UserRole` | `+` | Discriminator field: patient / doctor / admin |
-| `status` | `UserStatus` | `+` | Account lifecycle status |
+| `role` | `String` | `+` | Discriminator field: patient / doctor / admin |
+| `isVerified` | `Boolean` | `+` | Email verification status |
+| `isActive` | `Boolean` | `+` | Active account status |
+| `verificationStatus` | `String` | `+` | Doctor/Admin onboarding verification status |
+| `googleId` | `String` | `+` | Google OAuth User ID |
+| `avatar` | `String` | `+` | User profile avatar image URL |
 | `lastLogin` | `Date` | `+` | Timestamp of most recent successful login |
-| `loginAttempts` | `Int` | `-` | Consecutive failed login count |
-| `lockUntil` | `Date` | `-` | Lockout expiry; null if not locked |
-| `refreshTokenHash` | `String` | `-` | SHA-256 hash of current refresh token |
-| `refreshTokenExpiry` | `Date` | `-` | Expiry of current refresh token |
+| `passwordResetToken` | `String` | `-` | Password reset token |
+| `passwordResetExpiry` | `Date` | `-` | Expiry of password reset token |
+| `refreshTokenHash` | `String` | `-` | Stored session refresh token hash |
 | `comparePassword(plain)` | `Promise<Boolean>` | `+` | bcrypt.compare against stored hash |
-| `generateAccessToken()` | `String` | `+` | Signs JWT; exp: 15 min |
-| `generateRefreshToken()` | `String` | `+` | UUID v4; stores hash in DB |
-| `revokeRefreshToken()` | `Promise<void>` | `+` | Nullifies token hash and expiry |
-| `incrementLoginAttempts()` | `Promise<void>` | `+` | Increments counter; locks after 5 |
-| `resetLoginAttempts()` | `Promise<void>` | `+` | Resets counter and lock on success |
-| `isAccountLocked()` | `Boolean` | `+` | True if loginAttempts ≥ 5 and lockUntil > now |
+| `generateAccessToken()` | `String` | `+` | Signs JWT |
+| `generateRefreshToken()` | `String` | `+` | Generates token for storage in DB |
+| `revokeRefreshToken()` | `Promise<void>` | `+` | Nullifies token hash |
 
 ### 9.3 Appointment
 
 | Member | Type | Visibility | Description |
 |---|---|---|---|
-| `status` | `AppointmentStatus` | `+` | Current lifecycle status |
-| `fee` | `Float` | `+` | Doctor's consultation fee at time of booking |
-| `platformCommission` | `Float` | `+` | Calculated platform fee (fee × commissionPct) |
-| `doctorEarnings` | `Float` | `+` | fee − platformCommission |
-| `doctorLastLocation` | `GeoLocation` | `+` | Latest broadcasted doctor position |
-| `paymentTimeoutAt` | `Date` | `+` | 10-minute booking payment deadline |
-| `statusHistory` | `StatusEvent[]` | `+` | Immutable log of all status transitions |
-| `canTransitionTo(status)` | `Boolean` | `+` | Validates state machine rules |
-| `isWithinGeoFence(lat, lng, r)` | `Boolean` | `+` | Haversine check for arrival confirmation |
-| `calculateRefundAmount()` | `Float` | `+` | Policy-based refund calculation |
-| `getDuration()` | `Int` | `+` | Consultation duration in minutes |
+| `patientId` | `String` | `+` | Patient identifier (Ref: User) |
+| `doctorId` | `String` | `+` | Doctor identifier (Ref: Doctor) |
+| `scheduledAt` | `Date` | `+` | Scheduled date and time |
+| `address` | `ConsultationAddress` | `+` | Address and geospatial coordinates |
+| `status` | `AppointmentStatus` | `+` | Current state of appointment lifecycle |
+| `notes` | `String` | `+` | Medical notes or symptom descriptions |
+| `rejectionReason` | `String` | `+` | Reason if appointment rejected by doctor |
+| `cancellationReason` | `String` | `+` | Reason if appointment cancelled |
+| `paymentId` | `String` | `+` | Linked Payment identifier |
+| `prescriptionId` | `String` | `+` | Linked Prescription identifier |
+| `isEmergency` | `Boolean` | `+` | Flag for emergency appointment requests |
+| `consultationMode` | `ConsultationMode` | `+` | clinic, home, or online mode |
 
 ### 9.4 Payment
 
 | Member | Type | Visibility | Description |
 |---|---|---|---|
-| `razorOrderId` | `String` | `+` | Razorpay Order ID (prefix: `order_`) |
-| `razorPaymentId` | `String` | `+` | Razorpay Payment ID (prefix: `pay_`) |
-| `status` | `PaymentStatus` | `+` | Current payment lifecycle status |
-| `platformCommission` | `Float` | `+` | Platform's cut from the transaction |
-| `doctorEarnings` | `Float` | `+` | Amount owed to doctor post-commission |
-| `refundId` | `String` | `+` | Razorpay Refund ID (prefix: `rfnd_`) |
-| `verifySignature(oId, pId, sig)` | `Boolean` | `+` | HMAC-SHA256 via timingSafeEqual |
-| `calculatePlatformCommission(pct)` | `Float` | `+` | amount × (pct / 100) |
-| `calculateDoctorEarnings()` | `Float` | `+` | amount − platformCommission |
+| `appointmentId` | `String` | `+` | Associated appointment |
+| `patientId` | `String` | `+` | Paying patient |
+| `doctorId` | `String` | `+` | Receiving doctor |
+| `razorOrderId` | `String` | `+` | Razorpay Order ID |
+| `razorPaymentId` | `String` | `+` | Razorpay Payment ID |
+| `amount` | `Float` | `+` | Total transaction amount |
+| `currency` | `String` | `+` | Payment currency (e.g. INR) |
+| `status` | `PaymentStatus` | `+` | pending, captured, failed, etc. |
+| `paymentMethod` | `String` | `+` | UPI, card, net_banking, etc. |
+| `paidAt` | `Date` | `+` | Payment timestamp |
+| `refundId` | `String` | `+` | Razorpay refund identifier |
+| `refundAmount` | `Float` | `+` | Refunded amount |
+| `refundStatus` | `String` | `+` | pending, processed, failed |
+| `refundReason` | `String` | `+` | Reason for refund |
+
+### 9.5 CallLog
+
+| Member | Type | Visibility | Description |
+|---|---|---|---|
+| `appointmentId` | `String` | `+` | Ref: Appointment (unique index) |
+| `callerId` | `String` | `+` | Ref: User (initiator) |
+| `receiverId` | `String` | `+` | Ref: User (recipient) |
+| `status` | `String` | `+` | calling, connected, ended, missed |
+| `twilioCallSid` | `String` | `+` | Optional Twilio Call SID if telephony used |
+| `duration` | `Int` | `+` | Duration in seconds |
+
+### 9.6 AppointmentOtp
+
+| Member | Type | Visibility | Description |
+|---|---|---|---|
+| `appointmentId` | `String` | `+` | Ref: Appointment (unique) |
+| `otpHash` | `String` | `+` | SHA-256 hash of the 6-digit OTP |
+| `plainTextOtp` | `String` | `+` | Used for testing in development mode |
+| `expiresAt` | `Date` | `+` | Time limit (typically 10 minutes) |
+| `attempts` | `Int` | `+` | Attempt counter to prevent brute forcing |
+
+### 9.7 Tracking
+
+| Member | Type | Visibility | Description |
+|---|---|---|---|
+| `appointmentId` | `String` | `+` | Ref: Appointment (unique) |
+| `doctorId` | `String` | `+` | Ref: Doctor |
+| `patientId` | `String` | `+` | Ref: Patient |
+| `status` | `String` | `+` | idle, active, completed |
+| `doctorCurrentLocation` | `GeoLocation` | `+` | Latest doctor position Point |
+| `patientLocation` | `GeoLocation` | `+` | Target patient position Point |
+| `lastHeartbeatAt` | `Date` | `+` | Heartbeat timestamp from tracking stream |
+
+### 9.8 EmergencyRequest
+
+| Member | Type | Visibility | Description |
+|---|---|---|---|
+| `patientId` | `String` | `+` | Ref: Patient |
+| `location` | `GeoLocation` | `+` | Point coordinates where emergency triggered |
+| `assignedDoctorId` | `String` | `+` | Ref: Doctor |
+| `appointmentId` | `String` | `+` | Auto-generated Appointment if accepted |
+| `status` | `String` | `+` | pending, resolved, failed |
 
 ---
 
@@ -1290,6 +1303,10 @@ classDiagram
 
     BaseEntity <|-- User : extends
     BaseEntity <|-- Appointment : extends
+    BaseEntity <|-- AppointmentOtp : extends
+    BaseEntity <|-- CallLog : extends
+    BaseEntity <|-- Tracking : extends
+    BaseEntity <|-- EmergencyRequest : extends
     BaseEntity <|-- Prescription : extends
     BaseEntity <|-- Review : extends
     BaseEntity <|-- Payment : extends
@@ -1307,12 +1324,16 @@ classDiagram
 |---|---|---|---|---|---|
 | books | Patient | Appointment | 1 → 0..* | Association | Patient initiates appointments |
 | fulfils | Doctor | Appointment | 1 → 0..* | Association | Doctor services appointments |
+| verifies with | Appointment | AppointmentOtp | 1 → 0..1 | Association | Appointment session verification |
+| logs session | Appointment | CallLog | 1 → 0..1 | Association | WebRTC call metadata log |
+| tracks | Appointment | Tracking | 1 → 0..1 | Association | Live tracking coordinates |
+| initiates | Patient | EmergencyRequest | 1 → 0..* | Association | Patient requests emergency doctor |
+| handles | Doctor | EmergencyRequest | 1 → 0..* | Association | Doctor responds to emergency request |
 | generates | Appointment | Prescription | 1 → 0..1 | Association | One prescription per appointment |
 | receives | Appointment | Review | 1 → 0..1 | Association | One review per appointment |
 | requires | Appointment | Payment | 1 → 1 | Association | Every appointment has a payment |
 | contains | Appointment | Message | 1 → 0..* | Aggregation | Chat history per appointment |
 | composed of | Prescription | Medication | 1 → 1..* | Composition | Medications exist within prescription |
-| hosted by | ChatRoom | Message | 1 → 0..* | Composition | Messages belong to a chat room |
 | receives | Patient | Notification | 1 → 0..* | Association | Patient notification delivery |
 | receives | Doctor | Notification | 1 → 0..* | Association | Doctor notification delivery |
 | generates | Admin | AuditLog | 1 → 0..* | Association | All admin actions are logged |
@@ -1329,8 +1350,8 @@ classDiagram
 | `ReviewService` | `Doctor` | Updates aggregate rating |
 | `PrescriptionService` | `Prescription` | Generates and serves prescriptions |
 | `NotificationService` | `Notification` | Dispatches notifications |
-| `NotificationFactory` | `Notification` | Constructs typed notifications |
 | `NotificationService` | `SocketEventEmitter` | Real-time in-app delivery |
+| `Tracking` | `SocketEventEmitter` | Streams live GPS coordinates |
 
 ---
 
@@ -1340,27 +1361,30 @@ Each class maps to a MongoDB collection with the following conventions.
 
 | Class | Collection Name | Key Indexes | Notes |
 |---|---|---|---|
-| `Patient` | `users` | `email (unique)`, `mobile (unique)`, `role` | Shared collection with Doctor / Admin via discriminator |
-| `Doctor` | `users` | `email (unique)`, `registrationNumber (unique)`, `location (2dsphere)`, `isAvailable`, `status` | 2dsphere index enables `$near` geo-queries |
+| `Patient` | `users` | `email (unique)`, `phone (unique)`, `role` | Shared collection with Doctor / Admin via discriminator |
+| `Doctor` | `users` | `email (unique)`, `role` | Discriminator: doctor; details stored in separate doctors collection |
 | `Admin` | `users` | `email (unique)` | Role discriminator: `admin` |
-| `Appointment` | `appointments` | `patientId`, `doctorId`, `status`, `paymentTimeoutAt (TTL)`, `createdAt` | TTL index on `paymentTimeoutAt` auto-expires stale bookings |
-| `Prescription` | `prescriptions` | `appointmentId (unique)`, `patientId`, `verificationCode (unique)` | `isImmutable: true` enforced at schema level |
-| `Review` | `reviews` | `appointmentId (unique)`, `doctorId`, `status` | Unique on appointmentId prevents duplicate reviews |
-| `Payment` | `payments` | `appointmentId (unique)`, `razorOrderId`, `razorPaymentId`, `refundId` | All Razorpay IDs indexed for webhook lookup |
-| `Payout` | `payouts` | `doctorId`, `status`, `periodStart` | Compound index for weekly batch queries |
-| `Notification` | `notifications` | `recipientId`, `isRead`, `createdAt` | TTL index: auto-delete after 90 days |
-| `Message` | `messages` | `appointmentId`, `createdAt` | Compound index for pagination queries |
-| `AuditLog` | `auditlogs` | `actorId`, `resourceType`, `resourceId`, `timestamp` | Immutable — no update or delete operations |
-| `PlatformConfig` | `configs` | `_id (singleton)` | Single document; fetched via `getInstance()` |
+| `Appointment` | `appointments` | `patientId`, `doctorId`, `status`, `scheduledAt` | Maps appointments |
+| `AppointmentOtp` | `appointment_otps` | `appointmentId (unique)`, `expiresAt (TTL)` | Stores appointment start OTPs |
+| `CallLog` | `call_logs` | `appointmentId (unique)`, `callerId`, `calleeId` | Stores video call session metadata |
+| `Tracking` | `tracking` | `appointmentId (unique)`, `doctorCurrentLocation (2dsphere)` | Live GPS tracking data |
+| `EmergencyRequest` | `emergencyrequests` | `location (2dsphere)`, `patientId` | Active emergency requests |
+| `Prescription` | `prescriptions` | `appointmentId (unique)`, `patientId` | Prescriptions |
+| `Review` | `reviews` | `appointmentId (unique)`, `doctorId`, `status` | Doctor ratings and reviews |
+| `Payment` | `payments` | `appointmentId (unique)`, `razorOrderId`, `razorPaymentId` | Payment transactions |
+| `Payout` | `payouts` | `doctorId`, `status` | Weekly payout history |
+| `Notification` | `notifications` | `recipientId`, `createdAt (TTL)` | Temporary notification records |
+| `Message` | `chat_messages` | `roomId`, `appointmentId`, `createdAt` | Real-time chat message history |
+| `AuditLog` | `auditlogs` | `actorId`, `resourceType`, `timestamp` | Audit trails |
+| `PlatformConfig` | `configs` | `_id (singleton)` | Platform configurations |
 
 ### Index Strategy Notes
 
-- The `users.location` field on Doctor documents uses a **GeoJSON Point** type with a `2dsphere` index to support MongoDB's `$near` and `$geoWithin` operators for the nearby doctor search.
-- `appointments.paymentTimeoutAt` carries a **TTL index** with `expireAfterSeconds: 0`, which MongoDB evaluates against the field value itself — appointments in `pending_payment` state are automatically expired by MongoDB if not converted to `confirmed` within the window.
-- All Razorpay identifiers (`razorOrderId`, `razorPaymentId`, `refundId`) are individually indexed to enable O(1) lookup during webhook processing.
-- `reviews.appointmentId` carries a **sparse unique index** to enforce the one-review-per-appointment constraint at the database layer, not just the application layer.
+- The `tracking.doctorCurrentLocation` and `emergencyrequests.location` fields use **GeoJSON Point** types with `2dsphere` indexes to support geospatial lookups.
+- `appointment_otps.expiresAt` carries a **TTL index** which automatically cleans up expired OTP codes 10 minutes after generation.
+- `chat_messages` indexes compound `roomId` and `createdAt` to support high-performance chat pagination query patterns.
 
 ---
 
 *End of DocDock Class Diagram Specification v1.0*  
-*© 2025 DocDock. All rights reserved.*
+*© 2026 DocDock. All rights reserved.*

@@ -108,16 +108,18 @@ flowchart TB
 
 | Module | Responsibility |
 |--------|------------------|
-| **Auth Module** | Registration, login, JWT issuance/refresh, password reset, bcrypt hashing |
-| **Doctor Module** | Profile CRUD, verification status, availability state, geospatial indexing |
-| **Patient Module** | Profile CRUD, address management, health profile |
-| **Appointment Module** | Booking lifecycle (pending → confirmed → in-progress → completed/cancelled), slot-conflict handling |
-| **Chat Module** | REST endpoints for chat history retrieval; real-time delivery handled by Socket.io |
-| **Prescription Module** | Digital prescription generation and retrieval (PDF generation) |
-| **Review Module** | Rating/review submission and aggregation |
-| **Payment Module** | Razorpay order creation, webhook handling, reconciliation |
-| **Admin Module** | Verification approvals, suspensions, audit log queries |
-| **Notification Module** | Dispatch logic for email/SMS/push, delegated to background workers |
+| **Auth Module** | Registration, login, JWT issuance/refresh, password reset, bcrypt hashing, Google OAuth 2.0 |
+| **Doctor Module** | Profile CRUD, verification status, per-day schedule with slots/break times/vacation mode, geospatial indexing, earnings tracking |
+| **Patient Module** | Profile CRUD, address management, medical history, allergies, emergency contact |
+| **Appointment Module** | Booking lifecycle (11 states: pending → accepted → doctor_on_way → arrived → in_consultation → completed + cancellation/rejection states); 3 consultation modes (clinic/home/online); scheduled slot booking with conflict detection; OTP verification for online mode |
+| **Chat Module** | REST endpoints for chat history retrieval; real-time delivery handled by Socket.io /chat namespace; persists messages in `chat_messages` collection |
+| **Prescription Module** | Digital prescription generation (PDF via jsPDF/html2canvas) and retrieval; Cloudinary storage |
+| **Review Module** | Rating/review submission and aggregation; doctor score updates |
+| **Payment Module** | Razorpay order creation, webhook handling, automatic refund on cancellation; payment receipt generation |
+| **Admin Module** | Verification approvals/rejections, user suspension, audit log queries, platform analytics |
+| **Notification Module** | Dispatch logic for in-app (Socket.io), email (SendGrid), and SMS (Twilio); delegated to BullMQ workers |
+| **Tracking Module** | REST endpoints for doctor location logs; real-time GPS delivery via Socket.io /tracking namespace |
+| **AI Module** | Google Gemini-powered symptom check, doctor recommendations, streaming AI chat with multi-turn context; rule-based fallback when Gemini is unavailable |
 
 **Express.js-specific design notes:**
 - Organized as **feature-based modules**, each exposing a `routes/`, `controller/`, `service/`, and `model/` layer — controllers stay thin, business logic lives in services, keeping routes testable in isolation.
@@ -129,10 +131,10 @@ flowchart TB
 
 | Channel/Namespace | Purpose |
 |--------------------|---------|
-| `/tracking` | Doctor → Patient live location streaming during active appointments |
-| `/chat` | Bi-directional patient ↔ doctor messaging |
+| `/tracking` | Doctor → Patient live GPS location streaming during active appointments |
+| `/chat` | Bi-directional patient ↔ doctor messaging; typing indicators; read receipts |
 | `/availability` | Doctor status broadcast (online/busy/offline) to relevant search sessions |
-| `/notifications` | Lightweight real-time toast/badge updates for in-app events |
+| `/notifications` | In-app notification delivery + WebRTC call signalling (call:initiate, call:accept, call:reject, call:hangup, webrtc:signal) |
 
 **Socket.io-specific design notes:**
 - Each socket connection authenticates via JWT passed during the handshake (`auth` payload), validated before joining any room.
@@ -143,25 +145,26 @@ flowchart TB
 ### 4.4 Data Layer
 
 **MongoDB Atlas:**
-- Primary operational datastore for all persistent entities: Users (Patients/Doctors/Admins), Appointments, Prescriptions, Reviews, Payments, Notifications, AuditLogs.
+- Primary operational datastore for all persistent entities: Users (Patients/Doctors/Admins), Appointments, Prescriptions, Reviews, Payments, Notifications, AuditLogs, ChatMessages, CallLogs, AppointmentOTPs.
 - **2dsphere geospatial index** on the Doctor collection's location field powers nearby-search via `$geoNear`/`$near`.
 - Compound indexes on (`doctorId`, `status`, `scheduledAt`) support efficient appointment queries.
-- Schema design favors **embedding for bounded, rarely-changing sub-documents** (e.g., a prescription's medication list) and **referencing for high-growth or independently-queried entities** (e.g., chat messages, reviews) to keep documents within MongoDB's size and performance sweet spot.
+- Schema design favors **embedding for bounded, rarely-changing sub-documents** (e.g., a prescription's medication list, doctor's per-day schedule) and **referencing for high-growth or independently-queried entities** (e.g., chat messages, reviews) to keep documents within MongoDB's size and performance sweet spot.
 
 **Redis:**
 - **Socket.io pub/sub adapter** for cross-instance real-time event delivery.
 - **Caching layer** for frequently-read, infrequently-changed data (doctor search results for popular geo-buckets, doctor profile cards) with short TTLs (30–60s) to reduce MongoDB load.
-- **Rate limiting** store (e.g., via `rate-limit-redis`) for login and search endpoint throttling.
+- **Rate limiting** store (e.g., via `express-rate-limit` with Redis backing) for login and search endpoint throttling.
 - **Token blacklist** for revoked refresh tokens/logout, checked during JWT refresh flow.
+- **BullMQ job queue backing** — three dedicated workers run on Redis-backed queues: (1) appointment reminders, (2) notification dispatch (email/SMS), (3) data cleanup (expired OTPs, stale sessions). Jobs retry with exponential backoff; persistent failures route to a dead-letter queue.
 
-### 4.5 Background Workers
+### 4.5 Background Workers (BullMQ)
 
-- Decoupled from the request/response cycle via a job queue (e.g., BullMQ on Redis) for:
-  - Notification dispatch (email/SMS/push)
-  - Appointment reminders
-  - Payment reconciliation (Razorpay ↔ internal records)
-  - Scheduled data retention/purge jobs (chat logs, expired tokens)
+- Decoupled from the request/response cycle via **BullMQ** job queues (backed by Redis):
+  - **Appointment Reminder Worker** — sends SMS/email reminders before scheduled appointments
+  - **Notification Dispatch Worker** — asynchronous email (SendGrid) and SMS (Twilio) delivery for booking events
+  - **Cleanup Worker** — purges expired OTPs, expired refresh tokens, stale pending appointments, and old chat message logs
 - Workers retry with exponential backoff and route persistent failures to a dead-letter queue for manual inspection.
+- `checkOnlineTimeouts()` job runs every 60 seconds to auto-reject online appointments where the doctor has not joined within the SLA window.
 
 ---
 
@@ -173,19 +176,25 @@ flowchart TB
 sequenceDiagram
     participant P as Patient (Next.js)
     participant API as Express API
+    participant RZP as Razorpay
     participant DB as MongoDB
     participant WS as Socket.io
     participant D as Doctor (Next.js)
 
-    P->>API: POST /appointments (doctorId, slot, address)
-    API->>DB: Create appointment (status: pending) [transaction]
+    P->>API: POST /payments/create-order (doctorId, slot, address, mode)
+    API->>RZP: Create Razorpay order
+    RZP-->>API: order_id
+    API-->>P: order_id + checkout config
+    P->>RZP: Complete payment (Razorpay Checkout UI)
+    RZP->>API: Webhook: payment.captured
+    API->>DB: Create appointment (status: pending) + update payment
     DB-->>API: Appointment created
-    API->>WS: Emit "booking:new" to doctor's room
-    WS->>D: Real-time booking request notification
-    D->>API: PATCH /appointments/:id/accept
-    API->>DB: Update status: confirmed
-    API->>WS: Emit "booking:confirmed" to patient's room
-    WS->>P: Real-time confirmation + doctor ETA
+    API->>WS: Emit notification to doctor room
+    WS->>D: Real-time new appointment notification
+    D->>API: PATCH /appointments/:id/status (accepted)
+    API->>DB: Update status: accepted
+    API->>WS: Emit notification to patient room
+    WS->>P: Real-time confirmation
 ```
 
 ### 5.2 Live Tracking Flow
@@ -230,11 +239,14 @@ sequenceDiagram
 
 | Service | Role in DocDock | Integration Notes |
 |---------|------------------|---------------------|
-| **Cloudinary** | Stores doctor verification documents, profile photos, clinic images, prescription PDFs | Uploads use signed, time-limited URLs generated server-side; verification documents stored as **private** assets accessible only to Admin role via short-lived signed access; no raw files touch application servers (direct-to-Cloudinary upload via signed params) |
-| **Razorpay** | Handles all payment processing for consultations | Backend creates orders server-side using the secret key; frontend only ever sees the public key; payment confirmation is **never trusted from client-side redirect alone** — confirmed only via verified webhook signature |
-| **Email/SMS/Push Provider** (e.g., SendGrid/Twilio/FCM) | Delivers appointment, verification, and payment notifications | Abstracted behind a `NotificationProvider` interface in the Notification Module so providers can be swapped without touching business logic |
-| **MongoDB Atlas** | Managed database hosting with built-in replication, backups, and monitoring | Connection via MongoDB driver with connection pooling; Atlas Performance Advisor reviewed periodically for index recommendations |
-| **Redis** (managed, e.g., Upstash/Redis Cloud) | Pub/sub, caching, rate limiting, queues | Single Redis instance for MVP; can be split into separate logical databases/instances for cache vs. queue vs. pub/sub as load grows |
+| **Cloudinary** | Stores doctor verification documents, profile photos | Uploads use signed, time-limited URLs generated server-side; verification documents stored as **private** assets accessible only to Admin role via short-lived signed access |
+| **Razorpay** | Handles all payment processing for consultations | Backend creates orders server-side; payment confirmation via verified webhook signature; automatic refunds initiated on appointment cancellation |
+| **SendGrid** | Delivers transactional email (appointment confirmations, OTP codes, verification status, prescription notifications) | Nodemailer with SendGrid SMTP transport; abstracted behind `isEmailServiceEnabled()` check so the server degrades gracefully when not configured |
+| **Twilio** | SMS OTP delivery for online consultation verification; appointment reminders; optional voice call bridging | `smsService` interface abstracts Twilio client; `VoiceService` abstraction for voice; falls back to console logging when credentials are not configured |
+| **Google Gemini API** | Powers AI symptom check, doctor recommendations, and streaming AI chat | Accessed via `@google/generative-ai`; lazy-initialised per-request; falls back to rule-based logic if API key is absent or API call fails |
+| **OpenStreetMap / Nominatim** | Geocoding and reverse geocoding for location search | Proxied via `/api/v1/maps/search` and `/api/v1/maps/reverse` endpoints on the Express server |
+| **MongoDB Atlas** | Managed database hosting with built-in replication, backups, and monitoring | Connection via MongoDB driver with connection pooling |
+| **Redis** (managed, e.g., Upstash/Redis Cloud) | Pub/sub, caching, rate limiting, BullMQ queues | Single Redis instance for MVP; persistence enabled for queue durability |
 
 ---
 

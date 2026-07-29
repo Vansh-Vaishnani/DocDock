@@ -34,16 +34,19 @@ This document specifies the complete set of functional requirements for the DocD
 
 This FRS covers all system functionality for the following user-facing surfaces:
 
-- Patient web/mobile application (Next.js 14 frontend)
-- Doctor web/mobile application (Next.js 14 frontend)
+- Patient web application (Next.js 14 frontend)
+- Doctor web application (Next.js 14 frontend)
 - Admin dashboard (Next.js 14 frontend)
 - Backend API (Node.js + Express.js)
-- Real-time services (Socket.io)
-- Payment processing (Razorpay)
-- Storage (Cloudinary)
+- Real-time services (Socket.io — /tracking, /chat, /availability, /notifications namespaces)
+- Video/Audio consultation (WebRTC via Socket.io signalling for online appointment mode)
+- Payment processing (Razorpay — order creation, webhook, automatic refunds)
+- Storage (Cloudinary — doctor photos, documents)
 - Database (MongoDB Atlas)
+- AI Assistant (Google Gemini API — symptom check, doctor recommendations, streaming chat)
+- SMS/OTP service (pluggable provider — appointment OTP verification)
 
-Out of scope for v1.0: telemedicine video calling, insurance processing, multi-language support, and third-party EHR integration.
+Out of scope for v1.0: insurance processing, multi-language support, native iOS/Android apps, third-party EHR/ABDM integration, pharmacy and lab integrations.
 
 ---
 
@@ -549,7 +552,7 @@ Patient opens the Find a Doctor screen and grants location access (or manually e
 | **Actor** | Patient |
 
 **Description:**  
-The system shall allow a patient to book a home consultation with an available doctor by selecting a consultation address from their saved addresses or entering a new one, confirming the appointment, and proceeding to payment. The system shall place the appointment in `pending_payment` status until payment is confirmed.
+The system shall allow a patient to book a home consultation with an available doctor by selecting a consultation address from their saved addresses or entering a new one, confirming the appointment, and proceeding to payment. The system shall place the appointment in `pending` status until payment is confirmed via Razorpay webhook.
 
 **Trigger:**  
 Patient selects a doctor from search results and clicks Book Now.
@@ -560,7 +563,7 @@ Patient selects a doctor from search results and clicks Book Now.
 - Patient has not already booked the same doctor for an overlapping time.
 
 **Postconditions:**
-- An Appointment document is created with `status: pending_payment`.
+- An Appointment document is created with `status: pending`.
 - Patient is redirected to the Payment screen (FR-041).
 - If payment succeeds: status updated to `confirmed`; doctor and patient both receive booking confirmation notifications.
 - If payment fails or times out (10 minutes): appointment document deleted; doctor's availability is restored.
@@ -588,7 +591,7 @@ System emits a `new_booking` Socket.io event to the doctor upon payment confirma
 - Doctor is online and available.
 
 **Postconditions:**
-- If accepted: appointment status updated to `en_route`; patient notified; live tracking activated.
+- If accepted: appointment status updated to `accepted`; patient notified; live tracking activated once doctor marks `doctor_on_way`.
 - If declined or timed out: appointment cancelled; patient receives a full refund (FR-043); patient is prompted to search for another doctor.
 
 ---
@@ -609,19 +612,23 @@ The system shall enforce a defined appointment status lifecycle. Transitions sha
 **Status Flow:**
 
 ```
-pending_payment → confirmed → en_route → arrived → in_consultation → completed → [reviewed]
+pending → accepted → doctor_on_way → arrived → in_consultation → completed → [reviewed]
                     ↓
                  cancelled
 ```
 
 | Transition | Triggered By | Condition |
 |---|---|---|
-| `pending_payment` → `confirmed` | System | Payment success webhook received |
-| `confirmed` → `en_route` | Doctor | Doctor accepts the appointment |
-| `en_route` → `arrived` | Doctor | Doctor marks arrival at patient location |
-| `arrived` → `in_consultation` | Doctor | Doctor begins consultation |
-| `in_consultation` → `completed` | Doctor | Doctor ends consultation and issues prescription |
-| Any → `cancelled` | Patient / Admin | Before `in_consultation`; refund policy applies |
+| `pending` (booking created) | System | Payment webhook confirms payment (or emergency booking) |
+| `pending` → `accepted` | Doctor | Doctor accepts the appointment |
+| `pending` → `rejected` | Doctor | Doctor declines (with reason); refund initiated |
+| `pending` → `auto_rejected` | System | Background job detects timeout; refund initiated |
+| `accepted` → `doctor_on_way` | Doctor | Doctor starts journey to patient |
+| `doctor_on_way` → `arrived` | Doctor | Doctor marks physical arrival at location |
+| `arrived` → `in_consultation` | Doctor | Doctor begins consultation session |
+| `in_consultation` → `completed` | Doctor | Doctor ends consultation |
+| `pending` → `cancelled_by_patient` | Patient | Patient cancels; refund initiated |
+| `accepted` / `doctor_on_way` / `arrived` → `cancelled_by_doctor` | Doctor | Doctor cancels post-acceptance; refund initiated |
 
 **Trigger:**  
 Status transitions are triggered by explicit actor actions or system events.
@@ -653,7 +660,7 @@ The system shall allow a patient to cancel a confirmed appointment before the do
 Patient clicks Cancel Appointment, or Admin initiates cancellation from the Dashboard.
 
 **Preconditions:**
-- Appointment status is `confirmed` or `en_route`.
+- Appointment status is `accepted` or `doctor_on_way`.
 
 **Postconditions:**
 - Appointment status updated to `cancelled`.
@@ -678,14 +685,14 @@ Patient clicks Cancel Appointment, or Admin initiates cancellation from the Dash
 | **Actor** | Doctor, System |
 
 **Description:**  
-When a doctor's appointment status is `en_route`, the system shall continuously broadcast the doctor's GPS coordinates via Socket.io to the patient at a configurable interval (default 5 seconds). The patient's app shall render the doctor's position on a live map with an updated ETA.
+When a doctor's appointment status is `doctor_on_way`, the system shall continuously broadcast the doctor's GPS coordinates via Socket.io to the patient at a configurable interval (default 5 seconds). The patient's app shall render the doctor's position on a live map with an updated ETA.
 
 **Trigger:**  
-Appointment status transitions to `en_route` after doctor acceptance.
+Appointment status transitions to `doctor_on_way` after doctor marks on the way.
 
 **Preconditions:**
 - Doctor has location access enabled on their device.
-- Appointment status is `en_route`.
+- Appointment status is `doctor_on_way`.
 
 **Postconditions:**
 - Doctor's location updated in the database and emitted to the patient's Socket.io room.
@@ -711,7 +718,7 @@ The system shall render a React Leaflet map on the patient's tracking screen sho
 Patient opens the Track Doctor screen after appointment confirmation.
 
 **Preconditions:**
-- Appointment status is `en_route`.
+- Appointment status is `doctor_on_way`.
 - Patient is authenticated.
 
 **Postconditions:**
@@ -738,7 +745,7 @@ The system shall allow a doctor to manually mark themselves as arrived at the pa
 Doctor taps the I've Arrived button on their consultation screen.
 
 **Preconditions:**
-- Appointment status is `en_route`.
+- Appointment status is `doctor_on_way`.
 - Doctor's GPS location is within 100 metres of the appointment address.
 
 **Postconditions:**
@@ -770,7 +777,7 @@ The system shall provide a real-time bidirectional chat channel between a patien
 Patient or Doctor opens the Chat tab on their appointment detail screen.
 
 **Preconditions:**
-- Appointment status is `confirmed`, `en_route`, `arrived`, or `in_consultation`.
+- Appointment status is `accepted`, `doctor_on_way`, `arrived`, or `in_consultation`.
 - Both parties are authenticated.
 
 **Postconditions:**
@@ -1021,7 +1028,7 @@ When a patient proceeds to book an appointment, the system shall create a Razorp
 Patient clicks Confirm and Pay on the appointment booking screen.
 
 **Preconditions:**
-- Appointment document with `status: pending_payment` exists.
+- Appointment document with `status: pending` exists.
 - Doctor is still available.
 - Razorpay API keys are configured.
 
@@ -1383,7 +1390,226 @@ Any administrative action is performed (FR-010, FR-033, FR-043, FR-044, FR-045, 
 
 ---
 
-## 16. Requirements Traceability Matrix
+## 16. Scheduled Slot Booking & Consultation Modes
+
+---
+
+### FR-048 — Scheduled Slot-Based Appointment Booking
+
+| Field | Detail |
+|---|---|
+| **ID** | FR-048 |
+| **Title** | Scheduled Slot-Based Appointment Booking |
+| **Priority** | Critical |
+| **Module** | Appointment System |
+| **Actor** | Patient |
+
+**Description:**  
+The system shall allow a patient to select a specific time slot from the doctor's per-day availability schedule when booking an appointment. Available slots shall be computed server-side from the doctor's configured schedule (start times, end times, slot duration), minus already-booked and cancelled appointments, and minus the doctor's configured break time window.
+
+**Trigger:**  
+Patient navigates to book an appointment for a specific doctor and selects a date.
+
+**Preconditions:**
+- Patient is authenticated.
+- Selected doctor is `approved` and has `isAvailable: true`.
+- Doctor's per-day schedule has slots configured for the selected day.
+
+**Postconditions:**
+- Available time slots are returned from `GET /api/doctors/:id/slots?date=YYYY-MM-DD`.
+- Patient selects a slot; slot is reserved upon confirmed Razorpay payment.
+- Booked slot is excluded from future slot queries for the same doctor and date.
+
+---
+
+### FR-049 — Three Consultation Modes
+
+| Field | Detail |
+|---|---|
+| **ID** | FR-049 |
+| **Title** | Three Consultation Modes (Home / Clinic / Online) |
+| **Priority** | Critical |
+| **Module** | Appointment System |
+| **Actor** | Patient |
+
+**Description:**  
+The system shall support three distinct consultation modes, selectable by the patient at booking time:
+
+1. **Home Visit:** Doctor travels to the patient's address. Requires a valid address with GeoJSON coordinates. Activates live GPS tracking flow (`doctor_on_way` → `arrived` → `in_consultation`).
+2. **Clinic Visit:** Patient attends the doctor's clinic. An appointment slip with a QR code is generated client-side (jsPDF) upon booking confirmation. No live tracking. Status: `accepted` → `in_consultation`.
+3. **Online:** Peer-to-peer video/audio consultation via WebRTC. Requires OTP verification before session start. Status: `accepted` → `in_consultation`.
+
+**Trigger:**  
+Patient selects a consultation mode on the booking screen.
+
+**Preconditions:**
+- Doctor has at least one consultation mode enabled in their profile (`consultationModes` array).
+
+**Postconditions:**
+- `consultationMode` field stored on the `Appointment` document.
+- Backend enforces mode-specific workflow (tracking for home, OTP for online, slip for clinic).
+
+---
+
+### FR-050 — Doctor Per-Day Schedule Management
+
+| Field | Detail |
+|---|---|
+| **ID** | FR-050 |
+| **Title** | Doctor Per-Day Availability Schedule Configuration |
+| **Priority** | High |
+| **Module** | Doctor Management |
+| **Actor** | Doctor |
+
+**Description:**  
+The system shall allow a doctor to configure their weekly availability schedule on a per-day basis. Each day's configuration shall include: enabled/disabled status, one or more time-slot intervals (start/end time), a global break time window, consultation slot duration (in minutes), and maximum appointments per day.
+
+**Trigger:**  
+Doctor navigates to Availability Settings and updates their schedule.
+
+**Preconditions:**
+- Doctor is authenticated with `verificationStatus: approved`.
+
+**Postconditions:**
+- `availability.perDaySchedule`, `availability.breakTime`, `availability.slotDuration`, and `availability.maxAppointmentsPerDay` updated on the Doctor document.
+- Future slot queries immediately reflect the updated schedule.
+
+---
+
+### FR-051 — Doctor Vacation Mode
+
+| Field | Detail |
+|---|---|
+| **ID** | FR-051 |
+| **Title** | Doctor Vacation Mode Toggle |
+| **Priority** | Medium |
+| **Module** | Doctor Management |
+| **Actor** | Doctor |
+
+**Description:**  
+The system shall allow a doctor to enable a Vacation Mode toggle that temporarily removes them from all patient search results and prevents new appointment bookings, without deactivating their account or requiring them to configure individual days as unavailable.
+
+**Trigger:**  
+Doctor enables Vacation Mode on their availability settings page.
+
+**Preconditions:**
+- Doctor is authenticated.
+
+**Postconditions:**
+- `availability.vacationMode: true` on Doctor document.
+- Doctor is excluded from `/doctors/nearby` results.
+- All slot queries for this doctor return an empty array.
+- Existing accepted appointments are not affected.
+
+---
+
+### FR-052 — OTP Verification for Online Consultation Session Start
+
+| Field | Detail |
+|---|---|
+| **ID** | FR-052 |
+| **Title** | OTP-Based Patient Identity Verification for Online Consultations |
+| **Priority** | High |
+| **Module** | Appointment System |
+| **Actor** | Doctor, Patient, System |
+
+**Description:**  
+For appointments with `consultationMode: online`, the system shall require the doctor to initiate an OTP verification before the video session begins. The system shall generate a 6-digit OTP, hash it (SHA-256), store it with a 10-minute TTL in the `appointment_otps` collection, and deliver the plaintext OTP to the patient's registered mobile number via SMS. The doctor must enter the OTP code (received verbally from the patient) to proceed to the consultation.
+
+**Trigger:**  
+Doctor initiates session start for an accepted online appointment.
+
+**Preconditions:**
+- Appointment is in `accepted` status with `consultationMode: online`.
+- Doctor is authenticated.
+- Patient has a registered mobile number.
+
+**Postconditions:**
+- On successful OTP verification: `AppointmentOtp` document deleted, appointment status updated to `in_consultation`.
+- On OTP expiry (10 minutes): doctor may request a fresh OTP; expired records auto-deleted by MongoDB TTL index.
+- On invalid OTP: error returned; attempt logged; retry permitted.
+
+---
+
+### FR-053 — Online Video/Audio Consultation (WebRTC)
+
+| Field | Detail |
+|---|---|
+| **ID** | FR-053 |
+| **Title** | Peer-to-Peer Video/Audio Consultation via WebRTC |
+| **Priority** | High |
+| **Module** | Appointment System |
+| **Actor** | Patient, Doctor |
+
+**Description:**  
+For appointments with `consultationMode: online`, following successful OTP verification, the system shall establish a peer-to-peer WebRTC audio/video session between the patient and doctor. The Socket.io `/notifications` namespace shall serve as the signalling relay, exchanging SDP offer/answer and ICE candidates. The system shall not process or store audio/video media streams on its servers.
+
+**Trigger:**  
+OTP verification succeeds; doctor emits `call:initiate` signal.
+
+**Preconditions:**
+- Appointment is in `in_consultation` status.
+- Both patient and doctor are connected to the `/notifications` Socket.io namespace.
+- Patient has granted camera and microphone browser permissions.
+
+**Postconditions:**
+- Bidirectional audio/video stream established peer-to-peer between patient and doctor.
+- On `call:hangup`, stream terminated; `CallLog` document created in `call_logs` collection.
+- Doctor proceeds to prescription generation.
+
+---
+
+### FR-054 — AI Symptom Checker and Medical Assistant
+
+| Field | Detail |
+|---|---|
+| **ID** | FR-054 |
+| **Title** | AI-Powered Symptom Checker and Medical Assistant |
+| **Priority** | High |
+| **Module** | AI Module |
+| **Actor** | Patient |
+
+**Description:**  
+The system shall provide a Patient-facing AI Symptom Checker powered by the Google Gemini API. The patient shall be able to describe symptoms in natural language and receive AI-generated guidance including: potential conditions, recommended specialist type, and urgency level. Responses shall be streamed in real time via Server-Sent Events. The system shall support multi-turn conversation history. If the Gemini API is unavailable or not configured, a rule-based keyword-matching fallback shall activate, returning a basic structured response with a disclaimer. All AI responses shall include a medical disclaimer stating the assistant is not a substitute for professional medical advice.
+
+**Trigger:**  
+Patient opens the AI Symptom Checker and submits a symptom description.
+
+**Preconditions:**
+- Patient is authenticated.
+
+**Postconditions:**
+- AI response streamed to patient's browser in real time.
+- If specialist type recommended, a shortcut to pre-filtered doctor search is surfaced.
+- No patient data or conversation is persisted to the database (stateless per session).
+
+---
+
+### FR-055 — Doctor Earnings Dashboard
+
+| Field | Detail |
+|---|---|
+| **ID** | FR-055 |
+| **Title** | Doctor Earnings and Revenue Dashboard |
+| **Priority** | Medium |
+| **Module** | Doctor Management |
+| **Actor** | Doctor |
+
+**Description:**  
+The system shall provide the doctor with an earnings overview dashboard displaying: total lifetime earnings from completed appointments, earnings broken down per appointment, and earnings filtered by date range. Earnings are derived from `Payment` records linked to `completed` appointments where the doctor is the assigned practitioner.
+
+**Trigger:**  
+Doctor navigates to the Earnings section of their dashboard.
+
+**Preconditions:**
+- Doctor is authenticated with `verificationStatus: approved`.
+
+**Postconditions:**
+- Earnings data returned from `GET /api/doctors/me/earnings`.
+- Only payments with `status: paid` from `completed` appointments are counted.
+
+---
+
 
 | FR ID | Title | Priority | Module | Actor |
 |---|---|---|---|---|
@@ -1434,6 +1660,15 @@ Any administrative action is performed (FR-010, FR-033, FR-043, FR-044, FR-045, 
 | FR-045 | Admin Views and Overrides Appointments | High | Admin Dashboard | Admin |
 | FR-046 | Admin Configures Platform Settings | Medium | Admin Dashboard | Admin |
 | FR-047 | Comprehensive Admin Audit Trail | High | Admin Dashboard | Admin, System |
+| FR-048 | Scheduled Slot-Based Appointment Booking | Critical | Appointment System | Patient |
+| FR-049 | Three Consultation Modes (Home/Clinic/Online) | Critical | Appointment System | Patient |
+| FR-050 | Doctor Per-Day Schedule Configuration | High | Doctor Management | Doctor |
+| FR-051 | Doctor Vacation Mode | Medium | Doctor Management | Doctor |
+| FR-052 | OTP Verification for Online Session Start | High | Appointment System | Doctor, Patient, System |
+| FR-053 | Online Video/Audio Consultation (WebRTC) | High | Appointment System | Patient, Doctor |
+| FR-054 | AI Symptom Checker and Medical Assistant | High | AI Module | Patient |
+| FR-055 | Doctor Earnings Dashboard | Medium | Doctor Management | Doctor |
 
 ---
 
+*End of DocDock Functional Requirements Specification — v2.0*

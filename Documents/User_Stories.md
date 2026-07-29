@@ -544,18 +544,20 @@ Stories are grouped by persona — **Patient**, **Doctor**, and **Admin** — an
 
 | Persona | Story Count | Must Have | Should Have | Could Have |
 |---------|--------------|-----------|--------------|-------------|
-| Patient | 20 | 10 | 7 | 3 |
-| Doctor | 18 | 11 | 5 | 2 |
+| Patient | 24 | 12 | 8 | 4 |
+| Doctor | 22 | 13 | 6 | 3 |
 | Admin | 13 | 5 | 5 | 3 |
-| **Total** | **51** | **26** | **17** | **8** |
+| **Total** | **59** | **30** | **19** | **10** |
 
 ---
 
 ## 7. Notes for Backlog Grooming
 
 - Stories marked **Must Have** form the MVP scope and should be prioritized into early sprints (Sprint 1–4).
-- Stories with real-time dependencies (Socket.io-based: US-PAT-09, US-PAT-14, US-PAT-15, US-DOC-06, US-DOC-12, US-DOC-14) should be sequenced after core auth and booking flows are stable, since they depend on appointment state transitions.
+- Stories with real-time dependencies (Socket.io-based: US-PAT-09, US-PAT-14, US-PAT-15, US-DOC-06, US-DOC-12, US-DOC-14, US-PAT-23) should be sequenced after core auth and booking flows are stable, since they depend on appointment state transitions.
 - Payment-related stories (US-PAT-18, US-ADM-09, US-ADM-10) should be developed alongside a Razorpay sandbox integration before production credentials are introduced.
+- WebRTC stories (US-PAT-23, US-DOC-21) require OTP verification to be complete first (US-DOC-21 depends on FR-052). Develop and test OTP flow in Sprint 5 before enabling video calling.
+- AI stories (US-PAT-24) should be developed with a feature-flag pattern so Gemini can be enabled/disabled without code changes.
 - Each story should be further broken down into technical tasks (API endpoints, schema changes, UI components, Socket.io event contracts) during sprint planning — this document defines the *what* and *why*, not the implementation *how*.
 
 ---
@@ -565,3 +567,102 @@ Stories are grouped by persona — **Patient**, **Doctor**, and **Admin** — an
 | Version | Date | Author | Change Summary |
 |---------|------|--------|------------------|
 | 1.0 | 2026-06-24 | Product / Engineering Team | Initial User Stories documentation for DocDock (51 stories across Patient, Doctor, Admin personas). |
+| 2.0 | 2026-07-29 | Engineering Team | Added 8 new stories for online video consultation (WebRTC), OTP session verification, AI Symptom Checker, consultation mode selection, slot-based booking, per-day schedule management, vacation mode, and clinic appointment slip. Updated summary table. |
+
+---
+
+## New Stories — Sprint 3–6 Features
+
+### Patient — Consultation Modes & Advanced Booking
+
+**Story ID:** US-PAT-21
+**User Story:** As a patient, I want to choose a consultation type (Home Visit, Clinic, or Online) when booking an appointment, so that I can select the format that best fits my health need.
+**Acceptance Criteria:**
+- Booking screen shows a consultation mode selector with descriptions for each option.
+- Only modes enabled by the doctor are selectable.
+- Selected mode is stored on the `Appointment` document (`consultationMode` field).
+- Clinic bookings trigger appointment slip generation; Online bookings display video call instructions.
+**Priority:** Must Have
+
+---
+
+**Story ID:** US-PAT-22
+**User Story:** As a patient, I want to see available time slots for a doctor on my chosen date, so that I can book an appointment that fits my schedule.
+**Acceptance Criteria:**
+- When a date is selected, available slots are fetched from the server and displayed.
+- Slots already booked by other patients are not shown or are marked unavailable.
+- Break times and slots outside the doctor's configured hours are not shown.
+- Selecting a slot reserves it for 10 minutes during the payment flow.
+**Priority:** Must Have
+
+---
+
+**Story ID:** US-PAT-23
+**User Story:** As a patient, I want to have a video/audio consultation with my doctor online, so that I can receive medical care from home without physically visiting a clinic or needing a home visit.
+**Acceptance Criteria:**
+- After OTP verification by the doctor, a video call room is opened in the browser (no app download required).
+- Camera and microphone controls are available (mute/unmute, camera on/off).
+- Both parties can end the call with a "Hang Up" button.
+- After the call, the appointment transitions to `in_consultation` and the doctor can issue a prescription.
+- If the patient denies camera/microphone permissions, a clear explanation is shown.
+**Priority:** Must Have
+
+---
+
+**Story ID:** US-PAT-24
+**User Story:** As a patient, I want to describe my symptoms to an AI assistant and receive guidance on what type of doctor I should see, so that I can make an informed booking decision before searching.
+**Acceptance Criteria:**
+- AI chat interface is accessible from the patient dashboard.
+- Patient can type symptoms in natural language and receive a streamed AI response.
+- Response includes potential conditions, recommended specialist type, and urgency level.
+- A "Search for [Specialist]" shortcut button pre-fills the doctor search with the recommended specialty.
+- A medical disclaimer is always visible below AI responses.
+- If AI is unavailable, a fallback response with basic guidance is shown.
+**Priority:** Should Have
+
+---
+
+### Doctor — Schedule Management & Online Consultation
+
+**Story ID:** US-DOC-19
+**User Story:** As a doctor, I want to configure my weekly schedule with specific time slots, break times, and slot duration, so that patients can only book me when I am genuinely available.
+**Acceptance Criteria:**
+- Doctor can set available days, start/end times, break windows, and slot duration (15/20/30/45/60 minutes).
+- Doctor can set a maximum number of appointments per day.
+- Changes take effect immediately for future slot queries.
+- Days marked as off show no slots to patients.
+**Priority:** Must Have
+
+---
+
+**Story ID:** US-DOC-20
+**User Story:** As a doctor, I want to enable Vacation Mode to temporarily pause all new bookings, so that I can take time off without manually disabling each day in my schedule.
+**Acceptance Criteria:**
+- A single toggle enables/disables Vacation Mode.
+- While Vacation Mode is active, the doctor does not appear in patient search results.
+- All slot queries for the doctor return empty while vacation mode is on.
+- Existing accepted appointments are not cancelled or affected.
+**Priority:** Should Have
+
+---
+
+**Story ID:** US-DOC-21
+**User Story:** As a doctor, I want to verify a patient's identity via OTP before starting an online video consultation, so that I can confirm the correct patient is present before the session begins.
+**Acceptance Criteria:**
+- A "Generate OTP" button appears for accepted online appointments.
+- Clicking it generates a 6-digit OTP and sends it to the patient's registered phone via SMS.
+- Doctor enters the OTP verbally obtained from the patient into a verification field.
+- On correct OTP entry: the appointment transitions to `in_consultation` and the video room opens.
+- OTP expires after 10 minutes; a "Resend OTP" option is available.
+**Priority:** Must Have
+
+---
+
+**Story ID:** US-DOC-22
+**User Story:** As a doctor, I want my clinic patients to automatically receive an appointment slip when I accept their booking, so that they have confirmation with the appointment details to present at the clinic.
+**Acceptance Criteria:**
+- When a clinic appointment is accepted, an appointment slip PDF is generated with: doctor name, patient name, date/time, clinic address, and a QR code.
+- The patient can download the slip from their appointments page.
+- The QR code encodes the appointment ID for clinic reception verification.
+**Priority:** Should Have
+

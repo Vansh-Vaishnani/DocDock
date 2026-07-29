@@ -87,12 +87,14 @@ Stakeholders are classified across two axes:
 | Responsibility | Description |
 |---|---|
 | Credential Submission | Provide valid MCI/NMC license number and registration documents during onboarding |
-| Availability Accuracy | Toggle availability truthfully — go offline when unavailable to avoid patient disappointment |
+| Availability Accuracy | Toggle availability truthfully; configure per-day schedule and vacation mode accurately |
 | Timely Response | Accept or reject appointment requests within a reasonable window (target: 5 minutes) |
 | Location Sharing | Share live GPS location during active home-visit appointments |
+| OTP Verification | Initiate OTP verification before online consultation sessions to confirm patient identity |
+| Video Consultation Conduct | Conduct online video consultations professionally; end the call via the platform's Hang Up control |
 | Prescription Integrity | Issue prescriptions only for conditions actually consulted upon |
 | Professional Conduct | Maintain ethical, professional behavior with patients on and off the platform |
-| Profile Accuracy | Keep specialization, fee, and contact details current |
+| Profile Accuracy | Keep specialization, consultation modes, fee, and contact details current |
 
 ---
 
@@ -187,7 +189,12 @@ What each stakeholder expects from DocDock — these expectations directly drive
 | Simple, fast onboarding | High | Doctor registration + Cloudinary upload |
 | Control over when I receive patients | Critical | Availability toggle |
 | Clear view of incoming appointment requests | Critical | Doctor dashboard — appointment queue |
+| A streamlined appointment management dashboard | Critical | Appointment queue with accept/reject |
 | Accept or reject with one tap | High | Appointment status management |
+| Per-day schedule control (slots, breaks, duration) | High | Per-day schedule configuration + vacation mode |
+| Consultation mode management (Home/Clinic/Online) | High | `consultationModes` field on Doctor profile |
+| OTP session initiation for online appointments | High | OTP generate/verify endpoints |
+| Video call controls (mute, camera, hang up) | High | WebRTC video consultation UI |
 | Digital prescription workflow | High | Prescription creation + PDF |
 | Transparent earnings per consultation | Medium | Payment record in dashboard |
 | Patient can reach me if needed | Medium | In-app chat |

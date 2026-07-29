@@ -180,7 +180,7 @@ All errors return a consistent structure:
 ```json
 {
   "success": true,
-  "message": "Registration successful. Please verify your email.",
+  "message": "Registration successful.",
   "data": {
     "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
     "email": "arjun@example.com",
@@ -189,6 +189,8 @@ All errors return a consistent structure:
   }
 }
 ```
+
+> **Note:** Patient accounts are immediately active on creation — no email verification step is required. The `isVerified` flag reflects whether Google OAuth was used (always `true`) or email/password registration was used (`false` initially, does not block login).
 
 **Error Responses:**
 
@@ -202,7 +204,9 @@ All errors return a consistent structure:
 
 ### 1.2 Verify Email
 
-**Route:** `GET /auth/verify-email?token=<token>`
+> **Implementation Note:** Email verification is NOT implemented as an active gate in the current build. Accounts are immediately active after registration. This endpoint specification is preserved for documentation completeness but is not an active endpoint.
+
+**Route (Not Active):** `GET /auth/verify-email?token=<token>`
 **Auth:** None
 
 **Query Parameters:**
@@ -1034,20 +1038,20 @@ All errors return a consistent structure:
   "message": "Appointment created. Proceed to payment.",
   "data": {
     "appointmentId": "64f5e6f7a8b9c0d1e2f3a4b5",
-    "status": "pending_payment",
+    "status": "pending",
     "doctor": {
       "fullName": "Dr. Priya Mehta",
       "specialization": "Cardiologist"
     },
     "scheduledAt": "2024-11-20T09:00:00.000Z",
     "consultationFee": 800,
-    "platformFee": 80,
-    "tax": 154,
-    "totalAmount": 1034,
+    "consultationMode": "home",
     "paymentDue": "2024-11-20T08:45:00.000Z"
   }
 }
 ```
+
+> **Note:** Payment must be confirmed via Razorpay webhook before the appointment status changes to `pending` (active state) and the doctor is notified. Emergency appointments (`isEmergency: true`) bypass payment and go directly to `pending`.
 
 **Error Responses:**
 
@@ -1073,7 +1077,8 @@ All errors return a consistent structure:
   "success": true,
   "data": {
     "appointmentId": "64f5e6f7a8b9c0d1e2f3a4b5",
-    "status": "doctor_en_route",
+    "status": "doctor_on_way",
+    "consultationMode": "home",
     "patient": {
       "patientId": "64f4d5e6f7a8b9c0d1e2f3a4",
       "fullName": "Arjun Sharma",
@@ -1088,27 +1093,22 @@ All errors return a consistent structure:
       "phone": "+919988776655"
     },
     "scheduledAt": "2024-11-20T09:00:00.000Z",
-    "visitAddress": {
-      "street": "Flat 4B, Sai Residency",
-      "city": "Hyderabad",
-      "coordinates": {
+    "address": {
+      "label": "Flat 4B, Sai Residency, Hyderabad",
+      "location": {
         "type": "Point",
         "coordinates": [78.4744, 17.4065]
       }
     },
-    "symptoms": "Chest pain and breathlessness.",
+    "notes": "Chest pain and breathlessness.",
+    "isEmergency": false,
     "payment": {
       "paymentId": "64f6f7a8b9c0d1e2f3a4b5c6",
-      "status": "captured",
-      "amount": 1034,
+      "status": "paid",
+      "amount": 800,
       "paidAt": "2024-11-15T10:05:00.000Z"
     },
-    "prescriptionId": null,
-    "statusHistory": [
-      { "status": "pending_payment", "changedAt": "2024-11-15T10:00:00.000Z" },
-      { "status": "payment_confirmed", "changedAt": "2024-11-15T10:05:00.000Z" },
-      { "status": "doctor_en_route", "changedAt": "2024-11-20T08:30:00.000Z" }
-    ],
+    "prescription": null,
     "createdAt": "2024-11-15T10:00:00.000Z"
   }
 }
@@ -1139,14 +1139,21 @@ All errors return a consistent structure:
 
 **Valid Transitions by Role:**
 
-| From                  | To                    | Allowed By |
-|-----------------------|-----------------------|------------|
-| `payment_confirmed`   | `doctor_en_route`     | `D`        |
-| `doctor_en_route`     | `doctor_arrived`      | `D`        |
-| `doctor_arrived`      | `in_consultation`     | `D`        |
-| `in_consultation`     | `completed`           | `D`        |
-| `payment_confirmed`   | `cancelled`           | `D`, `A`   |
-| `doctor_en_route`     | `cancelled`           | `D`, `A`   |
+> **Implemented status enum values:** `pending`, `accepted`, `rejected`, `auto_rejected`, `doctor_on_way`, `arrived`, `in_consultation`, `completed`, `cancelled_by_patient`, `cancelled_by_doctor`, `doctor_no_show`
+
+| From | To | Allowed By |
+|-----------|-----------|-----------|
+| `pending` | `accepted` | `D` |
+| `pending` | `rejected` | `D` (requires `reason`) |
+| `pending` | `cancelled_by_patient` | `P` |
+| `accepted` | `doctor_on_way` | `D` |
+| `accepted` | `cancelled_by_doctor` | `D` (requires `reason`) |
+| `doctor_on_way` | `arrived` | `D` |
+| `doctor_on_way` | `cancelled_by_doctor` | `D` |
+| `arrived` | `in_consultation` | `D` |
+| `arrived` | `cancelled_by_doctor` | `D` |
+| `in_consultation` | `completed` | `D` |
+| Any active | `doctor_no_show` | `A` |
 
 **Response — 200 OK:**
 
@@ -1156,7 +1163,7 @@ All errors return a consistent structure:
   "message": "Appointment status updated.",
   "data": {
     "appointmentId": "64f5e6f7a8b9c0d1e2f3a4b5",
-    "status": "doctor_arrived",
+    "status": "arrived",
     "updatedAt": "2024-11-20T09:10:00.000Z"
   }
 }

@@ -114,12 +114,20 @@ src/
 │   ├── geo-search/
 │   ├── availability/
 │   ├── appointment/
+│   │   ├── appointment.service.ts
+│   │   ├── appointment.repository.ts
+│   │   ├── otp.model.ts        ← AppointmentOtp schema
+│   │   └── call.model.ts       ← CallLog schema
 │   ├── tracking/
 │   ├── chat/
+│   │   └── chat.model.ts       ← ChatMessage schema
 │   ├── prescription/
 │   ├── review/
 │   ├── payment/
-│   └── notification/
+│   ├── notification/
+│   └── ai/
+│       ├── ai.controller.ts    ← Gemini + fallback + streaming
+│       └── ai.routes.ts
 ├── common/
 │   ├── middleware/
 │   ├── utils/
@@ -127,10 +135,14 @@ src/
 │   ├── config/
 │   └── constants/
 ├── sockets/
-│   ├── gateway.js
+│   ├── gateway.ts
 │   └── handlers/
-├── jobs/              # cron / background workers
-└── server.js
+├── services/
+│   ├── sms.service.ts          ← Twilio SMS abstraction
+│   ├── voice.service.ts        ← Twilio Voice abstraction
+│   └── cloudinary.service.ts
+├── workers/                    ← BullMQ job workers
+└── server.ts
 ```
 
 Each module under `modules/` is structured uniformly:
@@ -167,7 +179,8 @@ Namespaces:
 | `/tracking` | Doctor → Patient live location broadcast |
 | `/chat` | Patient ↔ Doctor messaging |
 | `/availability` | Doctor online/offline status broadcast to search results |
-| `/notifications` | In-app real-time notification delivery |
+| `/notifications` | In-app real-time notification delivery + WebRTC call signalling events (call:initiate, call:accept, call:reject, call:hangup, webrtc:signal) |
+
 ---
 
 ## 4. Module Breakdown
@@ -1160,6 +1173,138 @@ Services throw these typed errors directly; controllers never construct ad-hoc e
 | Concurrent appointment accept by doctor on two devices | `transition()` uses an atomic `findOneAndUpdate({ status: 'requested' }, { status: 'accepted' })` — only the first writer succeeds; the second receives a `CONFLICT` error and a "already handled" UI state |
 | Stale doctor location after disconnect | Heartbeat sweep job (§4.6) force-offlines doctors after 90s of silence |
 
+### 10.6 BullMQ Background Workers
+
+DocDock uses **BullMQ** (backed by Redis) for background job processing, ensuring the request/response cycle stays fast by offloading slow or scheduled work.
+
+### Workers
+
+| Worker | Queue Name | Responsibilities |
+|---|---|---|
+| **Appointment Reminder Worker** | `appointment-reminders` | Sends SMS/email reminders to patients and doctors before scheduled appointments |
+| **Notification Dispatch Worker** | `notifications` | Asynchronous delivery of SendGrid emails and Twilio SMS for booking, cancellation, and verification events |
+| **Cleanup Worker** | `cleanup` | Purges expired AppointmentOTPs, stale refresh tokens, old sessions, and pending appointments past their payment window |
+
+### Job Lifecycle
+
+```
+Job Created → active (processing) → completed
+                    ↓ on failure
+              failed → retry (exponential backoff, max 3)
+                    ↓ still failing
+              dead-letter queue (manual inspection)
+```
+
+### Online Timeout Job
+
+`checkOnlineTimeouts()` runs every 60 seconds to auto-reject online appointments where:
+- The appointment is in `accepted` status with `consultationMode: "online"`
+- The current time is past the scheduled start + allowed grace period
+- The doctor has not joined the session (no OTP generation recorded)
+
+When triggered: appointment status set to `auto_rejected`, full Razorpay refund initiated, patient notified via notification service.
+
+---
+
+## 10.7 Video / Audio Consultation (WebRTC + OTP)
+
+### 10.7.1 OTP Verification Flow (Online Mode)
+
+For online appointments, a mandatory OTP step confirms the patient's identity before the video session begins:
+
+1. **Doctor** calls `POST /api/appointments/:id/otp/generate`
+2. Backend generates a **6-digit OTP**, hashes it (SHA-256), stores in `AppointmentOtp` collection with a 10-minute TTL
+3. OTP is sent to the **patient's registered phone** via the SMS service (`smsService.sendSMS()`)
+4. **Doctor** enters the OTP code received verbally from the patient
+5. **Doctor** calls `POST /api/appointments/:id/otp/verify`
+6. Backend hashes the submitted OTP, compares with stored hash (constant-time comparison), verifies expiry
+7. On success: OTP document deleted, appointment status set to `in_consultation`, session start time recorded
+
+### 10.7.2 WebRTC Call Signalling
+
+DocDock does **not** use a dedicated media server (no Janus/Mediasoup). All media is sent **peer-to-peer** (WebRTC). The Socket.io server acts only as a **signalling relay**:
+
+| Signal Event | Direction | Payload |
+|---|---|---|
+| `call:initiate` | Doctor → Server → Patient | `{ appointmentId, offer: RTCSessionDescription }` |
+| `call:accept` | Patient → Server → Doctor | `{ appointmentId, answer: RTCSessionDescription }` |
+| `call:reject` | Patient → Server → Doctor | `{ appointmentId }` |
+| `call:hangup` | Either → Server → Other | `{ appointmentId }` |
+| `webrtc:signal` | Either ↔ Server ↔ Either | `{ appointmentId, candidate: RTCIceCandidate }` |
+
+All events are relayed via the `/notifications` Socket.io namespace, scoped to the appointment's room.
+
+### 10.7.3 Call Log Persistence
+
+On `call:hangup`, a `CallLog` document is created in the `call_logs` collection recording:
+- `appointmentId`, `callerId`, `calleeId`, `callerRole`
+- `startedAt`, `endedAt`, `durationSeconds`
+- `callStatus`: `completed` | `missed` | `rejected` | `failed`
+
+---
+
+## 10.8 AI Module
+
+### 10.8.1 Responsibility
+
+The AI module is powered by **Google Gemini API** (`@google/generative-ai` SDK). It serves two endpoints:
+- `POST /api/v1/ai/symptom-check` — patient symptom triage
+- `POST /api/v1/ai/chat` — multi-turn AI medical chat
+
+### 10.8.2 Lazy Initialisation
+
+The Gemini client is **not instantiated at server startup**. It is created on first request, using the `GEMINI_API_KEY` environment variable. This ensures the server starts cleanly even when the AI key is not configured.
+
+```typescript
+// ai.controller.ts
+let geminiClient: GoogleGenerativeAI | null = null;
+
+function getGeminiClient(): GoogleGenerativeAI {
+  if (!geminiClient) {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY not configured');
+    }
+    geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  }
+  return geminiClient;
+}
+```
+
+### 10.8.3 Streaming Response
+
+Gemini's `generateContentStream()` method provides token-level streaming. The backend pipes each chunk to the HTTP response as Server-Sent Events (SSE):
+
+```typescript
+res.setHeader('Content-Type', 'text/event-stream');
+res.setHeader('Cache-Control', 'no-cache');
+
+const stream = await model.generateContentStream(prompt);
+for await (const chunk of stream.stream) {
+  const text = chunk.text();
+  res.write(`data: ${JSON.stringify({ chunk: text })}\n\n`);
+}
+res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+res.end();
+```
+
+### 10.8.4 Rule-Based Fallback
+
+When Gemini is unavailable (no API key, network error, or API failure), the system activates a rule-based fallback:
+- Keyword matching on the patient's symptom text
+- Returns a structured response with general guidance
+- Always includes a medical disclaimer
+- Response includes `source: "fallback"` flag so the frontend can show appropriate UI indicators
+
+### 10.8.5 Medical Safety
+
+The system prompt instructs Gemini to:
+- NOT provide definitive diagnoses
+- Suggest specialist types and urgency levels only
+- Always recommend seeking professional medical care
+- Not prescribe medications
+
+All responses include a disclaimer: *"This AI assistant is for informational purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment."*
+
 ---
 
 ## 11. Security Considerations
@@ -1193,13 +1338,18 @@ Services throw these typed errors directly; controllers never construct ad-hoc e
 | POST | `/auth/register` | Auth | Public |
 | POST | `/auth/login` | Auth | Public |
 | POST | `/auth/refresh` | Auth | Refresh token |
+| GET | `/auth/google` | Auth | Public (OAuth) |
 | GET | `/doctors/nearby` | Geo-Search | Patient |
+| GET | `/doctors/:id/slots?date=YYYY-MM-DD` | Appointment | Patient |
 | PATCH | `/doctors/me/availability` | Availability | Doctor |
 | POST | `/doctors/me/documents` | Doctor | Doctor |
 | GET | `/admin/doctors?status=pending` | Admin | Admin |
 | POST | `/admin/doctors/:id/approve` | Admin | Admin |
 | POST | `/admin/doctors/:id/reject` | Admin | Admin |
-| POST | `/appointments` | Appointment | Patient |
+| POST | `/payments/create-order` | Payment | Patient |
+| POST | `/payments/webhook/razorpay` | Payment | Webhook (HMAC) |
+| POST | `/appointments/:id/otp/generate` | Appointment | Doctor |
+| POST | `/appointments/:id/otp/verify` | Appointment | Doctor |
 | PATCH | `/appointments/:id/accept` | Appointment | Doctor |
 | PATCH | `/appointments/:id/status` | Appointment | Doctor |
 | PATCH | `/appointments/:id/complete` | Appointment | Doctor |
@@ -1207,8 +1357,11 @@ Services throw these typed errors directly; controllers never construct ad-hoc e
 | POST | `/prescriptions` | Prescription | Doctor |
 | GET | `/prescriptions/:appointmentId` | Prescription | Patient/Doctor |
 | POST | `/reviews` | Review | Patient |
-| POST | `/payments/webhooks/razorpay` | Payment | Webhook (HMAC) |
 | GET | `/notifications` | Notification | Authenticated |
+| POST | `/ai/symptom-check` | AI | Patient |
+| POST | `/ai/chat` | AI | Patient |
+| GET | `/maps/search?q=` | Maps | Authenticated |
+| GET | `/maps/reverse?lat=&lng=` | Maps | Authenticated |
 
 **Socket.io Events Summary**
 
@@ -1220,7 +1373,12 @@ Services throw these typed errors directly; controllers never construct ad-hoc e
 | `/chat` | `message:read` / `message:read-ack` | Bidirectional |
 | `/availability` | `doctor:status-changed` | Server → Subscribed Patients |
 | `/notifications` | `notification:new` | Server → Client |
+| `/notifications` | `call:initiate` | Doctor → Server → Patient |
+| `/notifications` | `call:accept` | Patient → Server → Doctor |
+| `/notifications` | `call:reject` | Patient → Server → Doctor |
+| `/notifications` | `call:hangup` | Either → Server → Other |
+| `/notifications` | `webrtc:signal` | Either ↔ Server ↔ Either |
 
 ---
 
-*End of Low Level Design Document — DocDock v1.0*
+*End of Low Level Design Document — DocDock v2.0*

@@ -70,13 +70,15 @@
 | UC-P02 | Login | P0 |
 | UC-P03 | Search Nearby Doctors | P0 |
 | UC-P04 | View Doctor Profile | P0 |
-| UC-P05 | Book Appointment | P0 |
+| UC-P05 | Book Appointment (all modes) | P0 |
 | UC-P06 | Make Payment | P0 |
 | UC-P07 | Track Doctor in Real Time | P1 |
 | UC-P08 | Chat with Doctor | P1 |
 | UC-P09 | View Prescription | P1 |
 | UC-P10 | Rate and Review Doctor | P1 |
 | UC-P11 | View Appointment History | P1 |
+| UC-P12 | Use AI Symptom Checker | P2 |
+| UC-P13 | Online Video Consultation | P1 |
 
 ### Doctor Use Cases
 
@@ -91,6 +93,9 @@
 | UC-D07 | Generate Prescription | P1 |
 | UC-D08 | View Patient History | P1 |
 | UC-D09 | Update Profile | P1 |
+| UC-D10 | Configure Per-Day Schedule | P0 |
+| UC-D11 | OTP Verify Session Start | P1 |
+| UC-D12 | Enable Vacation Mode | P2 |
 
 ### Admin Use Cases
 
@@ -118,39 +123,44 @@ graph TD
         C([☁️ Cloudinary])
     end
 
-    subgraph Patient Use Cases
-        UCP01[UC-P01: Register Account]
-        UCP02[UC-P02: Login]
-        UCP03[UC-P03: Search Nearby Doctors]
-        UCP04[UC-P04: View Doctor Profile]
-        UCP05[UC-P05: Book Appointment]
-        UCP06[UC-P06: Make Payment]
-        UCP07[UC-P07: Track Doctor in Real Time]
-        UCP08[UC-P08: Chat with Doctor]
-        UCP09[UC-P09: View Prescription]
-        UCP10[UC-P10: Rate and Review Doctor]
-        UCP11[UC-P11: View Appointment History]
+    subgraph "Patient Use Cases"
+        UCP01["UC-P01: Register Account"]
+        UCP02["UC-P02: Login"]
+        UCP03["UC-P03: Search Nearby Doctors"]
+        UCP04["UC-P04: View Doctor Profile"]
+        UCP05["UC-P05: Book Appointment"]
+        UCP06["UC-P06: Make Payment"]
+        UCP07["UC-P07: Track Doctor in Real Time"]
+        UCP08["UC-P08: Chat with Doctor"]
+        UCP09["UC-P09: View Prescription"]
+        UCP10["UC-P10: Rate and Review Doctor"]
+        UCP11["UC-P11: View Appointment History"]
+        UCP12["UC-P12: Use AI Symptom Checker"]
+        UCP13["UC-P13: Online Video Consultation"]
     end
 
-    subgraph Doctor Use Cases
-        UCD01[UC-D01: Register as Doctor]
-        UCD02[UC-D02: Login]
-        UCD03[UC-D03: Toggle Availability]
-        UCD04[UC-D04: Manage Appointment Requests]
-        UCD05[UC-D05: Share Live Location]
-        UCD06[UC-D06: Chat with Patient]
-        UCD07[UC-D07: Generate Prescription]
-        UCD08[UC-D08: View Patient History]
-        UCD09[UC-D09: Update Profile]
+    subgraph "Doctor Use Cases"
+        UCD01["UC-D01: Register as Doctor"]
+        UCD02["UC-D02: Login"]
+        UCD03["UC-D03: Toggle Availability"]
+        UCD04["UC-D04: Manage Appointment Requests"]
+        UCD05["UC-D05: Share Live Location"]
+        UCD06["UC-D06: Chat with Patient"]
+        UCD07["UC-D07: Generate Prescription"]
+        UCD08["UC-D08: View Patient History"]
+        UCD09["UC-D09: Update Profile"]
+        UCD10["UC-D10: Configure Per-Day Schedule"]
+        UCD11["UC-D11: OTP Verify Session Start"]
+        UCD12["UC-D12: Enable Vacation Mode"]
     end
 
-    subgraph Admin Use Cases
-        UCA01[UC-A01: Login to Admin Panel]
-        UCA02[UC-A02: Verify Doctor]
-        UCA03[UC-A03: Reject Doctor Registration]
-        UCA04[UC-A04: Suspend User Account]
-        UCA05[UC-A05: View Platform Analytics]
-        UCA06[UC-A06: Manage Users]
+    subgraph "Admin Use Cases"
+        UCA01["UC-A01: Login to Admin Panel"]
+        UCA02["UC-A02: Verify Doctor"]
+        UCA03["UC-A03: Reject Doctor Registration"]
+        UCA04["UC-A04: Suspend User Account"]
+        UCA05["UC-A05: View Platform Analytics"]
+        UCA06["UC-A06: Manage Users"]
     end
 
     %% Patient associations
@@ -165,6 +175,8 @@ graph TD
     P --> UCP09
     P --> UCP10
     P --> UCP11
+    P --> UCP12
+    P --> UCP13
 
     %% Doctor associations
     D --> UCD01
@@ -176,6 +188,9 @@ graph TD
     D --> UCD07
     D --> UCD08
     D --> UCD09
+    D --> UCD10
+    D --> UCD11
+    D --> UCD12
 
     %% Admin associations
     A --> UCA01
@@ -189,6 +204,7 @@ graph TD
     R --> UCP06
     N --> UCP05
     N --> UCD04
+    N --> UCD11
     C --> UCD01
     C --> UCD09
 
@@ -198,7 +214,9 @@ graph TD
     UCP07 -->|depends on| UCD05
     UCP08 -->|paired with| UCD06
     UCP09 -->|depends on| UCD07
+    UCP13 -->|requires| UCD11
     UCD01 -->|requires| UCA02
+    UCP05 -->|selects slot from| UCD10
 ```
 
 ---
@@ -1300,10 +1318,207 @@ graph TD
 | Version | Date | Author | Changes |
 |---|---|---|---|
 | 1.0 | June 2025 | Product & Engineering Team | Initial baseline — all use cases defined |
+| 2.0 | 2026-07-29 | Engineering Team | Added UC-P12 (AI Symptom Checker), UC-P13 (Online Video Consultation), UC-D10 (Configure Per-Day Schedule), UC-D11 (OTP Verify Session Start), UC-D12 (Vacation Mode). Updated overview tables, Mermaid diagram, and added full UC specs. |
+
+---
+
+## 7. New Use Cases — v2.0
+
+---
+
+### UC-P12: Use AI Symptom Checker
+
+| Field | Detail |
+|---|---|
+| **Use Case ID** | UC-P12 |
+| **Name** | Use AI Symptom Checker |
+| **Actor** | Patient |
+| **Description** | A patient describes symptoms in natural language to an AI assistant and receives guidance on the likely condition and specialist type. |
+| **Priority** | P2 |
+
+**Preconditions**
+- Patient is authenticated.
+
+**Main Flow**
+
+| Step | Actor | Action |
+|---|---|---|
+| 1 | Patient | Opens the AI Symptom Checker from the patient dashboard |
+| 2 | System | Displays a multi-turn chat interface with a disclaimer |
+| 3 | Patient | Types a symptom description (e.g., "I have a high fever and sore throat for 2 days") |
+| 4 | System | Sends prompt to Google Gemini API with a medical safety system prompt |
+| 5 | System | Streams the AI response in real time via Server-Sent Events (SSE) |
+| 6 | System | Displays response including: likely conditions, recommended specialist, urgency level, and disclaimer |
+| 7 | Patient | Optionally clicks "Search [Specialist]" to open doctor search pre-filtered |
+
+**Alternate Flows**
+
+| ID | Condition | Steps |
+|---|---|---|
+| AF-1 | Gemini API unavailable | System activates rule-based fallback; returns structured response with `source: "fallback"` indicator |
+| AF-2 | Patient asks follow-up | System maintains conversation history for multi-turn context |
+
+**Postconditions**
+- Patient receives AI-generated medical guidance.
+- No conversation data is persisted to the database.
+
+---
+
+### UC-P13: Online Video Consultation
+
+| Field | Detail |
+|---|---|
+| **Use Case ID** | UC-P13 |
+| **Name** | Online Video Consultation |
+| **Actor** | Patient, Doctor |
+| **Description** | Patient and doctor conduct a real-time video/audio consultation via WebRTC, following successful OTP verification. |
+| **Priority** | P1 |
+
+**Preconditions**
+- Appointment is in `accepted` status with `consultationMode: online`.
+- Doctor has initiated OTP verification (UC-D11) and it has succeeded.
+- Both parties are connected to the `/notifications` Socket.io namespace.
+- Patient has granted camera and microphone browser permissions.
+
+**Main Flow**
+
+| Step | Actor | Action |
+|---|---|---|
+| 1 | Doctor | Emits `call:initiate` with SDP offer to Socket.io server |
+| 2 | System | Relays `call:initiate` to patient's client |
+| 3 | Patient | Sees incoming call modal; clicks "Accept" |
+| 4 | Patient | Browser emits `call:accept` with SDP answer |
+| 5 | System | Relays `call:accept` to doctor's client |
+| 6 | Both | ICE candidates exchanged via `webrtc:signal` events |
+| 7 | Both | P2P WebRTC media stream established; video/audio flows directly |
+| 8 | Either | Clicks "Hang Up"; `call:hangup` event emitted |
+| 9 | System | Terminates signalling; creates `CallLog` document in `call_logs` collection |
+| 10 | Doctor | Proceeds to generate prescription |
+
+**Alternate Flows**
+
+| ID | Condition | Steps |
+|---|---|---|
+| AF-1 | Patient rejects call | Patient emits `call:reject`; doctor sees "Call Rejected" notification |
+| AF-2 | ICE negotiation fails | Connection error displayed; retry option offered |
+| AF-3 | Patient denies camera/mic | Browser permission dialog shown; if denied, clear explanation displayed |
+
+**Postconditions**
+- `CallLog` document created with call duration and status.
+- Appointment proceeds to prescription generation.
+
+---
+
+### UC-D10: Configure Per-Day Schedule
+
+| Field | Detail |
+|---|---|
+| **Use Case ID** | UC-D10 |
+| **Name** | Configure Per-Day Availability Schedule |
+| **Actor** | Doctor |
+| **Description** | Doctor configures their weekly schedule including available days, time slots, break time, slot duration, and maximum appointments per day. |
+| **Priority** | P0 |
+
+**Preconditions**
+- Doctor is authenticated with `verificationStatus: approved`.
+
+**Main Flow**
+
+| Step | Actor | Action |
+|---|---|---|
+| 1 | Doctor | Navigates to Availability Settings |
+| 2 | System | Displays per-day schedule form with current settings |
+| 3 | Doctor | For each day: enables/disables, sets start/end time, break window, slot duration, max appointments |
+| 4 | Doctor | Saves schedule |
+| 5 | System | Validates no overlapping windows or invalid time ranges |
+| 6 | System | Updates `availability` embedded document on Doctor record |
+| 7 | System | Future slot queries reflect new schedule immediately |
+
+**Postconditions**
+- Doctor's per-day schedule persisted.
+- `GET /api/doctors/:id/slots?date=` returns slots according to new configuration.
+
+---
+
+### UC-D11: OTP Verify Session Start
+
+| Field | Detail |
+|---|---|
+| **Use Case ID** | UC-D11 |
+| **Name** | OTP Verify Online Consultation Session Start |
+| **Actor** | Doctor, Patient, System |
+| **Description** | For online appointments, the doctor initiates OTP verification. An OTP is sent to the patient via SMS; the doctor verifies it to start the session. |
+| **Priority** | P1 |
+
+**Preconditions**
+- Appointment is in `accepted` status with `consultationMode: online`.
+- Doctor is authenticated.
+- Patient has a registered mobile number.
+
+**Main Flow**
+
+| Step | Actor | Action |
+|---|---|---|
+| 1 | Doctor | Clicks "Generate OTP" on the appointment details screen |
+| 2 | System | Generates a 6-digit OTP, hashes it (SHA-256), stores in `appointment_otps` with 10-minute TTL |
+| 3 | System | Sends plaintext OTP to patient's registered phone number via Twilio SMS |
+| 4 | Patient | Receives SMS with OTP; reads it to the doctor verbally |
+| 5 | Doctor | Enters OTP into the verification field and submits |
+| 6 | System | Hashes submitted OTP, compares with stored hash; verifies expiry |
+| 7 | System | OTP match success: deletes `AppointmentOtp` record, transitions appointment to `in_consultation` |
+| 8 | System | Opens video call flow (UC-P13) |
+
+**Alternate Flows**
+
+| ID | Condition | Steps |
+|---|---|---|
+| AF-1 | OTP expired (> 10 min) | System returns expiry error; "Resend OTP" option available |
+| AF-2 | OTP incorrect | System returns "Invalid OTP" error; doctor may retry |
+
+**Postconditions**
+- Appointment status set to `in_consultation`.
+- OTP document deleted from `appointment_otps` collection.
+
+---
+
+### UC-D12: Enable Vacation Mode
+
+| Field | Detail |
+|---|---|
+| **Use Case ID** | UC-D12 |
+| **Name** | Enable Vacation Mode |
+| **Actor** | Doctor |
+| **Description** | Doctor temporarily pauses all new appointment bookings without deactivating their account. |
+| **Priority** | P2 |
+
+**Preconditions**
+- Doctor is authenticated.
+
+**Main Flow**
+
+| Step | Actor | Action |
+|---|---|---|
+| 1 | Doctor | Navigates to Availability Settings |
+| 2 | Doctor | Toggles Vacation Mode ON |
+| 3 | System | Sets `availability.vacationMode: true` on Doctor document |
+| 4 | System | Excludes doctor from all `/doctors/nearby` search results |
+| 5 | System | All slot queries for this doctor return empty array |
+| 6 | Doctor | Toggles Vacation Mode OFF when ready to accept bookings again |
+| 7 | System | Sets `availability.vacationMode: false`; doctor reappears in search results |
+
+**Alternate Flows**
+
+| ID | Condition | Steps |
+|---|---|---|
+| AF-1 | Doctor has pending accepted appointments | Existing accepted appointments are not affected; only new bookings are blocked |
+
+**Postconditions**
+- Doctor is hidden from patient search until vacation mode is disabled.
+- Existing appointment commitments are preserved.
 
 ---
 
 *DocDock — Knock-Knock, your doctor is here.*
 
 ---
-*Confidential — Internal Product Documentation | DocDock v1.0*
+*Confidential — Internal Product Documentation | DocDock v2.0*

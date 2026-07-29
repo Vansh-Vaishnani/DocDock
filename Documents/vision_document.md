@@ -243,38 +243,43 @@ These goals define what the **product itself** must achieve — the user-facing 
 |---|---|
 | **Platform Type** | Responsive web application (mobile-first design) |
 | **User Roles** | Patient, Doctor, Admin |
-| **Consultation Mode** | In-person home visit |
-| **Booking Modes** | Instant on-demand + pre-scheduled |
+| **Consultation Modes** | Home Visit (in-person with live GPS tracking), Clinic Visit (appointment slip + QR code), Online (WebRTC video/audio + OTP verification) |
+| **Booking Modes** | Instant on-demand + pre-scheduled slot-based |
 | **Geography (Phase 1)** | Indian cities; INR currency; Indian phone numbers |
 
 ### 8.2 Feature Scope
 
 | Domain | Features In Scope |
 |---|---|
-| **Authentication** | Registration, login, logout, JWT access + refresh tokens, bcrypt password hashing, role-based access control |
+| **Authentication** | Registration, login, logout, JWT access + refresh tokens, bcrypt password hashing, Google OAuth 2.0 (patients), role-based access control |
 | **Doctor Onboarding** | Profile creation, credential submission, Cloudinary photo upload, admin approval gate |
 | **Discovery** | MongoDB 2dsphere geo query, radius filter, specialty filter, availability filter, map display (React Leaflet) |
-| **Availability** | Real-time availability toggle, live location sharing while available |
-| **Appointments** | Create, view, accept, reject, update status (pending → accepted → on_way → in_progress → completed) |
-| **Payments** | Razorpay integration, payment before confirmation, digital receipt |
-| **Real-Time** | Socket.io — live doctor location streaming, in-app patient–doctor chat |
-| **Prescriptions** | Structured prescription entry by doctor, PDF generation, patient download |
-| **Reviews** | Post-consultation star rating + text review, doctor aggregate rating |
-| **Notifications** | In-app alerts; email notifications via Nodemailer for key lifecycle events |
-| **Admin** | Doctor verification dashboard, user management, basic platform analytics |
+| **Availability** | Per-day schedule configuration with time slots; real-time availability toggle; vacation mode; slot duration control |
+| **Appointments** | Create, view, accept, reject, update status (`pending → accepted → doctor_on_way → arrived → in_consultation → completed`); consultation modes: `clinic`, `home`, `online` |
+| **Payments** | Razorpay integration, payment before appointment confirmation, automatic refunds on cancellation |
+| **Real-Time** | Socket.io — live doctor GPS location streaming (/tracking namespace), in-app patient–doctor chat (/chat namespace), WebRTC signalling for video/audio calls (/notifications namespace) |
+| **Video/Audio Calls** | WebRTC-based peer-to-peer video and audio consultation for online appointment mode, signalled via Socket.io |
+| **Prescriptions** | Structured prescription entry by doctor, stored in MongoDB, PDF generation, patient download |
+| **Reviews** | Post-consultation star rating + text review, doctor aggregate rating updated |
+| **Notifications** | In-app alerts (Socket.io /notifications); transactional email (SendGrid via Nodemailer) for key lifecycle events; SMS OTP delivery (Twilio); appointment reminders via BullMQ workers |
+| **Admin** | Doctor verification dashboard, user management, audit logs, platform analytics |
+| **AI Assistant** | Google Gemini-powered symptom check with Gemini API + rule-based fallback, AI doctor recommendations, streaming AI chat with real-time doctor suggestions |
 
 ### 8.3 Technical Scope
 
 | Concern | Technology | Scope |
 |---|---|---|
 | Frontend | Next.js 14 (App Router) + Tailwind + React Leaflet | Complete UI — Patient, Doctor, Admin portals |
-| Backend | Node.js + Express.js | RESTful API + Socket.io server |
-| Database | MongoDB Atlas | All persistent data; 2dsphere geo indexing |
-| Cache | Redis (Upstash) | Session store, Socket.io adapter, BullMQ backend |
-| Job Queue | BullMQ | Async notification dispatch |
-| Auth | JWT + bcrypt | All user types |
-| Storage | Cloudinary | Doctor profile photos, prescription assets |
-| Payments | Razorpay | Appointment payment flow |
+| Backend | Node.js + Express.js (TypeScript) | RESTful API + Socket.io server |
+| Database | MongoDB Atlas | All persistent data (11 collections); 2dsphere geo indexing |
+| Cache | Redis (Upstash / Redis Cloud) | Session store, Socket.io adapter, BullMQ backend |
+| Job Queue | BullMQ | Async notification dispatch, reminders, cleanup |
+| Auth | JWT + bcrypt + Google OAuth 2.0 | All user types |
+| Storage | Cloudinary | Doctor profile photos, prescription assets, verification docs |
+| Payments | Razorpay | Appointment payment flow; automatic refunds |
+| Email | SendGrid | Transactional email via Nodemailer transport |
+| SMS / OTP | Twilio | OTP delivery for online sessions; appointment reminders |
+| AI | Google Gemini API | Symptom check, recommendations, streaming chat; rule-based fallback |
 | Deployment | Vercel + Railway/Render + MongoDB Atlas | Production deployment |
 | CI/CD | GitHub Actions | Automated test + lint gates on PR merge |
 
@@ -287,19 +292,13 @@ The following are explicitly excluded from the current build. Each is documented
 | Feature | Reason Excluded | Target Phase |
 |---|---|---|
 | **Native Mobile Apps** (iOS/Android) | Web-first strategy; React Native in Phase 2 | Phase 2 |
-| **Video / Audio Consultations** | Separate WebRTC infrastructure; out of home-visit scope | Phase 2 |
-| **SMS Notifications** | Twilio cost + regulatory (DLT) overhead; email sufficient for Phase 1 | Phase 2 |
-| **Push Notifications** | Requires FCM + native app or service worker; deferred | Phase 2 |
-| **Multi-language Support** | i18n overhead; English-first for portfolio scope | Phase 2 |
+| **Insurance / Claim Processing** | TPA integrations; high regulatory burden | Phase 3 |
 | **Lab Test Booking** | Requires third-party diagnostic lab partnerships | Phase 3 |
 | **Pharmacy Integration** | Supply chain + regulatory complexity | Phase 3 |
-| **Insurance / Claim Processing** | TPA integrations; high regulatory burden | Phase 3 |
-| **AI Doctor Recommendation** | ML infrastructure; insufficient data at launch | Phase 3 |
 | **Doctor Subscription / SaaS Billing** | Business model complexity; not needed at portfolio stage | Phase 3 |
 | **ABDM / Health ID Integration** | Government API compliance and approval required | Phase 3 |
 | **Multi-clinic / Hospital Accounts** | Organizational account model; enterprise feature | Phase 4 |
 | **B2B Corporate Health Plans** | Enterprise sales motion; post-product-market fit | Phase 4 |
-| **Analytics for Doctors** (earnings, trends) | Doctor-facing BI; Phase 1 admin analytics sufficient | Phase 3 |
 
 ---
 
@@ -319,6 +318,7 @@ The following assumptions underpin the design, prioritization, and architecture 
 | A-08 | Razorpay sandbox is used for portfolio demonstration; production key requires business entity | Live payment processing requires company registration; portfolio uses test mode |
 | A-09 | English is the primary language for all users in Phase 1 | Excludes non-English literate users; limits reach to urban, educated demographics |
 | A-10 | DPDP Act (India) compliance will be addressed at a reasonable-effort level appropriate for a portfolio project | Legal risk if deployed commercially without formal compliance audit |
+| A-11 | Google OAuth is only available for patients; doctors and admins use email/password | Doctor and admin registration requires credential verification not compatible with OAuth auto-account creation |
 
 ---
 

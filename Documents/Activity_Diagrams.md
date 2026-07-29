@@ -13,7 +13,9 @@
 6. [Activity 4 — Appointment Booking](#6-activity-4--appointment-booking)
 7. [Activity 5 — Live Doctor Tracking](#7-activity-5--live-doctor-tracking)
 8. [Activity 6 — Prescription Generation](#8-activity-6--prescription-generation)
-9. [Cross-Flow Integration Summary](#9-cross-flow-integration-summary)
+9. [Activity 7 — Online Video Consultation](#9-activity-7--online-video-consultation)
+10. [Activity 8 — AI Symptom Checker](#10-activity-8--ai-symptom-checker)
+11. [Cross-Flow Integration Summary](#11-cross-flow-integration-summary)
 
 ---
 
@@ -49,71 +51,62 @@ Each section contains a description of the flow, a swimlane responsibility table
 
 ### 3.1 Overview
 
-The Patient Registration flow governs the process by which a new user creates a verified DocDock patient account. The flow encompasses form submission, server-side validation, account creation, email verification, and final account activation. It is the entry point for all patient-facing features.
+The Patient Registration flow governs the process by which a new user creates a verified DocDock patient account. The flow encompasses form submission, server-side validation, account creation, and final account activation. It is the entry point for all patient-facing features.
 
 ### 3.2 Swimlane Responsibilities
 
 | Lane | Actor | Responsibility |
 |---|---|---|
-| Patient | A-01 | Form input, email verification action |
+| Patient | A-01 | Form input |
 | Frontend | System (Next.js) | Client-side validation, routing, UI feedback |
 | Backend API | System (Express.js) | Business logic, JWT issuance, database writes |
 | Database | System (MongoDB) | Persistence of patient document |
-| Email Service | System | Dispatch of verification email |
 
 ### 3.3 Activity Diagram
 
 ```mermaid
 flowchart TD
     Start([🟢 Start]) --> A[Patient navigates to\nRegistration Page]
-    A --> B[Patient fills registration form\nName · Email · Mobile · DOB · Gender · Password]
+    A --> B[Patient fills registration form\nName · Email · Mobile · Password]
     B --> C{Client-side\nvalidation passes?}
     C -- No --> D[Highlight field errors\non form]
     D --> B
-    C -- Yes --> E[Submit form to\nPOST /api/auth/patient/register]
+    C -- Yes --> E[Submit form to\nPOST /api/v1/auth/register]
 
     E --> F{Email or mobile\nalready registered?}
     F -- Yes --> G[Return HTTP 409\nConflict error]
     G --> H[Display 'Account already exists'\nwith Login link]
     H --> End1([🔴 End])
 
-    F -- No --> I[Hash password\nwith bcrypt]
-    I --> J[Create Patient document\nin MongoDB\nstatus: unverified]
-    J --> K[Generate email\nverification token\nTTL: 24 hours]
-    K --> L[Store token hash\nin database]
-    L --> M[Send verification email\nwith token link]
-    M --> N[Return HTTP 201\nRedirect to 'Check Your Email' screen]
+    F -- No --> I[Hash password\nwith bcrypt cost=12]
+    I --> J[Create User document in MongoDB\nisActive: true, isDeleted: false]
+    J --> K[Create linked Patient document\n in MongoDB]
+    K --> L[Return HTTP 201\nUser object + redirect to Dashboard]
+    L --> M[Patient is immediately active\nNo email verification required]
+    M --> End2([🔴 End — Account Active])
 
-    N --> O[Patient checks\nemail inbox]
-    O --> P{Verification link\nclicked?}
-
-    P -- No --> Q{Token expired?\n24 hours passed}
-    Q -- No --> O
-    Q -- Yes --> R[Patient clicks\nResend Verification]
-    R --> K
-
-    P -- Yes --> S[GET /api/auth/verify-email?token=...]
-    S --> T{Token valid\nand not expired?}
-    T -- No --> U[Display 'Link expired or invalid'\nwith Resend option]
-    U --> R
-
-    T -- Yes --> V[Update Patient status\nto verified in MongoDB]
-    V --> W[Invalidate used token]
-    W --> X[Return HTTP 200\nRedirect to Login page]
-    X --> Y[Display success toast\n'Email verified! Please log in.']
-    Y --> End2([🔴 End — Account Active])
+    A2[Patient clicks\n'Sign in with Google']
+    A2 --> G2[Redirect to\n/api/v1/auth/google]
+    G2 --> H2[Google OAuth consent flow]
+    H2 --> I2[Callback: POST /api/v1/auth/google/callback]
+    I2 --> J2{User with this email\nalready exists?}
+    J2 -- No --> K2[Create new User as 'patient'\nisVerified: true]
+    K2 --> L2[Create linked Patient document]
+    J2 -- Yes --> M2[Link Google ID to existing account\nupdate isVerified: true]
+    L2 --> N2[Generate JWT tokens]
+    M2 --> N2
+    N2 --> O2[Redirect to frontend\nwith accessToken + refreshToken in URL params]
+    O2 --> End3([🔴 End — Google Account Active])
 ```
 
 ### 3.4 Flow Narrative
 
-1. The patient opens the registration page and fills in all required fields.
+1. The patient opens the registration page and fills in the required fields: full name, email, mobile number, and password.
 2. The frontend validates fields client-side (format, required, password strength) before submission.
 3. The backend checks for duplicate email or mobile number. If a duplicate is found, a 409 Conflict is returned and the patient is offered a login link.
-4. The password is hashed using bcrypt (minimum 12 salt rounds). A Patient document is inserted into MongoDB with `status: unverified`.
-5. A time-limited (24-hour) email verification token is generated, hashed, and stored. The raw token is embedded in a verification link sent to the patient.
-6. The patient clicks the link in the email. The backend validates the token against the stored hash and expiry.
-7. On success, the patient's status is updated to `verified`, the token is invalidated, and the patient is redirected to login.
-8. If the link has expired, the patient can request a new one, restarting the token generation and email dispatch sub-flow.
+4. The password is hashed using bcrypt (cost factor 12). A User document is created in MongoDB as `isActive: true`, and a linked Patient document is immediately created.
+5. **The patient is immediately active** — no email verification step is required. The API returns a 201 with the user object.
+6. Alternatively, patients can sign in with **Google OAuth 2.0**: clicking 'Sign in with Google' redirects through the OAuth consent flow. On callback, if no account with that email exists a new patient account is auto-created with `isVerified: true`. JWT tokens are appended as URL query params and the user is redirected to the frontend callback page.
 
 ---
 
@@ -144,46 +137,37 @@ flowchart TD
     B --> C{Step 1\nvalidation passes?}
     C -- No --> D[Show field errors]
     D --> B
-    C -- Yes --> E[Step 2 — Professional Details\nSpecialisation · Reg. No. · Experience · Fee]
+    C -- Yes --> E[Step 2 — Professional Details\nSpecialisation · Experience · Fee]
 
     E --> F{Step 2\nvalidation passes?}
     F -- No --> G[Show field errors]
     G --> E
-    F -- Yes --> H[Step 3 — Document Upload\nProfile Photo · Medical Degree · Government ID]
+    F -- Yes --> H[Submit registration payload\nto POST /api/v1/auth/register\nwith role=doctor]
 
-    H --> I{File format valid?\nPDF / JPG / PNG\nMax 5 MB each}
-    I -- No --> J[Show file error\n'Invalid format or size exceeded']
-    J --> H
-    I -- Yes --> K[Upload files to Cloudinary\nvia signed upload preset]
+    H --> I{Email or mobile\nalready registered?}
+    I -- Yes --> J[Return HTTP 409\nDuplicate entry error]
+    J --> K[Show error\n'Already registered.']
+    K --> End1([🔴 End])
 
-    K --> L{Cloudinary upload\nsuccessful?}
-    L -- No --> M[Show upload error\nRetry option displayed]
-    M --> K
-    L -- Yes --> N[Receive Cloudinary\nsecure URLs]
-
-    N --> O[Submit full registration payload\nto POST /api/auth/doctor/register]
-    O --> P{Medical Reg. No. or Email\nalready registered?}
-    P -- Yes --> Q[Return HTTP 409\nDuplicate entry error]
-    Q --> R[Show error\n'Already registered. Contact support.']
-    R --> End1([🔴 End])
-
-    P -- No --> S[Hash password with bcrypt]
-    S --> T[Create Doctor document\nin MongoDB\nstatus: pending_verification\nStore Cloudinary URLs]
-    T --> U[Emit admin notification\nnew_doctor_application event]
-    U --> V[Send confirmation email to Doctor\n'Application under review']
-    V --> W[Return HTTP 201\nRedirect to 'Application Submitted' screen]
-    W --> End2([🔴 End — Awaiting Admin Review])
+    I -- No --> L[Hash password with bcrypt]
+    L --> M[Create User document in MongoDB\nverificationStatus: pending]
+    M --> N[Create Doctor profile document\nlicenseNumber: TEMP-id, verificationStatus: pending]
+    N --> O[Notify all admins via in-app notification\n'New doctor registration pending verification']
+    O --> P[Return HTTP 201\nRedirect to Dashboard]
+    P --> Q[Doctor can update profile & upload documents\nvia PATCH /api/v1/doctors/profile]
+    Q --> R[Upload profile photo / medical license / govt ID\nto Cloudinary — store secure URLs]
+    R --> End2([🔴 End — Awaiting Admin Review])
 ```
 
 ### 4.4 Flow Narrative
 
-1. The doctor completes a three-step registration wizard: personal details, professional credentials, and document uploads.
+1. The doctor completes a two-step registration form: personal details and professional credentials.
 2. Each step is validated independently client-side before the next step is unlocked.
-3. Documents (profile photo, medical degree, government ID) are uploaded directly to Cloudinary using a signed upload preset, returning secure URLs.
-4. The backend checks for duplicate email or medical registration number. Duplicates are rejected with a 409 error.
-5. The password is bcrypt-hashed, and a Doctor document is created in MongoDB with `status: pending_verification` and Cloudinary document URLs stored.
-6. An admin notification event is emitted, and the doctor receives a confirmation email advising them that their application is under review.
-7. The doctor's account remains locked until Admin completes verification (Activity 3).
+3. The backend checks for duplicate email or mobile number. Duplicates are rejected with a 409 error.
+4. The password is bcrypt-hashed, a User document is created with `verificationStatus: pending`, and a linked Doctor document is immediately created with a temporary license number placeholder.
+5. All admins are notified via in-app notification that a new doctor has registered and is pending verification.
+6. The doctor is redirected to their dashboard. They can then upload profile photo, medical license, and government ID documents via the Profile Settings page (PATCH `/api/v1/doctors/profile`), which sends files to Cloudinary and stores the URLs.
+7. The doctor's account remains in `pending` status until Admin completes verification (Activity 3).
 
 ---
 
@@ -241,7 +225,7 @@ flowchart TD
 
     R -- Yes --> V
     V --> W[Admin clicks\nApprove Doctor]
-    W --> X[Update Doctor status\nto verified in MongoDB]
+    W --> X[Update Doctor status\nto approved in MongoDB]
     X --> Y[Send approval email\nto doctor\n'Account approved. You may now log in.']
     Y --> Z[Doctor appears in\nplatform search results\nwhen available]
     Z --> End4([🔴 End — Doctor Activated])
@@ -249,11 +233,11 @@ flowchart TD
 
 ### 5.4 Flow Narrative
 
-1. Admin logs into the Dashboard and navigates to the verification queue, which lists all `pending_verification` and `resubmission_required` doctor applications.
+1. Admin logs into the Dashboard and navigates to the verification queue, which lists all `pending` and `resubmission_required` doctor applications.
 2. Admin selects an application and reviews the doctor's professional details alongside their uploaded documents in an integrated document viewer.
 3. If documents are unclear or insufficient, Admin can either request a resubmission (specific document re-upload) or outright reject with a mandatory reason.
 4. If the medical registration number cannot be automatically verified, Admin performs an external check against a medical registry.
-5. On approval, the doctor's status is updated to `verified`, an approval email is dispatched, and the doctor can now log in and appear in patient search results when they set themselves as available.
+5. On approval, the doctor's status is updated to `approved`, an approval email is dispatched, and the doctor can now log in and appear in patient search results when they set themselves as available.
 6. All admin decisions (approve, reject, request resubmission) are recorded in the Audit Log with the Admin's ID, timestamp, and rationale.
 
 ---
@@ -262,18 +246,19 @@ flowchart TD
 
 ### 6.1 Overview
 
-The Appointment Booking flow is the central transactional flow of the DocDock platform. It covers doctor discovery, selection, address confirmation, Razorpay payment processing, and the post-payment doctor acceptance sequence. This flow involves the most actors and has the highest number of exception paths.
+The Appointment Booking flow is the central transactional flow of the DocDock platform. It covers doctor discovery, consultation mode selection (Home Visit / Clinic / Online), slot selection, address confirmation, Razorpay payment processing, and the post-payment doctor acceptance sequence. DocDock supports **three consultation modes**, each with its own tailored workflow.
 
 ### 6.2 Swimlane Responsibilities
 
 | Lane | Actor | Responsibility |
 |---|---|---|
-| Patient | A-01 | Doctor search, address selection, payment |
+| Patient | A-01 | Doctor search, mode/slot selection, address selection, payment |
 | Doctor | A-02 | Appointment acceptance or decline |
-| Frontend | System (Next.js) | Map rendering, booking UI, payment modal |
-| Backend API | System (Express.js) | Order creation, signature verification, status management |
+| Frontend | System (Next.js) | Map rendering, booking UI, slot picker, payment modal |
+| Backend API | System (Express.js) | Slot generation, order creation, signature verification, status management |
 | Razorpay | External Payment | Checkout, payment capture, webhook dispatch |
 | Socket.io | System (Real-time) | Live availability updates, booking notification |
+| BullMQ Worker | System (Background) | Appointment reminders, auto-rejection timeout |
 | Database | System (MongoDB) | Appointment document lifecycle |
 
 ### 6.3 Activity Diagram
@@ -297,63 +282,69 @@ flowchart TD
 
     H -- Yes --> K[Patient browses doctor cards\nName · Specialisation · Rating · Distance · Fee]
     K --> L[Patient selects a doctor\nand views full profile]
-    L --> M[Patient clicks\nBook Now]
+    L --> M{Select\nconsultation mode}
 
-    M --> N{Doctor still\navailable in real-time?}
-    N -- No --> O[Show 'Doctor no longer available'\nRefresh results]
-    O --> G
+    M -- Home Visit --> N1[Patient selects saved address\nor enters new address]
+    M -- Clinic Visit --> N2[Patient views clinic location\non map]
+    M -- Online Video --> N3[No address needed\nVideo via WebRTC]
 
-    N -- Yes --> P[Patient selects\nconsultation address\nSaved address or new address]
-    P --> Q[Patient reviews\nbooking summary\nDoctor · Address · Fee · ETA]
-    Q --> R[Patient clicks\nConfirm and Pay]
+    N1 --> O[Patient selects available\ntime slot from doctor schedule]
+    N2 --> O
+    N3 --> O
 
-    R --> S[POST /api/appointments/create\nCreate Appointment document\nstatus: pending_payment]
-    S --> T[POST /api/payments/create-order\nRazorpay Order created\nwith consultation fee]
-    T --> U[Razorpay Checkout modal\npresented to patient]
+    O --> P[Patient reviews\nbooking summary\nDoctor · Mode · Slot · Address · Fee]
+    P --> Q[Patient clicks\nConfirm and Pay]
 
-    U --> V{Patient completes\npayment?}
-    V -- Abandoned --> W[10-minute timeout\nmonitor running]
-    W --> X{Timeout\nreached?}
-    X -- No --> V
-    X -- Yes --> Y[Delete pending appointment\nRelease doctor availability]
-    Y --> End2([🔴 End — Booking Abandoned])
+    Q --> R[POST /api/appointments/create-order\nCreate Razorpay Order with consultation fee]
+    R --> S[Razorpay Checkout modal\npresented to patient]
 
-    V -- Payment Attempted --> Z{Razorpay payment\nsuccessful?}
-    Z -- No --> AA[Show payment failure\nRetry payment option]
-    AA --> V
+    S --> T{Patient completes\npayment?}
+    T -- Abandoned --> U[BullMQ timeout job\nmonitors pending payment]
+    U --> V{Timeout\nreached?}
+    V -- No --> T
+    V -- Yes --> W[Cancel pending appointment\nRelease doctor availability]
+    W --> End2([🔴 End — Booking Abandoned])
 
-    Z -- Yes --> AB[Razorpay sends\nwebhook to backend]
-    AB --> AC[Verify HMAC-SHA256\npayment signature]
-    AC --> AD{Signature\nvalid?}
-    AD -- No --> AE[Log suspicious event\nDo not update appointment]
-    AE --> End3([🔴 End — Security Alert])
+    T -- Payment Attempted --> X{Razorpay payment\nsuccessful?}
+    X -- No --> Y[Show payment failure\nRetry payment option]
+    Y --> T
 
-    AD -- Yes --> AF[Update Appointment\nstatus: confirmed\nStore payment record]
-    AF --> AG[Emit new_booking Socket.io\nevent to Doctor]
-    AG --> AH[Patient sees\n'Booking Confirmed — Awaiting Doctor']
+    X -- Yes --> Z[Razorpay sends\nwebhook to backend]
+    Z --> AA[Verify HMAC-SHA256\npayment signature]
+    AA --> AB{Signature\nvalid?}
+    AB -- No --> AC[Log suspicious event\nDo not update appointment]
+    AC --> End3([🔴 End — Security Alert])
 
-    AH --> AI{Doctor accepts\nwithin 5 minutes?}
-    AI -- Timeout / Decline --> AJ[Cancel appointment\nInitiate full refund via Razorpay]
-    AJ --> AK[Notify patient\n'Doctor unavailable. Full refund initiated.']
-    AK --> AL[Prompt patient to\nsearch for another doctor]
-    AL --> G
+    AB -- Yes --> AD[Create Appointment document\nstatus: pending\nConsultation mode stored]
+    AD --> AE[Emit new_booking Socket.io\nevent to Doctor]
+    AE --> AF[Patient sees\n'Booking Confirmed — Awaiting Doctor']
 
-    AI -- Accepted --> AM[Update Appointment\nstatus: en_route]
-    AM --> AN[Notify patient\n'Doctor is on the way!']
-    AN --> AO[Activate Live\nTracking Flow]
-    AO --> End4([🔴 End — Tracking Active])
+    AF --> AG{Doctor accepts\nwithin SLA window?}
+    AG -- Timeout or Decline --> AH[Cancel appointment\nInitiate full refund via Razorpay]
+    AH --> AI[Notify patient\n'Doctor unavailable. Full refund initiated.']
+    AI --> AJ[Prompt patient to\nsearch for another doctor]
+    AJ --> G
+
+    AG -- Accepted --> AK[Update Appointment\nstatus: accepted]
+    AK --> AL{Consultation\nmode?}
+    AL -- Home Visit --> AM[Doctor marks On The Way\nActivate Live Tracking Flow]
+    AL -- Clinic Visit --> AN[Generate appointment slip\nwith QR code]
+    AL -- Online Video --> AO[Both parties join\nVideo Consultation Room]
+    AM --> End4([🔴 End — Tracking Active])
+    AN --> End5([🔴 End — Clinic Appointment Confirmed])
+    AO --> End6([🔴 End — Video Session Active])
 ```
 
 ### 6.4 Flow Narrative
 
 1. The patient opens the Doctor Search screen. The system requests GPS access; if denied, the patient manually enters an address.
-2. The backend queries doctors who are `available` and `verified` within a 10 km radius using MongoDB geo-queries. Results render on a React Leaflet map and as a list.
-3. The patient selects a doctor, reviews their profile, and clicks Book Now. The system re-validates the doctor's availability in real time via Socket.io before proceeding.
-4. The patient selects a consultation address and confirms the booking summary. An Appointment document is created in MongoDB with `status: pending_payment`.
-5. A Razorpay Order is created server-side and the checkout modal is presented. A 10-minute timeout is started; the appointment is cancelled if payment is not completed.
-6. On payment completion, Razorpay's webhook delivers the payment result to the backend. The backend verifies the HMAC-SHA256 signature. On verification success, the appointment is updated to `confirmed`.
-7. A Socket.io event notifies the doctor of the new booking. The doctor has 5 minutes to accept or decline.
-8. If accepted, the appointment moves to `en_route` and the Live Tracking flow is activated. If declined or timed out, a full refund is initiated and the patient is prompted to find another doctor.
+2. The backend queries doctors who are `approved` and available within a 10 km radius using MongoDB geo-queries. Results render on a React Leaflet map and as a list.
+3. The patient selects a doctor, reviews their profile, and selects a **consultation mode**: Home Visit, Clinic Visit, or Online Video.
+4. The patient selects an available time slot from the doctor's per-day schedule. Slots are generated server-side based on the doctor's configured schedule, break times, and already-booked slots.
+5. A Razorpay Order is created server-side and the checkout modal is presented. A BullMQ background job monitors payment completion; the appointment is cancelled if payment is not completed within the timeout window.
+6. On payment completion, Razorpay's webhook delivers the payment result to the backend. The backend verifies the HMAC-SHA256 signature. On verification success, the Appointment document is created with `status: pending`.
+7. A Socket.io event notifies the doctor of the new booking. The doctor has a configured SLA window to accept or decline.
+8. Based on the accepted consultation mode: Home Visit activates Live Tracking; Clinic Visit generates an appointment slip with QR code; Online activates the WebRTC video consultation room.
 
 ---
 
@@ -361,7 +352,7 @@ flowchart TD
 
 ### 7.1 Overview
 
-The Live Tracking flow activates once a doctor accepts an appointment. It governs the real-time broadcast of the doctor's GPS location to the patient, the map rendering and ETA updates on the patient side, and the lifecycle transitions through `en_route` → `arrived` → `in_consultation`.
+The Live Tracking flow activates once a doctor accepts a **Home Visit** appointment and marks themselves `doctor_on_way`. It governs the real-time broadcast of the doctor's GPS location to the patient, the map rendering and ETA updates on the patient side, and the lifecycle transitions through `doctor_on_way` → `arrived` → `in_consultation`.
 
 ### 7.2 Swimlane Responsibilities
 
@@ -379,7 +370,7 @@ The Live Tracking flow activates once a doctor accepts an appointment. It govern
 
 ```mermaid
 flowchart TD
-    Start([🟢 Start — Appointment status: en_route]) --> A
+    Start([🟢 Start — Appointment status: doctor_on_way]) --> A
 
     subgraph DOCTOR ["👨‍⚕️ Doctor Device"]
         A[Doctor app begins\nGPS acquisition\nevery 5 seconds]
@@ -543,41 +534,186 @@ flowchart TD
 
 ---
 
-## 9. Cross-Flow Integration Summary
+## 9. Activity 7 — Online Video Consultation
 
-The six activity flows do not operate in isolation. The table below maps the termination points of each flow to the entry points of dependent flows, illustrating the end-to-end patient journey through the DocDock platform.
+### 9.1 Overview
+
+The Online Video Consultation flow activates when a patient books an appointment in **Online** mode. It governs the WebRTC-based peer-to-peer video/audio session setup via Socket.io signalling, OTP verification at session start, and the consultation lifecycle through to completion.
+
+### 9.2 Swimlane Responsibilities
+
+| Lane | Actor | Responsibility |
+|---|---|---|
+| Patient | A-01 | Join call, participate in consultation |
+| Doctor | A-02 | Join call, OTP verification, consultation conduct |
+| Socket.io Server | System (/notifications namespace) | WebRTC signalling relay, call events |
+| Backend API | System (Express.js) | OTP generation/validation, status transitions |
+| SMS Service | External (Twilio/SMS) | OTP delivery to patient |
+| Database | System (MongoDB) | Call log, OTP record, status persistence |
+
+### 9.3 Activity Diagram
+
+```mermaid
+flowchart TD
+    Start([🟢 Start — Appointment status: accepted, mode: online]) --> A
+
+    subgraph PATIENT_PREP ["🧑 Patient — Join Session"]
+        A[Patient receives notification\n'Your video consultation is ready']
+        A --> B[Patient opens\nVideo Consultation Room]
+        B --> C[Patient grants camera\nand microphone permissions]
+        C --> D[Patient enters\nwaiting room screen]
+    end
+
+    subgraph DOCTOR_PREP ["👨‍⚕️ Doctor — Join Session"]
+        E[Doctor receives notification\n'Join online consultation']
+        E --> F[Doctor opens\nVideo Consultation Room]
+        F --> G[Doctor requests\nOTP verification]
+        G --> H[Backend generates 6-digit OTP\nSends via SMS to patient mobile]
+        H --> I[Doctor asks patient\nfor OTP code]
+        I --> J[Patient reads OTP\nfrom SMS]
+        J --> K[Doctor enters OTP\nin their interface]
+        K --> L{OTP valid\nand not expired?}
+        L -- No --> M[Show OTP error\nAllow retry]
+        M --> G
+        L -- Yes --> N[Backend marks OTP\nas verified]
+    end
+
+    subgraph WEBRTC ["📡 WebRTC Signalling via Socket.io /notifications"]
+        N --> O[Doctor emits call:initiate\nevent to patient room]
+        O --> P[Patient receives call:initiate\nIncoming call screen shown]
+        P --> Q{Patient accepts\ncall?}
+        Q -- No --> R[Patient emits call:reject\nDoctor sees 'Patient declined']
+        R --> End1([🔴 End — Call Declined])
+        Q -- Yes --> S[Patient emits call:accept\nDoctor receives acceptance]
+        S --> T[WebRTC peer connection\nestablished via ICE candidates]
+        T --> U[Bidirectional audio/video\nstream active]
+    end
+
+    U --> V[Update Appointment\nstatus: in_consultation]
+    V --> W[Consultation conducted\nover video/audio]
+    W --> X{Consultation\ncomplete?}
+    X -- No --> W
+    X -- Yes --> Y[Doctor emits call:hangup\nCall terminated]
+    Y --> Z[Doctor marks\nconsultation complete]
+    Z --> AA[PATCH /api/appointments/:id/status\nstatus: completed]
+    AA --> AB[Doctor generates\ndigital prescription]
+    AB --> End2([🔴 End — Consultation Complete])
+```
+
+### 9.4 Flow Narrative
+
+1. When an online appointment is accepted, both the patient and doctor receive notifications to join their video consultation room.
+2. The doctor initiates an **OTP verification** — the backend generates a 6-digit OTP, delivers it to the patient's registered mobile number via SMS (Twilio/SMS provider), and the doctor enters the OTP code to confirm the patient's identity at session start.
+3. Upon OTP verification, WebRTC signalling begins via the Socket.io `/notifications` namespace. The doctor emits a `call:initiate` event; the patient can accept or reject.
+4. On acceptance, WebRTC peer connection is established using ICE candidates exchanged via Socket.io signals. A bidirectional audio/video stream begins.
+5. The appointment status transitions to `in_consultation`. The doctor conducts the consultation over the video call.
+6. On completion, the doctor emits `call:hangup`, terminates the call, and marks the appointment as completed. A digital prescription is then generated as in Activity 6.
+
+---
+
+## 10. Activity 8 — AI Symptom Checker
+
+### 10.1 Overview
+
+The AI Symptom Checker is a patient-facing feature powered by the **Google Gemini API**. It allows patients to describe their symptoms in natural language and receive AI-generated insights including potential conditions, recommended specialist types, urgency level, and whether to book an appointment or seek emergency care.
+
+### 10.2 Swimlane Responsibilities
+
+| Lane | Actor | Responsibility |
+|---|---|---|
+| Patient | A-01 | Symptom input, follow-up questions |
+| Frontend | System (Next.js) | Chat UI, streaming response rendering |
+| Backend API | System (Express.js) | Gemini API proxy, fallback logic, response streaming |
+| Google Gemini API | External AI | LLM inference for symptom analysis |
+| Database | System (MongoDB) | Session context (optional persistence) |
+
+### 10.3 Activity Diagram
+
+```mermaid
+flowchart TD
+    Start([🟢 Start]) --> A[Patient opens\nAI Symptom Checker]
+    A --> B[Patient types\nsymptoms in natural language]
+    B --> C[POST /api/v1/ai/symptom-check\nor /api/v1/ai/chat\nwith symptom description]
+    C --> D{Gemini API\navailable?}
+
+    D -- No --> E[Use rule-based\nfallback response engine]
+    E --> F[Return structured fallback\nbased on keyword matching]
+    F --> G[Display fallback response\nwith disclaimer]
+    G --> End1([🔴 End — Fallback Response])
+
+    D -- Yes --> H[Construct medical context prompt\nwith patient symptoms]
+    H --> I[Send prompt to\nGoogle Gemini API\nwith streaming enabled]
+    I --> J[Stream response tokens\nback to frontend via SSE]
+    J --> K[Patient sees AI response\nappear in real time]
+
+    K --> L{AI response\nincludes doctor recommendation?}
+    L -- Yes --> M[Show 'Find a Doctor'\nlink to relevant specialist]
+    M --> N{Patient wants\nto book?}
+    N -- Yes --> O[Redirect to Find Doctors\nwith specialization pre-filled]
+    O --> End2([🔴 End — Booking Flow Initiated])
+    N -- No --> P[Patient continues\nAI chat session]
+
+    L -- No --> P
+    P --> Q{Patient has\nfollow-up question?}
+    Q -- Yes --> B
+    Q -- No --> End3([🔴 End — Session Complete])
+```
+
+### 10.4 Flow Narrative
+
+1. The patient opens the AI Symptom Checker from their dashboard and types a description of their symptoms in natural language.
+2. The frontend sends the input to the backend AI controller, which proxies the request to the Google Gemini API with a carefully constructed medical context prompt.
+3. If the Gemini API is unavailable or the API key is not configured, the system falls back to a **rule-based response engine** that performs keyword matching to produce a basic structured response, ensuring the feature degrades gracefully.
+4. If Gemini is available, the API streams response tokens back to the backend, which relays them to the frontend using Server-Sent Events (SSE). The patient sees the AI response appear in real time.
+5. If the AI response includes a doctor type recommendation, the UI surfaces a **'Find a Doctor' shortcut** with the relevant specialization pre-filled in the search filters.
+6. The patient can continue the conversation with follow-up questions. The session maintains context to provide coherent multi-turn responses.
+7. **Disclaimer**: The AI Symptom Checker is for informational purposes only and does not replace professional medical advice, diagnosis, or treatment.
+
+---
+
+## 11. Cross-Flow Integration Summary
+
+The eight activity flows do not operate in isolation. The table below maps the termination points of each flow to the entry points of dependent flows, illustrating the end-to-end patient journey through the DocDock platform.
 
 ```mermaid
 flowchart LR
     R1([Patient Registration\nActivity 1]) -->|Account active| AB([Appointment Booking\nActivity 4])
     R2([Doctor Registration\nActivity 2]) -->|Application submitted| DV([Doctor Verification\nActivity 3])
-    DV -->|Doctor verified| AB
-    AB -->|en_route status| LT([Live Tracking\nActivity 5])
+    DV -->|Doctor approved| AB
+    AB -->|Home: doctor_on_way| LT([Live Tracking\nActivity 5])
+    AB -->|Online: in_consultation| VC([Video Consultation\nActivity 7])
     LT -->|in_consultation status| PG([Prescription Generation\nActivity 6])
+    VC -->|completed status| PG
     PG -->|completed status| END([Appointment Complete\n+ Review Prompt])
+    AI([AI Symptom Checker\nActivity 8]) -->|Doctor recommendation| AB
 ```
 
 ### Integration Points
 
 | From Flow | To Flow | Trigger |
 |---|---|---|
-| Patient Registration (1) | Appointment Booking (4) | Patient account `verified` |
+| Patient Registration (1) | Appointment Booking (4) | Patient account active |
 | Doctor Registration (2) | Doctor Verification (3) | Application submitted |
-| Doctor Verification (3) | Appointment Booking (4) | Doctor status set to `verified` |
-| Appointment Booking (4) | Live Tracking (5) | Appointment status → `en_route` |
+| Doctor Verification (3) | Appointment Booking (4) | Doctor status set to `approved` |
+| Appointment Booking (4) | Live Tracking (5) | Home Visit: appointment status → `doctor_on_way` |
+| Appointment Booking (4) | Video Consultation (7) | Online: appointment accepted → OTP → WebRTC |
 | Live Tracking (5) | Prescription Generation (6) | Appointment status → `in_consultation` |
+| Video Consultation (7) | Prescription Generation (6) | Appointment status → `completed` |
 | Prescription Generation (6) | Review System | Appointment status → `completed` |
+| AI Symptom Checker (8) | Appointment Booking (4) | Patient follows doctor recommendation |
 
 ### Shared System Dependencies
 
 | Dependency | Used By Flows |
 |---|---|
 | MongoDB Atlas | All flows |
-| Socket.io | Booking (4), Live Tracking (5) |
+| Socket.io | Booking (4), Live Tracking (5), Video Consultation (7) |
 | Cloudinary | Doctor Registration (2), Prescription Generation (6) |
 | Razorpay | Appointment Booking (4) |
+| Google Gemini API | AI Symptom Checker (8) |
+| SMS Service (Twilio) | Video Consultation (7) — OTP delivery |
 | Email Service | Registration (1, 2), Verification (3), Prescription (6) |
+| BullMQ Workers | Appointment Booking (4) — timeout jobs, reminders |
 | JWT / RBAC | All authenticated flows |
 
 ---
-

@@ -25,6 +25,7 @@ Each requirement below follows a consistent structure:
 | **NFR-PERF-05** | The platform must handle concurrent appointment booking without significant performance degradation. | System sustains 200 concurrent booking transactions/minute with no more than 5% increase in average response time versus baseline. | Load testing (k6) simulating booking bursts; database write-latency monitoring on the Appointments collection. |
 | **NFR-PERF-06** | Frontend pages must load within acceptable web performance thresholds. | Largest Contentful Paint (LCP) ≤ 2.5s, Time to Interactive (TTI) ≤ 3.5s on 4G network simulation for key pages (Home, Search, Booking). | Google Lighthouse CI integrated into deployment pipeline; Vercel Analytics / Web Vitals reporting. |
 | **NFR-PERF-07** | Razorpay payment processing must complete within an acceptable transaction window. | Payment initiation-to-confirmation round trip completes within 5 seconds (P95), excluding bank/UPI processing time outside platform control. | Transaction timestamp logging (initiated_at → confirmed_at) in payment service; Razorpay webhook latency audit. |
+| **NFR-PERF-08** | AI Symptom Checker must begin streaming a response to the patient within an acceptable latency window. | First AI response token is streamed to the patient's browser within 3 seconds (P95) of request submission under normal Gemini API conditions. Fallback rule-based response must be delivered within 500ms. | Client-side time-to-first-token measurement; server-side Gemini API call latency logging; fallback response timing in unit tests. |
 
 ---
 
@@ -65,6 +66,7 @@ Each requirement below follows a consistent structure:
 | **NFR-SEC-07** | Razorpay payment integration must never expose API secrets client-side. | Razorpay secret key exists only in backend environment variables; only the public key is exposed to frontend; secrets excluded from version control. | Source code and bundle audit (grep for secret patterns in client bundle); `.gitignore`/secret-scanning tool (e.g., GitGuardian) in CI. |
 | **NFR-SEC-08** | Rate limiting must be enforced on authentication and search endpoints to prevent abuse/brute-force. | Login endpoint limited to 5 attempts per IP per 15 minutes; search endpoint capped at 60 requests/minute per user. | Rate-limiter configuration testing (e.g., `express-rate-limit`); automated abuse-simulation test hitting limits and verifying HTTP 429 responses. |
 | **NFR-SEC-09** | Session and token expiry must be enforced to limit exposure from compromised credentials. | JWT access tokens expire within 15–60 minutes; refresh tokens expire within 7 days and are revocable. | Token expiry configuration review; test for rejected requests using expired tokens. |
+| **NFR-SEC-10** | OTP tokens used for online consultation session verification must be cryptographically secure and short-lived. | OTPs are 6-digit numeric tokens, stored as SHA-256 hashes only (never plaintext), with a 10-minute TTL enforced via MongoDB TTL index. OTP comparison is performed in constant time. No OTP plaintext appears in server logs. | Code review of OTP generation and verification logic; unit tests for hash comparison (valid/expired/invalid); database inspection confirming no plaintext storage; log audit confirming OTP redaction. |
 
 ---
 
@@ -157,10 +159,10 @@ Each requirement below follows a consistent structure:
 
 | Category | NFR Count | ID Prefix |
 |----------|-----------|------------|
-| Performance | 7 | NFR-PERF |
+| Performance | 8 | NFR-PERF |
 | Availability | 5 | NFR-AVAIL |
 | Reliability | 5 | NFR-REL |
-| Security | 9 | NFR-SEC |
+| Security | 10 | NFR-SEC |
 | Scalability | 5 | NFR-SCAL |
 | Maintainability | 6 | NFR-MAIN |
 | Usability | 5 | NFR-USE |
@@ -168,7 +170,11 @@ Each requirement below follows a consistent structure:
 | Compliance | 5 | NFR-COMP |
 | Data Privacy | 5 | NFR-PRIV |
 | Disaster Recovery | 6 | NFR-DR |
-| **Total** | **62** | — |
+| **Total** | **64** | — |
+
+---
+
+*End of DocDock Non-Functional Requirements — v2.0*
 
 ---
 

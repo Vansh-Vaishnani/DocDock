@@ -3,7 +3,7 @@
 **Tagline:** "Knock-Knock, your doctor is here."
 **Document Type:** State Diagram Specification — Appointment Lifecycle
 **Audience:** Engineering, QA, Product
-**Status:** Draft v1.0
+**Status:** v1.0 (Reflects Implemented Build)
 
 ---
 
@@ -11,64 +11,70 @@
 
 This document defines the **state machine governing an Appointment object** in DocDock, from creation by a patient through to completion and review. It is the authoritative reference for implementing the `Appointment` schema's `status` field, backend transition guards, and frontend UI states.
 
+DocDock supports **three consultation modes**, each with its own tailored workflow:
+
+| Mode | Status Path | Key Mechanism |
+|---|---|---|
+| **Home Visit** | `pending` → `accepted` → `doctor_on_way` → `arrived` → `in_consultation` → `completed` | Live GPS tracking + 100m geo-fence arrival validation |
+| **Clinic Visit** | `pending` → `accepted` → `in_consultation` → `completed` | Appointment slip with QR code generated on acceptance |
+| **Online** | `pending` → `accepted` → `in_consultation` → `completed` | OTP verification + WebRTC peer-to-peer video via Socket.io signalling |
+
 ---
 
 ## 2. Primary Appointment Lifecycle (Core States)
 
-This is the core lifecycle as specified: a linear happy-path with a single rejection branch.
+This is the core happy-path lifecycle with the discrete **Arrived** state that separates doctor travel from consultation start. Note: `reviewed` is NOT a stored appointment status — reviews are stored as a separate `Review` document linked to the appointment. Consultation modes supported: `clinic`, `home`, and `online`.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pending : Patient books appointment
+    [*] --> Pending : Patient books & pays (Razorpay)
 
     Pending --> Accepted : Doctor accepts request
     Pending --> Rejected : Doctor declines request
 
-    Accepted --> DoctorOnWay : Doctor starts journey
+    Accepted --> DoctorOnWay : Doctor marks On The Way
 
-    DoctorOnWay --> InConsultation : Doctor arrives & starts session
+    DoctorOnWay --> Arrived : Doctor marks Arrived at location
 
-    InConsultation --> Completed : Consultation ends
+    Arrived --> InConsultation : Doctor starts consultation session
 
-    Completed --> Reviewed : Patient submits rating & review
+    InConsultation --> Completed : Doctor marks consultation complete
 
     Rejected --> [*]
-    Reviewed --> [*]
-
-    state DoctorOnWay {
-        direction LR
-        [*] --> EnRoute
-        EnRoute --> NearLocation : within geofence radius
-        NearLocation --> [*]
-    }
+    Completed --> [*] : Patient optionally submits review
 
     note right of Pending
-        Appointment created with
         status = "pending"
-        Linked to nearby verified
-        doctor via geo-search
+        Payment must be confirmed
+        (Razorpay webhook) before
+        doctor is notified
     end note
 
     note right of Rejected
         Terminal state.
-        Patient is notified and
-        redirected to doctor search.
+        Patient is notified.
+        Razorpay refund initiated
+        automatically.
     end note
 
     note right of DoctorOnWay
-        Live location streamed via
-        Socket.io to patient's map view
+        status = "doctor_on_way"
+        Live GPS location streamed via
+        Socket.io /tracking namespace
+        to patient's map view
+    end note
+
+    note right of Arrived
+        status = "arrived"
+        Doctor confirms physical arrival
+        before starting consultation
     end note
 
     note right of Completed
-        Triggers Digital Prescription
-        generation
-    end note
-
-    note right of Reviewed
-        Terminal state.
-        Feeds into doctor's aggregate
-        rating score
+        status = "completed"
+        Doctor may generate digital
+        prescription post-completion.
+        Patient may submit a Review.
     end note
 ```
 
@@ -76,55 +82,54 @@ stateDiagram-v2
 
 ## 3. Extended Lifecycle (Production Edge Cases)
 
-A portfolio/production-grade system must also account for cancellations, timeouts, and no-shows. This extended diagram layers those branches onto the core 7 states without altering the primary path.
+The full implemented state machine accounts for cancellations, timeouts, no-shows, and the discrete `arrived` step. All states below are persisted in the `Appointment` document's `status` field.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pending : Patient books appointment
+    [*] --> Pending : Patient books & pays appointment
 
     Pending --> Accepted : Doctor accepts
     Pending --> Rejected : Doctor declines
-    Pending --> AutoRejected : No response within SLA window
+    Pending --> AutoRejected : No response within SLA window (background job)
     Pending --> CancelledByPatient : Patient cancels before acceptance
 
-    Accepted --> DoctorOnWay : Doctor starts journey
-    Accepted --> CancelledByPatient : Patient cancels after acceptance
+    Accepted --> DoctorOnWay : Doctor marks On The Way
     Accepted --> CancelledByDoctor : Doctor cancels after accepting
 
-    DoctorOnWay --> InConsultation : Doctor arrives & starts session
-    DoctorOnWay --> NoShow : Doctor fails to arrive within window
-    DoctorOnWay --> CancelledByPatient : Patient cancels en route
+    DoctorOnWay --> Arrived : Doctor marks physical arrival
+    DoctorOnWay --> CancelledByDoctor : Doctor cancels en route
 
-    InConsultation --> Completed : Consultation ends normally
-    InConsultation --> CancelledByPatient : Session aborted by patient
+    Arrived --> InConsultation : Doctor starts consultation
+    Arrived --> CancelledByDoctor : Doctor cancels after arrival
 
-    Completed --> Reviewed : Patient submits review
-    Completed --> [*] : Patient skips review
+    InConsultation --> Completed : Doctor marks consultation complete
+
+    Completed --> [*] : Patient optionally submits Review
 
     Rejected --> [*]
     AutoRejected --> [*]
     CancelledByPatient --> [*]
     CancelledByDoctor --> [*]
-    NoShow --> [*]
-    Reviewed --> [*]
+    DoctorNoShow --> [*]
 
     note right of AutoRejected
+        status = "auto_rejected"
         System-driven transition.
-        Triggered by a scheduled job
-        if Doctor does not respond
-        within X minutes.
+        Triggered by the online appointment
+        timeout checker job (runs every 60s).
+        Applicable to online consultation mode.
     end note
 
-    note right of NoShow
-        Flagged for Admin review.
-        May affect Doctor's
-        reliability score.
+    note right of DoctorNoShow
+        status = "doctor_no_show"
+        Terminal state for tracking
+        doctor reliability.
     end note
 
     note right of CancelledByDoctor
-        Triggers re-matching flow:
-        patient is offered next
-        nearest available doctor.
+        status = "cancelled_by_doctor"
+        Razorpay refund is initiated
+        automatically on cancellation.
     end note
 ```
 
@@ -132,30 +137,38 @@ stateDiagram-v2
 
 ## 4. State Transition Table
 
-| From State | To State | Trigger / Actor | Notes |
-|---|---|---|---|
-| `[*]` | Pending | Patient submits booking request | Doctor matched via geo-search |
-| Pending | Accepted | Doctor accepts | Notification sent to patient |
-| Pending | Rejected | Doctor declines | Terminal; patient redirected to search |
-| Pending | AutoRejected | SLA timeout (system job) | Terminal; counts against doctor SLA metrics |
-| Pending | CancelledByPatient | Patient cancels | Terminal |
-| Accepted | DoctorOnWay | Doctor marks "started journey" | Live tracking session begins (Socket.io) |
-| Accepted | CancelledByPatient | Patient cancels | Terminal; may incur cancellation policy |
-| Accepted | CancelledByDoctor | Doctor cancels post-acceptance | Terminal; triggers re-match suggestion |
-| DoctorOnWay | InConsultation | Doctor arrives, taps "Start Consultation" | Tracking session ends |
-| DoctorOnWay | NoShow | Arrival timeout exceeded | Terminal; flagged for Admin review |
-| DoctorOnWay | CancelledByPatient | Patient cancels en route | Terminal |
-| InConsultation | Completed | Doctor marks "End Consultation" | Triggers prescription generation |
-| InConsultation | CancelledByPatient | Patient aborts session | Terminal; partial-session handling required |
-| Completed | Reviewed | Patient submits rating/review | Terminal; updates doctor's aggregate rating |
-| Completed | `[*]` | Patient does not review | Terminal; appointment archived as completed |
+> **Implementation Note:** `CancelledByPatient` is not currently an allowed transition from `DoctorOnWay`, `Arrived`, or `InConsultation` in the backend `validTransitions` guard. Cancellation by patient is only permitted while the appointment is in `pending` state. The `arrived` state is a mandatory distinct step between `doctor_on_way` and `in_consultation`.
+
+| From State | Enum Value | To State | Trigger / Actor | Notes |
+|---|---|---|---|---|
+| `[*]` | — | `pending` | Patient books + Razorpay payment confirmed | Doctor and patient notified via in-app notification |
+| `pending` | `pending` | `accepted` | Doctor accepts | In-app notification sent to patient |
+| `pending` | `pending` | `rejected` | Doctor declines (with reason) | Terminal; Razorpay refund initiated |
+| `pending` | `pending` | `auto_rejected` | SLA timeout (background job every 60s) | Terminal; applicable for online mode timeouts |
+| `pending` | `pending` | `cancelled_by_patient` | Patient cancels | Terminal; refund initiated |
+| `accepted` | `accepted` | `doctor_on_way` | Doctor marks On The Way | Live tracking session begins (Socket.io /tracking) |
+| `accepted` | `accepted` | `cancelled_by_doctor` | Doctor cancels post-acceptance | Terminal; refund initiated |
+| `doctor_on_way` | `doctor_on_way` | `arrived` | Doctor marks physical arrival | Discrete arrived confirmation step |
+| `doctor_on_way` | `doctor_on_way` | `cancelled_by_doctor` | Doctor cancels en route | Terminal; refund initiated |
+| `arrived` | `arrived` | `in_consultation` | Doctor starts consultation | OTP verification may be used for online mode |
+| `arrived` | `arrived` | `cancelled_by_doctor` | Doctor cancels after arrival | Terminal |
+| `in_consultation` | `in_consultation` | `completed` | Doctor marks End Consultation | Patient may then submit a Review |
+| `completed` | `completed` | `[*]` | Patient optionally submits rating/review | Review stored as separate `Review` document |
+| Any active | — | `doctor_no_show` | Admin or system marks no-show | Terminal; flagged for admin review |
 
 ---
 
 ## 5. Implementation Notes
 
-- **Status field**: Store as an enum string on the `Appointment` document (e.g. `pending`, `accepted`, `rejected`, `auto_rejected`, `doctor_on_way`, `in_consultation`, `completed`, `cancelled_by_patient`, `cancelled_by_doctor`, `no_show`, `reviewed`).
-- **Guard conditions**: Backend transition handlers should reject any state change that doesn't match an edge defined above (e.g. `InConsultation → Accepted` is invalid and must be blocked at the API layer).
-- **Real-time sync**: Every transition should emit a Socket.io event (`appointment:status_changed`) so both Patient and Doctor clients update their UI without polling.
-- **Audit trail**: Each transition should be timestamped and appended to an `appointment.history[]` array for dispute resolution and admin auditing.
-- **SLA jobs**: `AutoRejected` and `NoShow` require a scheduled background job (e.g. cron or queue-based) to detect timeouts independent of client activity.
+- **Status field**: Stored as an enum string on the `Appointment` document. Valid values: `pending`, `accepted`, `rejected`, `auto_rejected`, `doctor_on_way`, `arrived`, `in_consultation`, `completed`, `cancelled_by_patient`, `cancelled_by_doctor`, `doctor_no_show`.
+- **`arrived` is a required state (Home Visit only)**: The backend `validTransitions` guard enforces `doctor_on_way → arrived → in_consultation` for home visits. For clinic and online modes, `doctor_on_way` and `arrived` are not used — transition goes `accepted → in_consultation` directly.
+- **`reviewed` is NOT a status**: Reviews are stored as a separate `Review` collection document linked to the appointment by `appointmentId`. The appointment status remains `completed` after a review is submitted.
+- **Guard conditions**: Backend `validTransitions` map rejects any transition not explicitly listed (e.g. `in_consultation → accepted` returns `400`).
+- **Consultation modes**: `consultationMode` field is `clinic | home | online`. For `home` mode, an address with geospatial coordinates is required and live GPS tracking is activated. For `online` mode, the appointment uses WebRTC-based video/audio calling via Socket.io `/notifications` namespace signalling, with mandatory OTP verification at session start.
+- **Clinic mode**: When a doctor accepts a clinic appointment, an appointment slip with a QR code is generated client-side (jsPDF) for the patient to present at the clinic.
+- **Real-time sync**: Status transitions emit Socket.io events via the `/notifications` namespace to both patient and doctor clients.
+- **Background job**: `checkOnlineTimeouts()` runs every 60 seconds to auto-reject online appointments where the doctor has not joined within the allowed window. Implemented via BullMQ worker on Redis-backed queue.
+- **OTP verification**: For online consultation appointments, an OTP-based verification flow (`otp.model.ts`) is used. The backend generates a 6-digit OTP, hashes it (SHA-256), delivers it via SMS to the patient, and the doctor verifies it before the session starts.
+- **Payment on booking**: Razorpay payment must be completed and confirmed via webhook before the appointment enters `pending` status and the doctor is notified. Emergency appointments (`isEmergency: true`) bypass the payment requirement.
+- **Doctor verification status**: A doctor must have `verificationStatus: "approved"` (set by admin) before appearing in patient search results and accepting bookings. Note: the field value is `"approved"`, not `"verified"`.
+- **Call log**: For online appointments, a `CallLog` document is created in `call_logs` collection recording caller, callee, call start/end times, and duration.

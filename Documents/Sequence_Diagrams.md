@@ -1,13 +1,13 @@
 # DocDock — Sequence Diagram Specification
 
-**Document ID:** DOCDOCK-SEQ-v1.0  
+**Document ID:** DOCDOCK-SEQ-v2.0  
 **Project Name:** DocDock  
 **Tagline:** *"Knock-Knock, your doctor is here."*  
 **Document Type:** Sequence Diagram Specification  
-**Version:** 1.0.0  
-**Status:** Draft  
+**Version:** 2.0.0  
+**Status:** Final — Reflects Implemented Build  
 **Prepared By:** Engineering Team  
-**Last Updated:** June 2025  
+**Last Updated:** July 2026  
 
 ---
 
@@ -23,7 +23,9 @@
 8. [Sequence 5 — Doctor Acceptance](#8-sequence-5--doctor-acceptance)
 9. [Sequence 6 — Live Tracking](#9-sequence-6--live-tracking)
 10. [Sequence 7 — Payment Flow](#10-sequence-7--payment-flow)
-11. [Inter-Sequence Dependencies](#11-inter-sequence-dependencies)
+11. [Sequence 8 — Online Video Consultation](#11-sequence-8--online-video-consultation)
+12. [Sequence 9 — AI Symptom Checker](#12-sequence-9--ai-symptom-checker)
+13. [Inter-Sequence Dependencies](#13-inter-sequence-dependencies)
 
 ---
 
@@ -71,9 +73,12 @@ These diagrams are the primary reference for:
 | `Auth` | Auth Middleware (JWT Verify) | System |
 | `DB` | MongoDB Atlas | Database |
 | `Cloud` | Cloudinary Storage | External Service |
-| `Mail` | Email Service (SMTP/Provider) | External Service |
+| `Mail` | Email Service (SendGrid/SMTP) | External Service |
+| `SMS` | SMS Service (Twilio) | External Service |
 | `Socket` | Socket.io Server | System |
 | `Razor` | Razorpay Payment Gateway | External Service |
+| `Gemini` | Google Gemini AI API | External Service |
+| `Worker` | BullMQ Background Worker | System |
 
 ---
 
@@ -81,7 +86,7 @@ These diagrams are the primary reference for:
 
 ### 4.1 Description
 
-This sequence covers the complete patient self-registration flow: form submission from the client, server-side validation, bcrypt password hashing, MongoDB document creation, verification email dispatch, and the email token verification round-trip that activates the account.
+This sequence covers the patient self-registration flow: form submission from the client, server-side validation, bcrypt password hashing, MongoDB document creation, and immediate account activation. No email verification step is required — the account is active on successful registration. An alternative Google OAuth 2.0 flow is also provided.
 
 ### 4.2 Sequence Diagram
 
@@ -93,9 +98,8 @@ sequenceDiagram
     participant Next as Next.js Frontend
     participant API as Express.js API
     participant DB as MongoDB Atlas
-    participant Mail as Email Service
 
-    Patient->>Next: Fill registration form<br/>(name, email, mobile, DOB, gender, password)
+    Patient->>Next: Fill registration form<br/>(name, email, mobile, password, role)
     activate Next
 
     Next->>Next: Client-side validation<br/>(format, required fields, password strength)
@@ -103,86 +107,68 @@ sequenceDiagram
     alt Validation fails
         Next-->>Patient: Highlight field errors
     else Validation passes
-        Next->>API: POST /api/auth/patient/register<br/>{ name, email, mobile, dob, gender, password }
+        Next->>API: POST /api/v1/auth/register<br/>{ fullName, email, phone, password, role: "patient" }
         activate API
 
-        API->>DB: findOne({ email }) OR findOne({ mobile })
+        API->>DB: findOne({ email }) · findOne({ phone })
         activate DB
         DB-->>API: Query result
         deactivate DB
 
-        alt Email or mobile already registered
-            API-->>Next: 409 Conflict<br/>{ error: "Account already exists" }
+        alt Email or phone already registered
+            API-->>Next: 409 Conflict<br/>{ error: "Email/Phone already registered" }
             Next-->>Patient: Show error + Login link
         else No duplicate found
             API->>API: bcrypt.hash(password, 12)
-            API->>API: Generate email verification token (UUID)<br/>Hash token · Set TTL: 24 hours
 
-            API->>DB: insertOne({ name, email, mobile, dob,<br/>gender, passwordHash, verifyTokenHash,<br/>verifyTokenExpiry, status: "unverified" })
+            API->>DB: insertOne User { fullName, email, phone, passwordHash,<br/>role: "patient", isVerified: false, isActive: true }
             activate DB
-            DB-->>API: { insertedId, acknowledged: true }
+            DB-->>API: { insertedId }
             deactivate DB
 
-            API--)Mail: sendVerificationEmail({<br/>to: email,<br/>link: BASE_URL/verify?token=<rawToken><br/>})
-            activate Mail
-            Mail-->>API: { messageId, accepted }
-            deactivate Mail
+            API->>DB: insertOne Patient { userId }
+            activate DB
+            DB-->>API: { insertedId }
+            deactivate DB
 
-            API-->>Next: 201 Created<br/>{ message: "Check your email to verify your account" }
-            Next-->>Patient: Redirect to "Check Your Email" screen
+            API-->>Next: 201 Created<br/>{ user: { _id, fullName, email, phone, role, isVerified } }
+            Next-->>Patient: Account created — redirect to Login
         end
         deactivate API
     end
     deactivate Next
 
-    Note over Patient, Mail: ── Email Verification Round-Trip ──
+    Note over Patient, API: ── Alternative: Google OAuth 2.0 ──
 
-    Patient->>Next: Click verification link in email<br/>GET /verify?token=<rawToken>
-    activate Next
-    Next->>API: GET /api/auth/verify-email?token=<rawToken>
+    Patient->>Next: Click "Sign in with Google"
+    Next->>API: GET /api/v1/auth/google
+    API-->>Patient: Redirect to Google consent screen
+    Patient->>API: GET /api/v1/auth/google/callback<br/>(code, state)
     activate API
-
-    API->>API: Hash incoming rawToken (SHA-256)
-    API->>DB: findOne({ verifyTokenHash, verifyTokenExpiry: { $gt: now } })
+    API->>DB: findOne({ email }) — check existing account
     activate DB
-    DB-->>API: Patient document or null
+    DB-->>API: User or null
     deactivate DB
-
-    alt Token invalid or expired
-        API-->>Next: 400 Bad Request<br/>{ error: "Link invalid or expired" }
-        Next-->>Patient: Show error + Resend verification link option
-
-        opt Patient requests resend
-            Patient->>Next: Click "Resend verification email"
-            Next->>API: POST /api/auth/resend-verification<br/>{ email }
-            activate API
-            API->>API: Generate new token · Update DB
-            API--)Mail: Send new verification email
-            API-->>Next: 200 OK
-            deactivate API
-            Next-->>Patient: "New verification email sent"
-        end
-
-    else Token valid and not expired
-        API->>DB: updateOne({ status: "verified",<br/>verifyTokenHash: null,<br/>verifyTokenExpiry: null })
+    alt No existing account
+        API->>DB: insertOne User { ..., googleId, role: "patient", isVerified: true }
         activate DB
-        DB-->>API: { modifiedCount: 1 }
+        DB-->>API: { insertedId }
         deactivate DB
-
-        API-->>Next: 200 OK<br/>{ message: "Email verified successfully" }
-        Next-->>Patient: Redirect to Login<br/>Toast: "Email verified! Please log in."
+        API->>DB: insertOne Patient { userId }
+    else Existing account
+        API->>DB: updateOne — link googleId, set isVerified: true
     end
-
+    API->>API: generateTokens(userId, role)<br/>Sign JWT access + refresh tokens
+    API-->>Patient: Redirect to frontend/auth/google/callback<br/>?accessToken=...&refreshToken=...&user=...
     deactivate API
-    deactivate Next
 ```
 
 ### 4.3 Key Design Notes
 
-- The verification token is stored as a **SHA-256 hash** in the database; the raw token travels only in the email link. This prevents token theft via database compromise.
+- **No email verification required** — patient accounts are immediately active on registration. The `isVerified` flag on the User document is set to `false` at creation but is not enforced as a login gate.
 - `bcrypt.hash` is called with **12 salt rounds** — CPU-intensive by design to resist brute-force attacks.
-- Email dispatch is **fire-and-forget** (`--)`) from the API perspective; the 201 response is returned without waiting for email delivery confirmation.
-- Token expiry uses a database-level TTL check (`$gt: now`) to prevent race conditions from clock drift.
+- **Google OAuth** creates a patient account automatically with `isVerified: true`. Doctors and admins cannot use Google OAuth (the callback always assigns `role: "patient"`).
+- JWT tokens are returned directly in the 201 response for email/password registration; for Google OAuth they are appended as URL query parameters.
 
 ---
 
@@ -190,7 +176,7 @@ sequenceDiagram
 
 ### 5.1 Description
 
-Doctor registration extends the patient flow with a multi-step form, document uploads to Cloudinary, and an admin notification gate. The doctor account is created in a `pending_verification` state and remains locked until the Admin Verification flow completes.
+Doctor registration is a two-step flow: personal and professional details. The doctor account is created in a `pending` verification state and is immediately navigated to their dashboard. Document uploads (profile photo, medical license, government ID) happen separately via the Profile Settings page after registration, using Cloudinary. All admins are notified in-app of the new registration.
 
 ### 5.2 Sequence Diagram
 
@@ -201,9 +187,7 @@ sequenceDiagram
     actor Doctor
     participant Next as Next.js Frontend
     participant API as Express.js API
-    participant Cloud as Cloudinary
     participant DB as MongoDB Atlas
-    participant Mail as Email Service
     actor Admin
 
     Note over Doctor, Admin: ── Step 1 & 2: Personal + Professional Details ──
@@ -212,65 +196,53 @@ sequenceDiagram
     Next->>Next: Client-side validation
     Next-->>Doctor: Step 1 valid → unlock Step 2
 
-    Doctor->>Next: Complete Step 2 (Professional Details)<br/>specialisation · regNo · experience · fee
+    Doctor->>Next: Complete Step 2 (Professional Details)<br/>specialisation · experience · fee
     Next->>Next: Client-side validation
-    Next-->>Doctor: Step 2 valid → unlock Step 3
-
-    Note over Doctor, Admin: ── Step 3: Document Upload to Cloudinary ──
-
-    Doctor->>Next: Select files (profile photo,<br/>medical degree, government ID)
-    Next->>Next: Validate file type (PDF/JPG/PNG)<br/>Validate size (max 5MB each)
-
-    alt File validation fails
-        Next-->>Doctor: Show file error message
-    else Files valid
-        Next->>Cloud: Upload each file via signed upload preset<br/>POST https://api.cloudinary.com/v1_1/.../upload
-        activate Cloud
-
-        loop For each document (3 total)
-            Cloud-->>Next: { secure_url, public_id, format }
-        end
-        deactivate Cloud
-
-        Next->>Next: Collect all 3 Cloudinary secure_urls
-    end
+    Next-->>Doctor: Step 2 valid → submit
 
     Note over Doctor, Admin: ── Form Submission to Backend ──
 
-    Next->>API: POST /api/auth/doctor/register<br/>{ personalDetails, professionalDetails,<br/>profilePhotoUrl, degreeUrl, govIdUrl }
+    Next->>API: POST /api/v1/auth/register<br/>{ fullName, email, phone, password, role: "doctor" }
     activate API
 
-    API->>DB: findOne({ email }) · findOne({ regNo })
+    API->>DB: findOne({ email }) · findOne({ phone })
     activate DB
     DB-->>API: Duplicate check result
     deactivate DB
 
-    alt Duplicate email or registration number
+    alt Duplicate email or phone
         API-->>Next: 409 Conflict<br/>{ error: "Already registered" }
         Next-->>Doctor: Show error message
     else No duplicate
         API->>API: bcrypt.hash(password, 12)
 
-        API->>DB: insertOne({<br/>  name, email, mobile, passwordHash,<br/>  specialisation, regNo, experience, fee,<br/>  profilePhotoUrl, degreeUrl, govIdUrl,<br/>  status: "pending_verification",<br/>  isAvailable: false,<br/>  averageRating: 0, reviewCount: 0<br/>})
+        API->>DB: insertOne User { fullName, email, phone,<br/>passwordHash, role: "doctor",<br/>verificationStatus: "pending" }
         activate DB
-        DB-->>API: { insertedId, acknowledged: true }
+        DB-->>API: { insertedId }
         deactivate DB
 
-        par Notify Admin and Doctor simultaneously
-            API--)Mail: sendEmail({<br/>  to: ADMIN_EMAIL,<br/>  subject: "New Doctor Application",<br/>  body: doctor details + review link<br/>})
-        and
-            API--)Mail: sendEmail({<br/>  to: doctor.email,<br/>  subject: "Application Received",<br/>  body: "Under review. ETA: 24–48 hours"<br/>})
-        end
+        API->>DB: insertOne Doctor { userId, licenseNumber: "TEMP-{id}",<br/>specialization: "General", verificationStatus: "pending" }
+        activate DB
+        DB-->>API: { insertedId }
+        deactivate DB
 
-        API-->>Next: 201 Created<br/>{ message: "Application submitted successfully" }
-        Next-->>Doctor: Redirect to "Application Submitted" screen
+        API->>DB: Find all admin users
+        API--)DB: insertMany Notifications — "New doctor registration pending"
+        Note over Admin: Admins receive in-app<br/>notification of new registration
+
+        API-->>Next: 201 Created<br/>{ user: { _id, fullName, email, role, verificationStatus } }
+        Next-->>Doctor: Redirect to Doctor Dashboard<br/>(account in pending verification state)
     end
     deactivate API
 
-    Note over Doctor, Admin: ── Admin Reviews Application (see Admin Verification Flow) ──
-
-    Admin->>DB: (Review flow — see Sequence 3 / Admin Dashboard)
-```
+    Note over Doctor, Admin: ── Document Upload (Post-Registration, via Profile Settings) ──
+    Doctor->>Next: Navigate to Profile Settings<br/>Upload profile photo / medical license / govt ID
+    Next->>API: PATCH /api/v1/doctors/profile<br/>{ profilePhoto, licenseUrl, govIdUrl, ... } (multipart or base64)
+    activate API
+    API->>DB: Upload file to Cloudinary → store URL
+    API-->>Next: 200 OK — profile updated
+    deactivate API
+Note over Doctor, Admin: ── Admin Reviews Application (see Admin Verification Flow) ──
 
 ### 5.3 Key Design Notes
 
@@ -583,7 +555,7 @@ sequenceDiagram
         API-->>Next: 400 Bad Request<br/>{ error: "Payment verification failed" }
         Next-->>Patient: Show payment error · Retry option
     else Signature valid
-        API->>DB: updateOne({ _id: appointmentId },<br/>{ status: "confirmed",<br/>  razorPaymentId,<br/>  paidAt: now })
+        API->>DB: updateOne({ _id: appointmentId },<br/>{ status: "pending",<br/>  razorPaymentId,<br/>  paidAt: now })
         activate DB
         DB-->>API: { modifiedCount: 1 }
         deactivate DB
@@ -618,12 +590,12 @@ sequenceDiagram
         Doctor->>Next: Click "Accept Appointment"
         Next->>API: PATCH /api/appointments/:id/accept<br/>Authorization: Bearer <doctorToken>
         activate API
-        API->>DB: findOne({ _id: appointmentId, status: "confirmed" })
+        API->>DB: findOne({ _id: appointmentId, status: "pending" })
         activate DB
         DB-->>API: Appointment document
         deactivate DB
 
-        API->>DB: updateOne({ _id: appointmentId },<br/>{ status: "en_route",<br/>  acceptedAt: now })
+        API->>DB: updateOne({ _id: appointmentId },<br/>{ status: "accepted",<br/>  acceptedAt: now })
         activate DB
         DB-->>API: { modifiedCount: 1 }
         deactivate DB
@@ -634,7 +606,7 @@ sequenceDiagram
             API--)Mail: sendEmail(patient,<br/>"Your doctor is on the way!")
         end
 
-        API-->>Next: 200 OK<br/>{ status: "en_route" }
+        API-->>Next: 200 OK<br/>{ status: "accepted" }
         deactivate API
         Next-->>Doctor: Navigate to active consultation view<br/>Begin GPS broadcast
         deactivate Doctor
@@ -647,7 +619,7 @@ sequenceDiagram
         Next->>API: PATCH /api/appointments/:id/decline<br/>{ reason }
         activate API
 
-        API->>DB: updateOne({ _id: appointmentId },<br/>{ status: "cancelled",<br/>  cancelReason: "Doctor declined",<br/>  cancelledAt: now })
+        API->>DB: updateOne({ _id: appointmentId },<br/>{ status: "rejected",<br/>  rejectionReason: reason,<br/>  updatedAt: now })
         activate DB
         DB-->>API: { modifiedCount: 1 }
         deactivate DB
@@ -710,7 +682,7 @@ sequenceDiagram
 
 ### 9.1 Description
 
-This sequence activates once a doctor accepts an appointment (`status: en_route`). It models the bidirectional Socket.io location broadcast loop, the patient map rendering cycle, the geo-fence-gated arrival confirmation, and the transition into the active consultation state.
+This sequence activates once a doctor accepts an appointment and marks themselves On The Way (`status: doctor_on_way`). It models the bidirectional Socket.io location broadcast loop, the patient map rendering cycle, the arrival confirmation, and the transition into the active consultation state.
 
 ### 9.2 Sequence Diagram
 
@@ -738,7 +710,7 @@ sequenceDiagram
 
     Note over Doctor, PatientApp: ── Real-Time Location Broadcast Loop ──
 
-    loop Every 5 seconds while status === "en_route"
+    loop Every 5 seconds while status === "doctor_on_way"
         DoctorApp->>DoctorApp: navigator.geolocation.getCurrentPosition()
         DoctorApp->>Socket: Emit location_update<br/>{ appointmentId, lat, lng, timestamp }
         activate Socket
@@ -998,27 +970,254 @@ sequenceDiagram
 
 ---
 
-## 11. Inter-Sequence Dependencies
+## 11. Sequence 8 — Online Video Consultation
+
+### 11.1 Description
+
+This sequence models the WebRTC-based peer-to-peer video/audio consultation flow for **Online** appointment mode. It covers OTP verification at session start, WebRTC signalling via Socket.io `/notifications` namespace, call lifecycle events, and the status transitions through to completion.
+
+### 11.2 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    actor Doctor
+    actor Patient
+    participant DoctorApp as Doctor App (Next.js)
+    participant Socket as Socket.io /notifications
+    participant API as Express.js API
+    participant DB as MongoDB Atlas
+    participant SMS as SMS Service (Twilio)
+    participant PatientApp as Patient App (Next.js)
+
+    Note over Doctor, PatientApp: ── OTP Verification (Online Mode) ──
+
+    Doctor->>DoctorApp: Navigate to Online Consultation Room
+    DoctorApp->>API: POST /api/appointments/:id/otp/generate<br/>Authorization: Bearer <doctorToken>
+    activate API
+    API->>DB: findOne({ _id: appointmentId, consultationMode: "online" })
+    activate DB
+    DB-->>API: Appointment { patientId, status: "accepted" }
+    deactivate DB
+
+    API->>API: Generate 6-digit OTP<br/>Hash OTP (SHA-256) · Set expiry: 10min
+    API->>DB: insertOne(AppointmentOtp,<br/>{ appointmentId, hashedOtp, expiresAt })
+    activate DB
+    DB-->>API: { insertedId }
+    deactivate DB
+
+    API->>DB: findOne(Patient { userId })<br/>Retrieve: phone number
+    activate DB
+    DB-->>API: { phone }
+    deactivate DB
+
+    API--)SMS: sendSMS({ to: patient.phone,<br/>  body: "DocDock OTP: XXXXXX.<br/>  Share only with your doctor." })
+    API-->>DoctorApp: 200 OK { message: "OTP sent to patient" }
+    deactivate API
+
+    Doctor->>DoctorApp: Doctor asks patient for OTP verbally
+    Patient->>PatientApp: Patient reads OTP from SMS
+    Doctor->>DoctorApp: Doctor enters OTP in UI
+    DoctorApp->>API: POST /api/appointments/:id/otp/verify<br/>{ otp: "XXXXXX" }
+    activate API
+
+    API->>DB: findOne(AppointmentOtp,<br/>{ appointmentId, expiresAt: { $gt: now } })
+    activate DB
+    DB-->>API: OTP record
+    deactivate DB
+
+    alt OTP expired or not found
+        API-->>DoctorApp: 400 Bad Request<br/>{ error: "OTP expired. Request a new one." }
+        DoctorApp-->>Doctor: Show retry button
+    else OTP hash mismatch
+        API-->>DoctorApp: 400 Bad Request<br/>{ error: "Invalid OTP" }
+        DoctorApp-->>Doctor: Show error message
+    else OTP valid
+        API->>DB: deleteOne(AppointmentOtp { appointmentId })
+        API->>DB: updateOne({ _id: appointmentId },<br/>{ status: "in_consultation",<br/>  consultationStartedAt: now })
+        activate DB
+        DB-->>API: { modifiedCount: 1 }
+        deactivate DB
+        API-->>DoctorApp: 200 OK { verified: true }
+        deactivate API
+    end
+
+    Note over Doctor, PatientApp: ── WebRTC Call Setup via Socket.io ──
+
+    DoctorApp->>Socket: Emit call:initiate<br/>{ appointmentId, doctorId, offer: RTCSessionDescription }
+    activate Socket
+    Socket-->>PatientApp: Relay call:initiate<br/>{ appointmentId, offer }
+    deactivate Socket
+
+    PatientApp-->>Patient: Show incoming call screen
+
+    alt Patient accepts call
+        Patient->>PatientApp: Click "Accept Call"
+        PatientApp->>Socket: Emit call:accept<br/>{ appointmentId, answer: RTCSessionDescription }
+        activate Socket
+        Socket-->>DoctorApp: Relay call:accept { answer }
+        deactivate Socket
+
+        loop ICE Candidate Exchange
+            DoctorApp->>Socket: Emit webrtc:signal { appointmentId, candidate }
+            Socket-->>PatientApp: Relay webrtc:signal { candidate }
+            PatientApp->>Socket: Emit webrtc:signal { appointmentId, candidate }
+            Socket-->>DoctorApp: Relay webrtc:signal { candidate }
+        end
+
+        Note over Doctor, PatientApp: P2P audio/video stream established
+
+    else Patient declines call
+        Patient->>PatientApp: Click "Decline Call"
+        PatientApp->>Socket: Emit call:reject { appointmentId }
+        Socket-->>DoctorApp: Relay call:reject
+        DoctorApp-->>Doctor: Show "Patient declined call"
+    end
+
+    Note over Doctor, PatientApp: ── End Call ──
+
+    Doctor->>DoctorApp: Click "End Call"
+    DoctorApp->>Socket: Emit call:hangup { appointmentId }
+    activate Socket
+    Socket-->>PatientApp: Relay call:hangup
+    deactivate Socket
+
+    DoctorApp->>API: PATCH /api/appointments/:id/status<br/>{ status: "completed" }
+    activate API
+    API->>DB: updateOne({ status: "completed", completedAt: now })
+    activate DB
+    DB-->>API: { modifiedCount: 1 }
+    deactivate DB
+    API-->>DoctorApp: 200 OK { status: "completed" }
+    deactivate API
+    DoctorApp-->>Doctor: Show Prescription form
+    PatientApp-->>Patient: Show "Consultation Ended" screen
+```
+
+### 11.3 Key Design Notes
+
+- **OTP verification** is mandatory for online consultation mode. The 6-digit OTP is delivered via SMS to the patient, and entered by the doctor — ensuring both parties are present and consenting before the session begins.
+- **WebRTC signalling is relayed entirely through Socket.io** (`/notifications` namespace). DocDock servers never process the actual audio/video streams — only SDP offer/answer and ICE candidates are relayed, keeping media peer-to-peer.
+- **ICE candidate exchange** continues in a loop until a suitable network path is found between peers. STUN servers handle NAT traversal for direct P2P connections.
+- Call log is persisted in the `call_logs` collection via `CallLogModel`, recording start time, end time, and participants.
+
+---
+
+## 12. Sequence 9 — AI Symptom Checker
+
+### 12.1 Description
+
+This sequence covers the AI Symptom Checker flow, powered by the Google Gemini API. It models the patient's symptom input, backend prompt construction, Gemini API streaming response, rule-based fallback when Gemini is unavailable, and the optional handoff to the appointment booking flow.
+
+### 12.2 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    actor Patient
+    participant PatientApp as Patient App (Next.js)
+    participant API as Express.js API
+    participant Auth as Auth Middleware
+    participant Gemini as Google Gemini API
+    participant DB as MongoDB Atlas
+
+    Note over Patient, DB: ── Symptom Input ──
+
+    Patient->>PatientApp: Open AI Symptom Checker
+    PatientApp->>PatientApp: Render streaming chat UI
+
+    Patient->>PatientApp: Type symptom description
+    PatientApp->>API: POST /api/v1/ai/symptom-check<br/>{ symptoms: "..." }<br/>Authorization: Bearer <accessToken>
+    activate API
+
+    API->>Auth: verifyJWT(accessToken)
+    Auth-->>API: { userId, role: "patient" }
+
+    API->>API: Construct medical context prompt:<br/>SystemPrompt + PatientSymptoms<br/>Include: "Respond as a helpful medical AI.
+    Do not diagnose. Suggest specialist type."
+
+    Note over API, Gemini: ── Gemini API Available ──
+
+    alt Gemini API key configured and reachable
+        API->>Gemini: generateContentStream({ contents: [prompt] })
+        activate Gemini
+
+        loop Streaming response chunks
+            Gemini-->>API: Stream text chunk
+            API-->>PatientApp: SSE: data: { chunk: "..." }
+            PatientApp-->>Patient: Append chunk to chat bubble in real time
+        end
+
+        Gemini-->>API: Stream complete
+        deactivate Gemini
+
+        API->>API: Parse final response<br/>Extract: conditions, specialist recommendation, urgency
+        API-->>PatientApp: SSE: data: { done: true, recommendation: { specialist, urgency } }
+        deactivate API
+
+        PatientApp-->>Patient: Show complete response
+        opt Specialist recommendation present
+            PatientApp-->>Patient: Show "Find a [Specialist] Doctor" shortcut button
+            Patient->>PatientApp: Click specialist shortcut
+            PatientApp->>PatientApp: Navigate to /find-doctors<br/>?specialization=<type>
+        end
+
+    else Gemini API unavailable or key missing
+        API->>API: Activate rule-based fallback engine<br/>Keyword matching on symptom text
+        API-->>PatientApp: 200 OK<br/>{ response: fallbackText,<br/>  source: "fallback",<br/>  disclaimer: "AI unavailable. General guidance only." }
+        deactivate API
+        PatientApp-->>Patient: Show fallback response with disclaimer
+    end
+
+    Note over Patient, DB: ── Multi-Turn Chat ──
+
+    opt Patient has follow-up question
+        Patient->>PatientApp: Type follow-up question
+        PatientApp->>API: POST /api/v1/ai/chat<br/>{ messages: [history], newMessage: "..." }
+        activate API
+        API->>Auth: verifyJWT(accessToken)
+        Auth-->>API: { userId }
+        API->>Gemini: generateContentStream({ contents: [history + newMessage] })
+        activate Gemini
+        loop Streaming follow-up response
+            Gemini-->>API: Stream chunk
+            API-->>PatientApp: SSE chunk
+            PatientApp-->>Patient: Append to chat
+        end
+        Gemini-->>API: Stream complete
+        deactivate Gemini
+        API-->>PatientApp: SSE: { done: true }
+        deactivate API
+    end
+```
+
+### 12.3 Key Design Notes
+
+- The AI controller is **lazily initialised** — the Gemini client is only created when a request arrives, not at server startup. This means the server starts cleanly even when the Gemini API key is not configured.
+- **Streaming responses** use Server-Sent Events (SSE) from the backend to the frontend. The `generateContentStream` API from `@google/generative-ai` SDK provides token-level streaming.
+- The **rule-based fallback** activates when: (a) the `GEMINI_API_KEY` environment variable is absent, (b) the Gemini API call fails or times out. This ensures the feature never shows an error to the patient.
+- The AI responses always include a **medical disclaimer** — the system prompt instructs Gemini not to provide definitive diagnoses, only to suggest specialist types and urgency levels.
+
+---
+
+## 13. Inter-Sequence Dependencies
 
 The sequences defined in this document form a strict dependency chain. The table below maps the terminal state of each sequence to the activation condition of its successor.
 
 ```mermaid
-sequenceDiagram
-    participant S1 as Seq 1: Patient Registration
-    participant S2 as Seq 2: Doctor Registration
-    participant S3 as Seq 3: Login
-    participant S4 as Seq 4: Appointment Booking
-    participant S5 as Seq 5: Doctor Acceptance
-    participant S6 as Seq 6: Live Tracking
-    participant S7 as Seq 7: Payment Flow
-
-    S1-->>S3: Patient account verified → can login
-    S2-->>S3: Doctor verified by Admin → can login
-    S3-->>S4: Patient authenticated → can search & book
-    S4-->>S7: Appointment pending_payment → payment initiated
-    S7-->>S5: Payment confirmed → Doctor notified
-    S5-->>S6: Doctor accepted → en_route → tracking starts
-    S6-->>S6: Prescription generation (DOCDOCK-SEQ-v1.1)
+flowchart LR
+    S1[Seq 1: Patient Registration] --> S3[Seq 3: Login]
+    S2[Seq 2: Doctor Registration] -->|Admin verified| S3
+    S3 --> S4[Seq 4: Appointment Booking]
+    S4 --> S7[Seq 7: Payment Flow]
+    S7 --> S5[Seq 5: Doctor Acceptance]
+    S5 -->|Home Visit| S6[Seq 6: Live Tracking]
+    S5 -->|Online| S8[Seq 8: Video Consultation]
+    S6 --> PRESC[Prescription Generation]
+    S8 --> PRESC
+    S9[Seq 9: AI Symptom Checker] -->|Doctor recommendation| S4
 ```
 
 ### Dependency Summary Table
@@ -1030,21 +1229,26 @@ sequenceDiagram
 | Seq 3 — Login | Seq 1 or Seq 2 | Seq 4 (Booking) |
 | Seq 4 — Appointment Booking | Seq 3 | Seq 7 (Payment) |
 | Seq 7 — Payment Flow | Seq 4 | Seq 5 (Doctor Acceptance) |
-| Seq 5 — Doctor Acceptance | Seq 7 | Seq 6 (Live Tracking) |
-| Seq 6 — Live Tracking | Seq 5 | Prescription Generation |
+| Seq 5 — Doctor Acceptance | Seq 7 | Seq 6 (Home) or Seq 8 (Online) |
+| Seq 6 — Live Tracking | Seq 5 (Home) | Prescription Generation |
+| Seq 8 — Video Consultation | Seq 5 (Online) | Prescription Generation |
+| Seq 9 — AI Symptom Checker | Seq 3 (Patient login) | Seq 4 (Booking via recommendation) |
 
 ### Shared Component Usage
 
 | Component | Sequences Involved |
 |---|---|
 | MongoDB Atlas | All sequences |
-| Auth Middleware (JWT) | Seq 3, 4, 5, 6, 7 |
-| Socket.io Server | Seq 4, 5, 6 |
+| Auth Middleware (JWT) | Seq 3, 4, 5, 6, 7, 8, 9 |
+| Socket.io Server | Seq 4, 5, 6, 8 |
 | Razorpay Gateway | Seq 4, 5, 7 |
 | Cloudinary | Seq 2 |
-| Email Service | Seq 1, 2, 4, 5, 7 |
+| Email Service (SendGrid) | Seq 1, 2, 4, 5, 7 |
+| SMS Service (Twilio) | Seq 8 — OTP delivery |
+| Google Gemini API | Seq 9 |
+| BullMQ Worker | Seq 4 — timeout/reminder jobs |
 
 ---
 
-*End of DocDock Sequence Diagram Specification v1.0*  
-*© 2025 DocDock. All rights reserved.*
+*End of DocDock Sequence Diagram Specification v2.0*  
+*© 2026 DocDock. All rights reserved.*
