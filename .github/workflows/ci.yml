@@ -1,0 +1,70 @@
+name: DocDock Full Production CI Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint-and-typecheck:
+    name: 🛡️ ESLint & TypeScript Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Run Workspace Linting
+        run: npm run lint
+
+  unit-and-integration-tests:
+    name: 🧪 API Unit & Integration Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Run Backend Vitest Suite with V8 Coverage
+        run: npm run test --workspace=apps/api -- --coverage
+      - name: Verify Quality Gates (>90% Lines, >85% Branches)
+        run: npx vitest check-coverage
+
+  web-component-tests:
+    name: ⚛️ Next.js Frontend RTL Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Run Web Vitest Suite
+        run: npx vitest run --workspace=apps/web
+
+  playwright-e2e:
+    name: 🎭 Playwright E2E & Accessibility Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+      - name: Build Next.js Web App
+        run: npm run build --workspace=apps/web
+      - name: Run Playwright Tests
+        run: npx playwright test --config=apps/web/playwright.config.ts
