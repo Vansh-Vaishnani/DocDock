@@ -35,6 +35,17 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  // ---------------------------------------------------------------------------
+  // Kafka (optional — API operates without Kafka; events are simply not published)
+  // ---------------------------------------------------------------------------
+  // Comma-separated list of broker addresses, e.g. localhost:9092,broker2:9092
+  KAFKA_BROKERS: z.string().optional(),
+  KAFKA_CLIENT_ID: z.string().optional().default('docdock-api'),
+  // Consumer group ID prefix — each consumer appends its own suffix
+  KAFKA_GROUP_ID_PREFIX: z.string().optional().default('docdock'),
+  // SASL credentials for cloud Kafka providers (Confluent, MSK, Upstash Kafka)
+  KAFKA_SASL_USERNAME: z.string().optional(),
+  KAFKA_SASL_PASSWORD: z.string().optional(),
   // Note: development-only bypass removed; do not add runtime flags for status transitions
 });
 

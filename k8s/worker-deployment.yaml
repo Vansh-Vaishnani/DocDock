@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docdock-worker
+  namespace: docdock
+  labels:
+    app.kubernetes.io/name: docdock
+    app.kubernetes.io/component: worker
+spec:
+  # Single replica for BullMQ workers ensures jobs are not processed twice.
+  # BullMQ uses Redis-backed locking, so multiple replicas are safe but
+  # unnecessary for most workloads. Scale up when job queue depth warrants it.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: docdock-worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: docdock-worker
+        app.kubernetes.io/component: worker
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: ghcr.io/YOUR_GITHUB_ORG/docdock-api:latest
+          imagePullPolicy: Always
+          # Override the CMD to run the worker entrypoint instead of the API server
+          command: ["node", "apps/api/dist/worker.js"]
+
+          envFrom:
+            - configMapRef:
+                name: docdock-config
+
+          env:
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: MONGODB_URI
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: REDIS_URL
+            - name: JWT_ACCESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: JWT_ACCESS_SECRET
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: JWT_REFRESH_SECRET
+            - name: COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: COOKIE_SECRET
+
+          # Worker has no HTTP port so we use an exec probe
+          livenessProbe:
+            exec:
+              command: ["node", "-e", "process.exit(0)"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+
+      restartPolicy: Always

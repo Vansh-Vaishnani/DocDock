@@ -7,9 +7,12 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint . --ext .ts",
-    "test": "jest",
+    "test": "vitest run",
     "create-admin": "ts-node scripts/create-admin.ts",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "dev:worker": "ts-node-dev --respawn --transpile-only src/worker.ts",
+    "mutate": "stryker run"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -29,6 +32,7 @@
     "ioredis": "^5.4.0",
     "joi": "^17.9.2",
     "jsonwebtoken": "^9.0.2",
+    "kafkajs": "^2.2.4",
     "mongoose": "^7.5.0",
     "morgan": "^1.10.0",
     "multer": "^2.2.0",
@@ -42,6 +46,8 @@
     "zod": "^3.23.2"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
     "@types/bcryptjs": "^2.4.2",
     "@types/cookie-parser": "^1.4.3",
     "@types/cors": "^2.8.13",

@@ -326,6 +326,324 @@ The API is fully documented with Swagger/OpenAPI and serves 15 route groups:
 
 ---
 
+## Production Infrastructure
+
+DocDock has been upgraded with a production-grade distributed infrastructure layer. This section explains each component and how they work together.
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       CLIENTS                               │
+│   Browser / Mobile                                          │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ HTTPS / WSS
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Next.js Frontend (port 3000)                   │
+│   App Router · TailwindCSS · Leaflet · Socket.IO client     │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ HTTP API calls
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│           Express API Server (port 4000)                    │
+│   12 Modules · JWT Auth · Google OAuth · Swagger            │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐ │
+│  │   MongoDB    │  │   Redis      │  │   Socket.IO       │ │
+│  │  (Mongoose)  │  │  (Cache +    │  │  /tracking        │ │
+│  │  Persistence │  │   Sessions)  │  │  /chat            │ │
+│  └──────────────┘  │              │  │  /notifications   │ │
+│                    │  BullMQ      │  │  /availability    │ │
+│                    │  Workers     │  └───────────────────┘ │
+│                    │  reminder    │                         │
+│                    │  notification│                         │
+│                    │  cleanup     │                         │
+│                    └──────────────┘                         │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │                 Kafka (KRaft)                        │   │
+│  │  docdock.payment.completed                           │   │
+│  │  docdock.appointment.created                         │   │
+│  │  docdock.appointment.confirmed                       │   │
+│  │  docdock.appointment.cancelled                       │   │
+│  │  docdock.consultation.started                        │   │
+│  │  docdock.prescription.generated                      │   │
+│  │                                                      │   │
+│  │  ┌──────────────────────┐  ┌──────────────────────┐ │   │
+│  │  │ notification-consumer│  │ appointment-consumer │ │   │
+│  │  │ (audit + future push)│  │ (reminder scheduling)│ │   │
+│  │  └──────────────────────┘  └──────────────────────┘ │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                       │
+              ┌────────┴────────┐
+              ▼                 ▼
+┌─────────────────────┐  ┌────────────────────────────────┐
+│ Docker Compose      │  │ Kubernetes (minikube / prod)    │
+│ (local dev stack)   │  │ backend-deployment (3 replicas) │
+│ MongoDB + Redis +   │  │ frontend-deployment (2 replicas)│
+│ Kafka + API + Web + │  │ worker-deployment (1 replica)   │
+│ Worker + Kafka UI   │  │ Ingress (NGINX)                 │
+└─────────────────────┘  └────────────────────────────────┘
+                                        │
+                            ┌───────────▼────────────┐
+                            │  GitHub Actions CI/CD  │
+                            │  ci.yml: lint + test + │
+                            │  build + docker check  │
+                            │  docker.yml: push GHCR │
+                            └────────────────────────┘
+```
+
+---
+
+### Why Both Kafka AND Redis/BullMQ?
+
+These two technologies have complementary, non-overlapping responsibilities:
+
+| Concern | Technology | Why |
+|:--------|:-----------|:----|
+| Domain events (PaymentCompleted, AppointmentCreated) | **Kafka** | Durable, replayable event log. Multiple consumers can independently react to the same event. Events are retained for replay. |
+| Service-to-service async communication | **Kafka** | Decouples producers from consumers. The API doesn't need to know which services consume its events. |
+| Appointment reminders (T-30 min delay) | **BullMQ** | Precise delay semantics. Redis job locks prevent double-processing. Retry backoff built-in. |
+| Scheduled cleanup (expired OTPs) | **BullMQ** | Cron-style scheduling with persistence across restarts. |
+| Failed notification retry | **BullMQ** | Job-level retry with exponential backoff, max attempts, and dead-letter. |
+| Session/OTP/rate-limit cache | **Redis directly** | Simple TTL-based cache, no queue semantics needed. |
+| Ephemeral current GPS location | **Redis directly** | High-frequency live coordinates stored under `appointment:{id}:location` with a 60s TTL. |
+
+**Key insight**: Kafka events *trigger* BullMQ jobs. For example, when `PaymentCompleted` arrives in the Kafka appointment consumer, it can enqueue a BullMQ delayed reminder job for T-30 minutes before the appointment. Kafka carries the durable event; BullMQ schedules the precise delayed work.
+
+---
+
+### Realtime Doctor Tracking Architecture
+
+```text
+                 ┌──────────────┐
+                 │ Doctor GPS   │
+                 └──────┬───────┘
+                        │
+                        ▼
+                 ┌──────────────┐
+                 │ Express API  │
+                 └──────┬───────┘
+                        │
+                 ┌──────┴───────┐
+                 ▼              ▼
+              Redis          Kafka
+          Current GPS       Lifecycle
+            (60s TTL)        Events
+                 │              │
+                 ▼              ├── Notification
+             Socket.IO          ├── Analytics
+         appointment:{id}       └── Audit
+                 │
+                 ▼
+              Patient
+
+MongoDB
+  │
+  └── Persistent appointment/trip state
+```
+
+#### Technology Responsibilities for Location Tracking
+
+- **Why Kafka?** Kafka is used exclusively for **durable domain lifecycle events** (`DoctorOnTheWay`, `DoctorArrived`, `TripCancelled`, `TripCompleted`). These high-value state transitions need audit logging, analytics fan-out, and reliable async notifications across services.
+- **Why NOT Kafka for GPS Coordinates?** High-frequency GPS coordinates (emitted every 2–10 seconds) are ephemeral. Streaming every coordinate into Kafka partitions would pollute the durable event log, create unnecessary offset/partition overhead, and introduce latency for live map rendering.
+- **Why Redis?** Ephemeral current-location state is stored in Redis under key `appointment:{appointmentId}:location` with a 60-second TTL. This provides sub-millisecond read/write latency and automatic expiration if a doctor's device loses connection or closes the app.
+- **Why Socket.IO?** Connected patients receive low-latency coordinate pushes via Socket.IO `/tracking` namespace rooms (`appointment:{appointmentId}`) using event `doctor:location:update`.
+- **Why MongoDB?** MongoDB maintains the authoritative appointment status (`doctor_on_way`, `arrived`, `completed`, `cancelled`) and user permissions.
+- **Why BullMQ?** Schedules delayed reminder jobs (e.g. T-30 minutes before appointment) triggered by Kafka events.
+- **Why Kubernetes?** Enables independent horizontal scaling for API (`backend-deployment`), background job processing (`worker-deployment`), and Next.js UI (`frontend-deployment`).
+
+---
+
+### Docker Compose — Local Development
+
+**Start infrastructure only** (MongoDB, Redis, Kafka, Kafka UI at `:8080`):
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+```
+
+Then run the app in hot-reload mode:
+
+```bash
+npm run dev
+```
+
+**Start the full production stack** (builds images, runs everything):
+
+```bash
+# Copy and fill in your credentials first
+cp .env.example .env
+
+docker compose up --build
+
+# Or in detached mode
+docker compose up -d --build
+```
+
+**Stop and clean up:**
+
+```bash
+docker compose down
+docker compose -f docker-compose.dev.yml down
+
+# Remove volumes too
+docker compose down -v
+```
+
+**Environment variables**: Copy `.env.example` to `.env` and fill in values. See `.env.example` for all documented variables.
+
+---
+
+### Kubernetes Deployment
+
+**Prerequisites**: minikube + kubectl + Docker
+
+```bash
+# Start minikube
+minikube start --driver=docker
+
+# Enable NGINX Ingress
+minikube addons enable ingress
+
+# Create namespace
+kubectl apply -f k8s/namespace.yaml
+
+# Apply ConfigMap
+kubectl apply -f k8s/configmap.yaml
+
+# Create secrets (from the example, fill in base64-encoded values)
+# Option A: copy and edit
+cp k8s/secrets.example.yaml k8s/secrets.yaml
+# Edit k8s/secrets.yaml with base64-encoded values (echo -n 'value' | base64)
+kubectl apply -f k8s/secrets.yaml
+
+# Option B: kubectl create (recommended)
+kubectl create secret generic docdock-secrets \
+  --namespace=docdock \
+  --from-literal=MONGODB_URI='...' \
+  --from-literal=REDIS_URL='...' \
+  --from-literal=JWT_ACCESS_SECRET='...' \
+  --from-literal=JWT_REFRESH_SECRET='...' \
+  --from-literal=COOKIE_SECRET='...'
+
+# Deploy application services
+kubectl apply -f k8s/backend-deployment.yaml
+kubectl apply -f k8s/backend-service.yaml
+kubectl apply -f k8s/frontend-deployment.yaml
+kubectl apply -f k8s/frontend-service.yaml
+kubectl apply -f k8s/worker-deployment.yaml
+kubectl apply -f k8s/ingress.yaml
+
+# Watch pods come up
+kubectl get pods -n docdock -w
+
+# Access via minikube tunnel
+minikube tunnel
+```
+
+> **Infrastructure boundary**: MongoDB, Redis, and Kafka are **external managed services** in the production Kubernetes setup (Atlas, Upstash, Confluent Cloud). They are not deployed in-cluster — stateful services with persistent volumes require cluster-specific storage class configuration and are fragile if misconfigured. The `docker-compose.dev.yml` provides these locally for development.
+
+**Update image in deployment:**
+
+```bash
+# After pushing a new image via docker.yml workflow
+kubectl set image deployment/docdock-backend backend=ghcr.io/YOUR_ORG/docdock-api:sha-abc123 -n docdock
+kubectl rollout status deployment/docdock-backend -n docdock
+```
+
+---
+
+### CI/CD — GitHub Actions
+
+Two workflows are defined:
+
+#### `.github/workflows/ci.yml` — runs on every push and pull request
+
+| Job | What it does |
+|:----|:-------------|
+| **lint-and-typecheck** | ESLint + TypeScript type checking for API and Web |
+| **api-tests** | Vitest unit + integration tests with coverage (Kafka disabled, no real broker needed) |
+| **web-tests** | Vitest frontend component tests |
+| **build** | Full workspace build verification (`npm run build`) |
+| **docker-build** | Builds API and Web Docker images (no push, just verifies Dockerfiles work) |
+| **security-scan** | `npm audit` for known vulnerabilities |
+| **trivy-scan** | Docker image vulnerability scan (runs on main/master only) |
+
+#### `.github/workflows/docker.yml` — runs on main/master pushes only
+
+Builds and pushes versioned Docker images to GitHub Container Registry (GHCR):
+- `ghcr.io/YOUR_ORG/docdock-api:latest`
+- `ghcr.io/YOUR_ORG/docdock-api:sha-{git-sha}`
+- `ghcr.io/YOUR_ORG/docdock-web:latest`
+
+No production credentials are needed for PR CI. Only `GITHUB_TOKEN` (auto-provided) is used for image push.
+
+---
+
+### Health Check
+
+```bash
+curl http://localhost:4000/api/v1/health
+```
+
+Response includes Kafka status:
+
+```json
+{
+  "success": true,
+  "message": "DocDock API is running",
+  "status": {
+    "api": "running",
+    "mongodb": true,
+    "redis": true,
+    "kafka": true,
+    "payment": false,
+    "email": false,
+    "oauth": false
+  }
+}
+```
+
+`kafka: false` is expected when `KAFKA_BROKERS` is not set — the API runs normally without Kafka.
+
+---
+
+### Quick Reference Commands
+
+```bash
+# Development
+npm run dev                              # Start API + Web in hot-reload
+npm run dev:api                          # API only
+npm run dev:worker                       # BullMQ workers only (separate process)
+
+# Build
+npm run build                            # Build all workspaces
+npm run build --workspace=apps/api       # API only
+
+# Tests
+npx vitest run                           # Run tests (from apps/api/)
+npx vitest run --coverage                # With coverage report
+
+# Docker (production)
+docker compose up --build               # Full stack
+docker compose down                     # Stop
+
+# Docker (dev infrastructure only)
+docker compose -f docker-compose.dev.yml up -d    # Infrastructure only
+docker compose -f docker-compose.dev.yml down     # Stop infrastructure
+
+# Kubernetes
+kubectl apply -f k8s/                   # Apply all manifests
+kubectl get pods -n docdock             # Check pod status
+kubectl logs -n docdock -l app=docdock-backend   # Stream API logs
+kubectl rollout restart deployment/docdock-backend -n docdock  # Force redeploy
+```
+
+---
+
 ## License
 
 This project is proprietary software. Unauthorized distribution, reproduction, or commercial use without explicit permission is strictly prohibited.
@@ -341,5 +659,8 @@ This project is proprietary software. Unauthorized distribution, reproduction, o
 [![Database MongoDB](https://img.shields.io/badge/Database-MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white)](#)
 [![Real-Time Socket.IO](https://img.shields.io/badge/Real--Time-Socket.IO-010101?style=flat-square&logo=socket.io&logoColor=white)](#)
 [![AI Gemini](https://img.shields.io/badge/AI-Google_Gemini-4285F4?style=flat-square&logo=google&logoColor=white)](#)
+[![Apache Kafka](https://img.shields.io/badge/Events-Apache_Kafka-231F20?style=flat-square&logo=apachekafka&logoColor=white)](#)
+[![Docker](https://img.shields.io/badge/Container-Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](#)
+[![Kubernetes](https://img.shields.io/badge/Orchestration-Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white)](#)
 
 </div>

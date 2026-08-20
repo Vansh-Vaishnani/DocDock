@@ -22,6 +22,21 @@ export class TrackingController {
     }
   }
 
+  async startTrip(req: any, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = (req as AuthenticatedRequest).user?.sub;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Authentication required', error: { code: 'AUTH_REQUIRED', details: [] } });
+        return;
+      }
+      const coordinates = req.body.coordinates as [number, number] | undefined;
+      const result = await service.startTrip(req.params.appointmentId, userId, coordinates);
+      sendSuccess(res, result, 'Trip started successfully. Doctor is on the way.');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async updateLocation(req: any, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = (req as AuthenticatedRequest).user?.sub;
@@ -32,6 +47,21 @@ export class TrackingController {
       const coordinates = req.body.coordinates as [number, number];
       const result = await service.updateDoctorLocation(req.params.appointmentId, userId, coordinates);
       sendSuccess(res, result, 'Location updated.');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async endTrip(req: any, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = (req as AuthenticatedRequest).user?.sub;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Authentication required', error: { code: 'AUTH_REQUIRED', details: [] } });
+        return;
+      }
+      const reason = req.body.reason as string | undefined;
+      const result = await service.endTrip(req.params.appointmentId, userId, reason);
+      sendSuccess(res, result, 'Trip location sharing ended.');
     } catch (error) {
       next(error);
     }

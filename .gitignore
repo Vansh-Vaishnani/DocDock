@@ -36,3 +36,9 @@ yarn-error.log*
 .vscode/
 *.swp
 *.swo
+
+# Docker
+.dockerignore
+
+# Kubernetes — real secrets file (example is safe to commit, real is not)
+k8s/secrets.yaml

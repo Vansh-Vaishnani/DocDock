@@ -4,6 +4,8 @@ import { validateEnv } from '../config/envSchema';
 import { isEmailServiceEnabled } from '../../services/email.service';
 import { isGoogleOAuthEnabled } from '../config/oauth';
 import { isRazorpayEnabled } from '../config/providers';
+import { connectProducer, isProducerConnected } from '../../events/kafka/producer';
+import { initializeKafkaTopics } from '../../events/kafka/admin';
 
 export interface InitializationResult {
   success: boolean;
@@ -14,6 +16,7 @@ export interface InitializationResult {
     payment: boolean;
     email: boolean;
     oauth: boolean;
+    kafka: boolean;
   };
   errors: string[];
 }
@@ -111,7 +114,8 @@ export const initializeServices = async (): Promise<InitializationResult> => {
     mongodb: false,
     payment: false,
     email: false,
-    oauth: false
+    oauth: false,
+    kafka: false,
   };
 
   console.log('🚀 Initializing DocDock API services...\n');
@@ -182,6 +186,28 @@ export const initializeServices = async (): Promise<InitializationResult> => {
     // Don't add to errors - OAuth is optional
   }
 
+  // Connect Kafka producer and initialize topics (optional — non-fatal)
+  console.log('📨 Connecting Kafka producer and initializing topics...');
+  try {
+    await connectProducer();
+    checks.kafka = isProducerConnected();
+    if (checks.kafka) {
+      console.log('✅ Kafka producer connected');
+      console.log('📑 Ensuring required Kafka topics exist...');
+      const topicsInitialized = await initializeKafkaTopics();
+      if (topicsInitialized) {
+        console.log('✅ Kafka topics initialized successfully');
+      } else {
+        console.log('⚠️  Kafka topic initialization skipped or degraded');
+      }
+    } else {
+      console.log('⚠️  Kafka producer disabled (KAFKA_BROKERS not set)');
+    }
+  } catch {
+    checks.kafka = false;
+    console.log('⚠️  Kafka producer/topics failed to connect — events will not be published');
+  }
+
   console.log('\n' + '='.repeat(50));
 
   const success = checks.environment && checks.redis && checks.mongodb;
@@ -210,12 +236,14 @@ export const getInitializationStatus = (): {
   payment: boolean;
   email: boolean;
   oauth: boolean;
+  kafka: boolean;
 } => {
   return {
     mongodb: mongoose.connection.readyState === 1,
     redis: redisClient.isOpen,
     payment: isRazorpayEnabled(),
     email: isEmailServiceEnabled(),
-    oauth: isGoogleOAuthEnabled()
+    oauth: isGoogleOAuthEnabled(),
+    kafka: isProducerConnected(),
   };
 };

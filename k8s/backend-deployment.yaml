@@ -1,0 +1,197 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docdock-backend
+  namespace: docdock
+  labels:
+    app.kubernetes.io/name: docdock
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: docdock-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: docdock-backend
+        app.kubernetes.io/component: backend
+    spec:
+      # Graceful termination — allow in-flight requests to complete
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        - name: backend
+          # Replace with your actual image registry/repo:tag
+          image: ghcr.io/YOUR_GITHUB_ORG/docdock-api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4000
+              name: http
+
+          # Environment — non-secrets from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: docdock-config
+
+          # Secrets injected as environment variables
+          env:
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: MONGODB_URI
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: REDIS_URL
+            - name: JWT_ACCESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: JWT_ACCESS_SECRET
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: JWT_REFRESH_SECRET
+            - name: COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: COOKIE_SECRET
+            - name: KAFKA_BROKERS
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: KAFKA_BROKERS
+                  optional: true
+            - name: KAFKA_SASL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: KAFKA_SASL_USERNAME
+                  optional: true
+            - name: KAFKA_SASL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: KAFKA_SASL_PASSWORD
+                  optional: true
+            - name: APP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: APP_URL
+            - name: BACKEND_URL
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: BACKEND_URL
+            - name: CLOUDINARY_CLOUD_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: CLOUDINARY_CLOUD_NAME
+                  optional: true
+            - name: CLOUDINARY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: CLOUDINARY_API_KEY
+                  optional: true
+            - name: CLOUDINARY_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: CLOUDINARY_API_SECRET
+                  optional: true
+            - name: RAZORPAY_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: RAZORPAY_KEY_ID
+                  optional: true
+            - name: RAZORPAY_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: RAZORPAY_KEY_SECRET
+                  optional: true
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: SENDGRID_API_KEY
+                  optional: true
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
+            - name: TWILIO_ACCOUNT_SID
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: TWILIO_ACCOUNT_SID
+                  optional: true
+            - name: TWILIO_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: TWILIO_AUTH_TOKEN
+                  optional: true
+            - name: TWILIO_PHONE_NUMBER
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: TWILIO_PHONE_NUMBER
+                  optional: true
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: GEMINI_API_KEY
+                  optional: true
+
+          # Health checks use the existing /api/v1/health endpoint
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 4000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+
+          # Resource requests and limits
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+      restartPolicy: Always

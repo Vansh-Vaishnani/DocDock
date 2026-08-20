@@ -116,14 +116,42 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
       }
     };
 
-    // Run once immediately
+    // 1. Initial snapshot fetch from backend
     void fetchLocation();
 
+    // 2. Real-time low-latency WebSocket connection to /tracking namespace room
+    const token = getStoredAccessToken();
+    const socket = io(`${SOCKET_BASE}/tracking`, {
+      transports: ['websocket', 'polling'],
+      auth: { token },
+    });
+
+    socket.on('connect', () => {
+      socket.emit('join:appointment', { appointmentId: detail.appointment?._id, token });
+    });
+
+    socket.on('doctor:location:update', (data: { latitude: number; longitude: number; timestamp: number }) => {
+      if (typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+        setDoctorPos({ lat: data.latitude, lng: data.longitude });
+        setTrackingError(false);
+      }
+    });
+
+    socket.on('doctor:location:ended', () => {
+      setRoutePath([]);
+      setEtaMinutes(null);
+      setRemainingDistanceKm(null);
+    });
+
+    // Backup polling every 10 seconds for resiliency
     const pollInterval = window.setInterval(() => {
       void fetchLocation();
-    }, 3000); // Poll every 3 seconds
+    }, 10000);
 
-    return () => window.clearInterval(pollInterval);
+    return () => {
+      socket.disconnect();
+      window.clearInterval(pollInterval);
+    };
   }, [detail.appointment?.status, detail.appointment?._id]);
 
 

@@ -4,6 +4,8 @@ import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { sendCreated, sendSuccess } from '../../common/utils/http';
+import { logger } from '../../common/utils/logger';
+import { publishPaymentCompleted } from '../../events/publishers/paymentPublisher';
 
 import { AppointmentService } from '../appointment/appointment.service';
 import { PatientModel } from '../patient/patient.repository';
@@ -106,6 +108,23 @@ export class PaymentController {
         payment = await service.markPaid(razorpayOrderId, razorpayPaymentId);
       }
       const appointment = await appointmentService.confirmAfterPayment(payment.appointmentId.toString(), payment.bookingPayload, payment.patientId.toString());
+
+      // Publish PaymentCompleted domain event to Kafka (non-blocking)
+      // This allows notification + appointment consumers to react asynchronously.
+      publishPaymentCompleted({
+        paymentId: payment._id.toString(),
+        appointmentId: appointment._id.toString(),
+        patientId: payment.patientId.toString(),
+        amount: payment.amount,
+        razorpayOrderId: payment.razorpayOrderId,
+        razorpayPaymentId: payment.razorpayPaymentId ?? '',
+      }).catch((err) => {
+        logger.warn('[PaymentController] Kafka publish failed — synchronous flow unaffected', {
+          error: err instanceof Error ? err.message : String(err),
+          appointmentId: appointment._id.toString(),
+        });
+      });
+
       sendSuccess(res, { ...payment.toObject(), appointmentId: appointment._id.toString() }, 'Payment verified successfully.');
     } catch (error) {
       next(error);

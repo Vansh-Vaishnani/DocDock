@@ -6,11 +6,13 @@ import { authenticate, requireRole } from '../../common/middleware/authMiddlewar
 import { TrackingController } from './tracking.controller';
 import { trackingParamsSchema, updateLocationSchema } from './tracking.validation';
 
-
 const router = express.Router();
 const controller = new TrackingController();
 
 router.get('/:appointmentId/location', authenticate, validateRequest(trackingParamsSchema), controller.getLocation.bind(controller));
+router.post('/:appointmentId/start-trip', authenticate, requireRole(['doctor']), validateRequest(trackingParamsSchema), controller.startTrip.bind(controller));
+router.post('/:appointmentId/end-trip', authenticate, validateRequest(trackingParamsSchema), controller.endTrip.bind(controller));
 router.patch('/:appointmentId/location', authenticate, requireRole(['doctor']), validateRequest(updateLocationSchema), controller.updateLocation.bind(controller));
+router.post('/:appointmentId/location', authenticate, requireRole(['doctor']), validateRequest(updateLocationSchema), controller.updateLocation.bind(controller));
 
 export default router;

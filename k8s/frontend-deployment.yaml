@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docdock-frontend
+  namespace: docdock
+  labels:
+    app.kubernetes.io/name: docdock
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: docdock-frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: docdock-frontend
+        app.kubernetes.io/component: frontend
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: frontend
+          image: ghcr.io/YOUR_GITHUB_ORG/docdock-web:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+              name: http
+
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: NEXT_TELEMETRY_DISABLED
+              value: "1"
+            - name: NEXT_PUBLIC_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: NEXT_PUBLIC_API_URL
+            - name: NEXT_PUBLIC_APP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: NEXT_PUBLIC_APP_URL
+            - name: NEXT_PUBLIC_SOCKET_URL
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: NEXT_PUBLIC_SOCKET_URL
+            - name: NEXT_PUBLIC_RAZORPAY_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: docdock-secrets
+                  key: NEXT_PUBLIC_RAZORPAY_KEY_ID
+                  optional: true
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+
+      restartPolicy: Always

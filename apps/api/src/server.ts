@@ -25,6 +25,9 @@ import { initializeServices } from './common/utils/initialization';
 import { getInitializationStatus } from './common/utils/initialization';
 import { AppointmentService } from './modules/appointment/appointment.service';
 import './jobs/workers';
+import { startNotificationConsumer } from './events/consumers/notificationConsumer';
+import { startAppointmentConsumer } from './events/consumers/appointmentConsumer';
+import { disconnectProducer } from './events/kafka/producer';
 
 const app = express();
 const server = createServer(app);
@@ -43,6 +46,7 @@ app.get('/api/v1/health', (req, res) => {
       api: 'running',
       mongodb: status.mongodb,
       redis: status.redis,
+      kafka: status.kafka,
       payment: status.payment,
       email: status.email,
       oauth: status.oauth
@@ -160,10 +164,31 @@ const start = async (): Promise<void> => {
     }
 
     // Start the server
-    server.listen(config.port, () => {
+    server.listen(config.port, async () => {
       console.log(`\n🎉 DocDock API listening on http://localhost:${config.port}`);
       console.log(`📚 API Documentation: http://localhost:${config.port}/api/v1/docs`);
       console.log(`❤️  Health Check: http://localhost:${config.port}/api/v1/health\n`);
+
+      // Start Kafka consumers (non-blocking — failures logged, not fatal)
+      const stopNotificationConsumer = await startNotificationConsumer();
+      const stopAppointmentConsumer = await startAppointmentConsumer();
+
+      // Graceful shutdown
+      const shutdown = async (signal: string) => {
+        console.log(`\n[Server] ${signal} received — graceful shutdown started`);
+        await Promise.allSettled([
+          stopNotificationConsumer(),
+          stopAppointmentConsumer(),
+          disconnectProducer(),
+        ]);
+        server.close(() => {
+          console.log('[Server] HTTP server closed');
+          process.exit(0);
+        });
+      };
+
+      process.on('SIGTERM', () => shutdown('SIGTERM'));
+      process.on('SIGINT', () => shutdown('SIGINT'));
 
       // Start background online appointment timeout checker (every 60 seconds)
       const appointmentService = new AppointmentService();

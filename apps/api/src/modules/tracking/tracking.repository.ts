@@ -1,8 +1,74 @@
+import { redisClient } from '../../common/config';
 import { DoctorModel } from '../doctor/doctor.repository';
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { TrackingModel, ITrackingDocument } from './tracking.model';
 
+export interface EphemeralLocation {
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+  appointmentId: string;
+  doctorId: string;
+}
+
 export class TrackingRepository {
+  /** TTL for ephemeral location in Redis (60 seconds) */
+  private readonly LOCATION_TTL_SECONDS = 60;
+
+  /**
+   * Save ephemeral live location to Redis key `appointment:{id}:location` with TTL.
+   */
+  async setEphemeralLocation(
+    appointmentId: string,
+    doctorId: string,
+    coordinates: [number, number],
+    timestamp: number = Date.now()
+  ): Promise<EphemeralLocation> {
+    const key = `appointment:${appointmentId}:location`;
+    const payload: EphemeralLocation = {
+      longitude: coordinates[0],
+      latitude: coordinates[1],
+      timestamp,
+      appointmentId,
+      doctorId,
+    };
+
+    if (redisClient.isOpen) {
+      await redisClient.set(key, JSON.stringify(payload), {
+        EX: this.LOCATION_TTL_SECONDS,
+      });
+    }
+
+    return payload;
+  }
+
+  /**
+   * Get ephemeral live location from Redis.
+   */
+  async getEphemeralLocation(appointmentId: string): Promise<EphemeralLocation | null> {
+    const key = `appointment:${appointmentId}:location`;
+    if (!redisClient.isOpen) {
+      return null;
+    }
+    const raw = await redisClient.get(key);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as EphemeralLocation;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Clear ephemeral location from Redis when trip ends / completes / cancels.
+   */
+  async clearEphemeralLocation(appointmentId: string): Promise<void> {
+    const key = `appointment:${appointmentId}:location`;
+    if (redisClient.isOpen) {
+      await redisClient.del(key);
+    }
+  }
+
   async getOrCreateSession(appointmentId: string, doctorId: string, patientId: string): Promise<ITrackingDocument> {
     const session = await TrackingModel.findOne({ appointmentId });
     if (session) {

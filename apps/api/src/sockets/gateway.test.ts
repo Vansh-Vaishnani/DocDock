@@ -6,7 +6,7 @@ import { initializeSocketServer } from './gateway';
 describe('Socket.IO Gateway Integration Suite', () => {
   let httpServer: any;
   let chatSocket: ClientSocket;
-  let notificationSocket: ClientSocket;
+  let notificationSocket: ClientSocket | undefined = undefined;
   const port = 5099;
 
   beforeAll(async () => {

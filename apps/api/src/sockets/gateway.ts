@@ -1,7 +1,12 @@
 import { Server as HttpServer } from 'http';
-
 import { Server as SocketIOServer } from 'socket.io';
+import jwt from 'jsonwebtoken';
+
+import { config } from '../common/config';
+import { AuthPayload } from '../common/middleware/authMiddleware';
 import { ChatRepository } from '../modules/chat/chat.repository';
+import { AppointmentModel } from '../modules/appointment/appointment.repository';
+import { DoctorModel } from '../modules/doctor/doctor.repository';
 
 const chatRepository = new ChatRepository();
 
@@ -14,6 +19,19 @@ export const getIO = (): SocketIOServer => {
   return ioInstance;
 };
 
+/**
+ * Verify JWT token from Socket.IO handshake auth or header query.
+ */
+function verifySocketToken(token?: string): AuthPayload | null {
+  if (!token) return null;
+  const cleanToken = token.startsWith('Bearer ') ? token.slice(7) : token;
+  try {
+    return jwt.verify(cleanToken, config.jwtAccessSecret) as AuthPayload;
+  } catch {
+    return null;
+  }
+}
+
 export const initializeSocketServer = (server: HttpServer): SocketIOServer => {
   const io = new SocketIOServer(server, {
     cors: {
@@ -24,15 +42,73 @@ export const initializeSocketServer = (server: HttpServer): SocketIOServer => {
 
   ioInstance = io;
 
+  // ---------------------------------------------------------------------------
+  // /tracking namespace — Room-based live location delivery
+  // ---------------------------------------------------------------------------
   io.of('/tracking').on('connection', (socket) => {
-    socket.on('doctor:location_update', (payload) => {
-      socket.broadcast.emit('doctor:location_update', payload);
+    // Authenticate socket connection
+    const token = (socket.handshake.auth?.token || socket.handshake.headers?.authorization || socket.handshake.query?.token) as string | undefined;
+    const user = verifySocketToken(token);
+
+    // Patient or doctor joins an appointment-specific tracking room
+    socket.on('join:appointment', async (payload: { appointmentId: string; token?: string }) => {
+      try {
+        const appointmentId = payload.appointmentId;
+        const activeUser = user || verifySocketToken(payload.token);
+
+        if (!appointmentId) {
+          socket.emit('error', { message: 'Appointment ID required', code: 'INVALID_PARAM' });
+          return;
+        }
+
+        if (!activeUser) {
+          socket.emit('error', { message: 'Authentication required', code: 'AUTH_REQUIRED' });
+          return;
+        }
+
+        const appointment = await AppointmentModel.findById(appointmentId);
+        if (!appointment) {
+          socket.emit('error', { message: 'Appointment not found', code: 'APPOINTMENT_NOT_FOUND' });
+          return;
+        }
+
+        const userId = activeUser.sub;
+        const patientUserId = appointment.patientId.toString();
+
+        let isAuthorized = patientUserId === userId;
+        if (!isAuthorized) {
+          const doctor = await DoctorModel.findById(appointment.doctorId);
+          if (doctor && doctor.userId.toString() === userId) {
+            isAuthorized = true;
+          }
+        }
+        if (!isAuthorized && activeUser.role === 'admin') {
+          isAuthorized = true;
+        }
+
+        if (!isAuthorized) {
+          socket.emit('error', { message: 'Forbidden: You do not have access to this appointment room', code: 'FORBIDDEN' });
+          return;
+        }
+
+        const room = `appointment:${appointmentId}`;
+        socket.join(room);
+        console.log(`[Socket /tracking] Socket ${socket.id} (User: ${userId}) joined room ${room}`);
+        socket.emit('joined:appointment', { appointmentId, room });
+      } catch (err) {
+        console.error('[Socket /tracking] Join error:', err);
+        socket.emit('error', { message: 'Internal error joining tracking room', code: 'INTERNAL_ERROR' });
+      }
     });
+
     socket.on('heartbeat', (payload) => {
       socket.emit('heartbeat', payload);
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // /chat namespace
+  // ---------------------------------------------------------------------------
   io.of('/chat').on('connection', (socket) => {
     socket.on('join', (payload: { roomId: string; userId: string }) => {
       if (payload.roomId) {
@@ -87,12 +163,18 @@ export const initializeSocketServer = (server: HttpServer): SocketIOServer => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // /availability namespace
+  // ---------------------------------------------------------------------------
   io.of('/availability').on('connection', (socket) => {
     socket.on('availability:update', (payload) => {
       socket.broadcast.emit('availability:update', payload);
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // /notifications namespace
+  // ---------------------------------------------------------------------------
   io.of('/notifications').on('connection', (socket) => {
     socket.on('join', (userId: string) => {
       if (userId) {

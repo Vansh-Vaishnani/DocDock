@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docdock-config
+  namespace: docdock
+  labels:
+    app.kubernetes.io/name: docdock
+data:
+  # ---------------------------------------------------------------------------
+  # Non-secret application configuration
+  # Secrets (JWT, DB passwords, API keys) are in secrets.yaml NOT here
+  # ---------------------------------------------------------------------------
+  NODE_ENV: "production"
+  PORT: "4000"
+  WEB_PORT: "3000"
+
+  # JWT expiry (not secret, just duration config)
+  JWT_ACCESS_EXPIRES_IN: "15m"
+  JWT_REFRESH_EXPIRES_IN: "7d"
+
+  # Kafka topic configuration
+  KAFKA_CLIENT_ID: "docdock-api"
+  KAFKA_GROUP_ID_PREFIX: "docdock"
+
+  # SendGrid from address
+  SENDGRID_FROM_EMAIL: "noreply@docdock.com"
+
+  # SMS provider (console = no actual SMS, safe for staging)
+  SMS_PROVIDER: "console"
+  CALL_PROVIDER: "console"
+
+  # Gemini model
+  GEMINI_MODEL: "gemini-2.5-flash"
+
+  # Development flags
+  DEV_AUTO_VERIFY_DOCTOR: "false"
+  NEXT_PUBLIC_BYPASS_LOCATION: "false"
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure boundaries for production:
+  # - MongoDB: Use MongoDB Atlas (managed) — set MONGODB_URI in secret
+  # - Redis: Use Upstash Redis (managed) — set REDIS_URL in secret
+  # - Kafka: Use Confluent Cloud or Amazon MSK — set KAFKA_BROKERS in secret
+  #
+  # These are NOT deployed in-cluster in this configuration. Stateful services
+  # with persistent volumes require careful PVC and storage class setup that is
+  # cluster-specific and fragile if misconfigured. Managed services are the
+  # production-safe choice.
+  # ---------------------------------------------------------------------------

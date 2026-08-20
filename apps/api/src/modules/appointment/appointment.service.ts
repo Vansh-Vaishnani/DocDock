@@ -20,6 +20,20 @@ import { CallLogModel } from './call.model';
 import { ChatMessageModel } from '../chat/chat.model';
 import { voiceService } from '../../services/voice.service';
 import { getIO } from '../../sockets/gateway';
+import {
+  publishAppointmentCreated,
+  publishAppointmentConfirmed,
+  publishAppointmentCancelled,
+  publishConsultationStarted,
+} from '../../events/publishers/appointmentPublisher';
+import {
+  publishDoctorOnTheWay,
+  publishDoctorArrived,
+  publishTripCancelled,
+  publishTripCompleted,
+} from '../../events/publishers/locationPublisher';
+import { TrackingRepository } from '../tracking/tracking.repository';
+import { logger } from '../../common/utils/logger';
 
 const notificationService = new NotificationService();
 const paymentService = new PaymentService();
@@ -336,6 +350,22 @@ export class AppointmentService {
     });
 
     await notifyStatusChange(appointment, 'pending', payload.patientId, doctor.userId.toString());
+
+    // Publish AppointmentCreated domain event (non-blocking)
+    publishAppointmentCreated({
+      appointmentId: appointment._id.toString(),
+      patientId: payload.patientId,
+      doctorId: payload.doctorId,
+      scheduledAt: scheduledAt.toISOString(),
+      consultationMode: consultationMode as 'clinic' | 'home' | 'online',
+      status: 'pending',
+    }).catch((err) => {
+      logger.warn('[AppointmentService] Kafka publish AppointmentCreated failed', {
+        error: err instanceof Error ? err.message : String(err),
+        appointmentId: appointment._id.toString(),
+      });
+    });
+
     return appointment;
   }
 
@@ -888,6 +918,20 @@ export class AppointmentService {
       console.error('Failed to dispatch confirmAfterPayment notifications:', err);
     }
 
+    // Publish AppointmentConfirmed domain event (non-blocking)
+    publishAppointmentConfirmed({
+      appointmentId: appointment._id.toString(),
+      patientId: appointment.patientId.toString(),
+      doctorId: appointment.doctorId.toString(),
+      scheduledAt: appointment.scheduledAt.toISOString(),
+      consultationMode: appointment.consultationMode || 'clinic',
+    }).catch((err) => {
+      logger.warn('[AppointmentService] Kafka publish AppointmentConfirmed failed', {
+        error: err instanceof Error ? err.message : String(err),
+        appointmentId: appointment._id.toString(),
+      });
+    });
+
     return appointment;
   }
 
@@ -1108,6 +1152,71 @@ export class AppointmentService {
     const doctor = await DoctorModel.findById(appointment.doctorId).lean();
     const doctorUserId = (doctor?.userId as mongoose.Types.ObjectId | undefined)?.toString?.() ?? '';
     await notifyStatusChange(appointment as IAppointmentDocument, status, appointment.patientId.toString(), doctorUserId);
+
+    // Publish domain events for key status transitions (non-blocking)
+    if (status === 'doctor_on_way') {
+      publishDoctorOnTheWay({
+        appointmentId: appointment._id.toString(),
+        doctorId: appointment.doctorId.toString(),
+        patientId: appointment.patientId.toString(),
+      }).catch((err) => {
+        logger.warn('[AppointmentService] Kafka publish DoctorOnTheWay failed', { error: String(err) });
+      });
+    } else if (status === 'arrived') {
+      new TrackingRepository().clearEphemeralLocation(appointment._id.toString()).catch(() => {});
+      publishDoctorArrived({
+        appointmentId: appointment._id.toString(),
+        doctorId: appointment.doctorId.toString(),
+        patientId: appointment.patientId.toString(),
+      }).catch((err) => {
+        logger.warn('[AppointmentService] Kafka publish DoctorArrived failed', { error: String(err) });
+      });
+    } else if (status === 'completed') {
+      new TrackingRepository().clearEphemeralLocation(appointment._id.toString()).catch(() => {});
+      publishTripCompleted({
+        appointmentId: appointment._id.toString(),
+        doctorId: appointment.doctorId.toString(),
+        patientId: appointment.patientId.toString(),
+      }).catch((err) => {
+        logger.warn('[AppointmentService] Kafka publish TripCompleted failed', { error: String(err) });
+      });
+    } else if (status === 'in_consultation') {
+      new TrackingRepository().clearEphemeralLocation(appointment._id.toString()).catch(() => {});
+      publishConsultationStarted({
+        appointmentId: appointment._id.toString(),
+        patientId: appointment.patientId.toString(),
+        doctorId: appointment.doctorId.toString(),
+        startedAt: new Date().toISOString(),
+      }).catch((err) => {
+        logger.warn('[AppointmentService] Kafka publish ConsultationStarted failed', {
+          error: err instanceof Error ? err.message : String(err),
+          appointmentId: appointment._id.toString(),
+        });
+      });
+    } else if (status === 'cancelled_by_patient' || status === 'cancelled_by_doctor') {
+      new TrackingRepository().clearEphemeralLocation(appointment._id.toString()).catch(() => {});
+      publishAppointmentCancelled({
+        appointmentId: appointment._id.toString(),
+        patientId: appointment.patientId.toString(),
+        doctorId: appointment.doctorId.toString(),
+        cancelledBy: status === 'cancelled_by_patient' ? 'patient' : 'doctor',
+        reason: options?.reason,
+      }).catch((err) => {
+        logger.warn('[AppointmentService] Kafka publish AppointmentCancelled failed', {
+          error: err instanceof Error ? err.message : String(err),
+          appointmentId: appointment._id.toString(),
+        });
+      });
+
+      publishTripCancelled({
+        appointmentId: appointment._id.toString(),
+        doctorId: appointment.doctorId.toString(),
+        patientId: appointment.patientId.toString(),
+        cancelledBy: status === 'cancelled_by_patient' ? 'patient' : 'doctor',
+        reason: options?.reason,
+      }).catch(() => {});
+    }
+
     return appointment;
   }
 

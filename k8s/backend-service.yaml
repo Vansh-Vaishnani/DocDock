@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: docdock-backend
+  namespace: docdock
+  labels:
+    app.kubernetes.io/name: docdock
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: docdock-backend
+  ports:
+    - name: http
+      port: 4000
+      targetPort: 4000
+      protocol: TCP
