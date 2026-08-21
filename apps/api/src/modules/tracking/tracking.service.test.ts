@@ -1,15 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TrackingService } from './tracking.service';
+
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { DoctorModel } from '../doctor/doctor.repository';
 import { ApiError } from '../../common/errors/ApiError';
-import { getIO } from '../../sockets/gateway';
-import {
-  publishDoctorOnTheWay,
-  publishDoctorArrived,
-  publishTripCancelled,
-  publishTripCompleted,
-} from '../../events/publishers/locationPublisher';
+import { publishDoctorOnTheWay } from '../../events/publishers/locationPublisher';
+
+import { TrackingService } from './tracking.service';
 
 // Mock dependencies
 vi.mock('../appointment/appointment.repository', () => ({
@@ -133,15 +129,21 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findById).mockResolvedValueOnce({
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       await expect(
         trackingService.getTrackingSnapshot(validAppointmentId, otherUserId)
-      ).rejects.toThrow(new ApiError('Forbidden: You are not authorized to view tracking for this appointment', 403, 'FORBIDDEN'));
+      ).rejects.toThrow(
+        new ApiError(
+          'Forbidden: You are not authorized to view tracking for this appointment',
+          403,
+          'FORBIDDEN'
+        )
+      );
     });
 
     it('should throw TRACKING_NOT_ACTIVE (400) if status is pending, accepted, or completed', async () => {
@@ -150,15 +152,21 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'pending',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findById).mockResolvedValueOnce({
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       await expect(
         trackingService.getTrackingSnapshot(validAppointmentId, validPatientUserId)
-      ).rejects.toThrow(new ApiError('Tracking not active for this appointment state', 400, 'TRACKING_NOT_ACTIVE'));
+      ).rejects.toThrow(
+        new ApiError(
+          'Tracking not active for this appointment state',
+          400,
+          'TRACKING_NOT_ACTIVE'
+        )
+      );
     });
 
     it('should return snapshot for patient when status is doctor_on_way and return Redis live location if present', async () => {
@@ -167,16 +175,25 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findById).mockResolvedValueOnce({
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
-      const fakeLiveLocation = { latitude: 23.0225, longitude: 72.5714, timestamp: 1000, appointmentId: validAppointmentId, doctorId: validDoctorObjId };
+      const fakeLiveLocation = {
+        latitude: 23.0225,
+        longitude: 72.5714,
+        timestamp: 1000,
+        appointmentId: validAppointmentId,
+        doctorId: validDoctorObjId,
+      };
       mockGetEphemeralLocation.mockResolvedValueOnce(fakeLiveLocation);
 
-      const result = await trackingService.getTrackingSnapshot(validAppointmentId, validPatientUserId) as any;
+      const result = (await trackingService.getTrackingSnapshot(
+        validAppointmentId,
+        validPatientUserId
+      )) as Record<string, unknown>;
 
       expect(result).toHaveProperty('appointmentId', validAppointmentId);
       expect(result).toHaveProperty('status', 'doctor_on_way');
@@ -189,15 +206,18 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'arrived',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findById).mockResolvedValueOnce({
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       mockGetEphemeralLocation.mockResolvedValueOnce(null);
 
-      const result = await trackingService.getTrackingSnapshot(validAppointmentId, validDoctorUserId) as any;
+      const result = (await trackingService.getTrackingSnapshot(
+        validAppointmentId,
+        validDoctorUserId
+      )) as Record<string, unknown>;
 
       expect(result).toHaveProperty('status', 'arrived');
       expect(result.liveLocation).toBeNull();
@@ -209,11 +229,14 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'in_consultation',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findById).mockResolvedValueOnce(null);
 
-      const result = await trackingService.getTrackingSnapshot(validAppointmentId, validDoctorObjId) as any;
+      const result = (await trackingService.getTrackingSnapshot(
+        validAppointmentId,
+        validDoctorObjId
+      )) as Record<string, unknown>;
 
       expect(result.status).toBe('in_consultation');
     });
@@ -237,7 +260,7 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'accepted',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce(null);
 
@@ -252,12 +275,12 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'pending',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       await expect(
         trackingService.startTrip(validAppointmentId, validDoctorUserId)
@@ -272,18 +295,24 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         patientId: { toString: () => validPatientUserId },
         status: 'confirmed',
         save: mockSave,
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
-      const result = await trackingService.startTrip(validAppointmentId, validDoctorUserId, [72.5714, 23.0225]) as any;
+      const result = (await trackingService.startTrip(validAppointmentId, validDoctorUserId, [
+        72.5714, 23.0225,
+      ])) as Record<string, unknown>;
 
       expect(mockSave).toHaveBeenCalled();
       expect(result.status).toBe('doctor_on_way');
-      expect(mockSetEphemeralLocation).toHaveBeenCalledWith(validAppointmentId, validDoctorObjId, [72.5714, 23.0225]);
+      expect(mockSetEphemeralLocation).toHaveBeenCalledWith(
+        validAppointmentId,
+        validDoctorObjId,
+        [72.5714, 23.0225]
+      );
       expect(mockUpdateLocation).toHaveBeenCalledWith(validAppointmentId, [72.5714, 23.0225]);
       expect(publishDoctorOnTheWay).toHaveBeenCalledWith({
         appointmentId: validAppointmentId,
@@ -292,10 +321,13 @@ describe('TrackingService Full Unit & Integration Suite', () => {
       });
       expect(mockOf).toHaveBeenCalledWith('/tracking');
       expect(mockTo).toHaveBeenCalledWith(`appointment:${validAppointmentId}`);
-      expect(mockEmit).toHaveBeenCalledWith('doctor:trip:started', expect.objectContaining({
-        appointmentId: validAppointmentId,
-        doctorId: validDoctorObjId,
-      }));
+      expect(mockEmit).toHaveBeenCalledWith(
+        'doctor:trip:started',
+        expect.objectContaining({
+          appointmentId: validAppointmentId,
+          doctorId: validDoctorObjId,
+        })
+      );
     });
 
     it('should start trip without initialCoordinates when omitted', async () => {
@@ -306,14 +338,17 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         patientId: { toString: () => validPatientUserId },
         status: 'accepted',
         save: mockSave,
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
-      const result = await trackingService.startTrip(validAppointmentId, validDoctorUserId) as any;
+      const result = (await trackingService.startTrip(
+        validAppointmentId,
+        validDoctorUserId
+      )) as Record<string, unknown>;
 
       expect(result.status).toBe('doctor_on_way');
       expect(result.liveLocation).toBeNull();
@@ -329,14 +364,16 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         patientId: { toString: () => validPatientUserId },
         status: 'accepted',
         save: mockSave,
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
-      await expect(trackingService.startTrip(validAppointmentId, validDoctorUserId)).resolves.toHaveProperty('status', 'doctor_on_way');
+      await expect(
+        trackingService.startTrip(validAppointmentId, validDoctorUserId)
+      ).resolves.toHaveProperty('status', 'doctor_on_way');
     });
 
     it('should handle Socket.IO throw gracefully without failing trip start', async () => {
@@ -350,14 +387,16 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         patientId: { toString: () => validPatientUserId },
         status: 'accepted',
         save: mockSave,
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
-      await expect(trackingService.startTrip(validAppointmentId, validDoctorUserId)).resolves.toHaveProperty('status', 'doctor_on_way');
+      await expect(
+        trackingService.startTrip(validAppointmentId, validDoctorUserId)
+      ).resolves.toHaveProperty('status', 'doctor_on_way');
     });
   });
 
@@ -379,7 +418,7 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce(null);
 
@@ -394,15 +433,17 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'arrived',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       await expect(
-        trackingService.updateDoctorLocation(validAppointmentId, validDoctorUserId, [72.57, 23.02])
+        trackingService.updateDoctorLocation(validAppointmentId, validDoctorUserId, [
+          72.57, 23.02,
+        ])
       ).rejects.toThrow("Location sharing is inactive. Current status: 'arrived'");
     });
 
@@ -412,15 +453,24 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce(null);
 
-      const result = await trackingService.updateDoctorLocation(validAppointmentId, validDoctorObjId, [72.5714, 23.0225]) as any;
+      const result = (await trackingService.updateDoctorLocation(
+        validAppointmentId,
+        validDoctorObjId,
+        [72.5714, 23.0225]
+      )) as Record<string, unknown>;
 
       expect(result.latitude).toBe(23.0225);
       expect(result.longitude).toBe(72.5714);
-      expect(mockSetEphemeralLocation).toHaveBeenCalledWith(validAppointmentId, validDoctorObjId, [72.5714, 23.0225], expect.any(Number));
+      expect(mockSetEphemeralLocation).toHaveBeenCalledWith(
+        validAppointmentId,
+        validDoctorObjId,
+        [72.5714, 23.0225],
+        expect.any(Number)
+      );
     });
 
     it('should emit doctor:location:update via Socket.IO to room appointment:{id}', async () => {
@@ -429,14 +479,16 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
-      await trackingService.updateDoctorLocation(validAppointmentId, validDoctorUserId, [72.5714, 23.0225]);
+      await trackingService.updateDoctorLocation(validAppointmentId, validDoctorUserId, [
+        72.5714, 23.0225,
+      ]);
 
       expect(mockOf).toHaveBeenCalledWith('/tracking');
       expect(mockTo).toHaveBeenCalledWith(`appointment:${validAppointmentId}`);
@@ -457,14 +509,16 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
-      await expect(trackingService.updateDoctorLocation(validAppointmentId, validDoctorUserId, [72.57, 23.02])).resolves.toHaveProperty('latitude', 23.02);
+      await expect(
+        trackingService.updateDoctorLocation(validAppointmentId, validDoctorUserId, [72.57, 23.02])
+      ).resolves.toHaveProperty('latitude', 23.02);
     });
   });
 
@@ -486,7 +540,7 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce(null);
 
@@ -501,11 +555,15 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce(null);
 
-      const result = await trackingService.endTrip(validAppointmentId, validPatientUserId, 'patient_cancelled') as any;
+      const result = (await trackingService.endTrip(
+        validAppointmentId,
+        validPatientUserId,
+        'patient_cancelled'
+      )) as Record<string, unknown>;
 
       expect(result.trackingActive).toBe(false);
       expect(mockClearEphemeralLocation).toHaveBeenCalledWith(validAppointmentId);
@@ -524,18 +582,21 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       await trackingService.endTrip(validAppointmentId, validDoctorUserId);
 
-      expect(mockEmit).toHaveBeenCalledWith('doctor:location:ended', expect.objectContaining({
-        reason: 'trip_ended',
-      }));
+      expect(mockEmit).toHaveBeenCalledWith(
+        'doctor:location:ended',
+        expect.objectContaining({
+          reason: 'trip_ended',
+        })
+      );
     });
 
     it('should swallow Socket.IO emit exception during trip end', async () => {
@@ -547,14 +608,16 @@ describe('TrackingService Full Unit & Integration Suite', () => {
         doctorId: { toString: () => validDoctorObjId },
         patientId: { toString: () => validPatientUserId },
         status: 'doctor_on_way',
-      } as any);
+      } as unknown as Record<string, unknown>);
 
       vi.mocked(DoctorModel.findOne).mockResolvedValueOnce({
         _id: { toString: () => validDoctorObjId },
         userId: { toString: () => validDoctorUserId },
-      } as any);
+      } as unknown as Record<string, unknown>);
 
-      await expect(trackingService.endTrip(validAppointmentId, validDoctorUserId)).resolves.toHaveProperty('trackingActive', false);
+      await expect(
+        trackingService.endTrip(validAppointmentId, validDoctorUserId)
+      ).resolves.toHaveProperty('trackingActive', false);
     });
   });
 });

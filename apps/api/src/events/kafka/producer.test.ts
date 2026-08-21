@@ -125,9 +125,8 @@ describe('Kafka Producer', () => {
     it('should catch and log errors without re-throwing', async () => {
       process.env.KAFKA_BROKERS = 'localhost:9092';
 
-      // Make kafkajs producer.send throw
       const kafkajsMock = await import('kafkajs');
-      const mockKafkaInstance = (kafkajsMock.Kafka as any).mock.results[0]?.value;
+      const mockKafkaInstance = vi.mocked(kafkajsMock.Kafka).mock.results[0]?.value;
       if (mockKafkaInstance) {
         mockKafkaInstance.producer().send.mockRejectedValueOnce(new Error('Kafka broker down'));
       }

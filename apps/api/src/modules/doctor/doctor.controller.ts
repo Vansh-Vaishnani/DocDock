@@ -19,13 +19,17 @@ export class DoctorController {
   async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const result = await service.registerDoctor(req.body);
-      sendCreated(res, result, 'Doctor registration submitted. Your account is pending verification.');
+      sendCreated(
+        res,
+        result,
+        'Doctor registration submitted. Your account is pending verification.'
+      );
     } catch (error) {
       next(error);
     }
   }
 
-  async createProfile(req: any, res: Response, next: NextFunction): Promise<void> {
+  async createProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = (req as AuthenticatedRequest).user;
       if (!user) {
@@ -39,7 +43,7 @@ export class DoctorController {
     }
   }
 
-  async getProfileMe(req: any, res: Response, next: NextFunction): Promise<void> {
+  async getProfileMe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const profile = await service.getProfileMe(this.getUserId(req as AuthenticatedRequest));
       sendSuccess(res, profile, 'Doctor profile retrieved successfully.');
@@ -48,16 +52,19 @@ export class DoctorController {
     }
   }
 
-  async updateProfileMe(req: any, res: Response, next: NextFunction): Promise<void> {
+  async updateProfileMe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const profile = await service.updateProfileMe(this.getUserId(req as AuthenticatedRequest), req.body);
+      const profile = await service.updateProfileMe(
+        this.getUserId(req as AuthenticatedRequest),
+        req.body
+      );
       sendSuccess(res, profile, 'Doctor profile updated successfully.');
     } catch (error) {
       next(error);
     }
   }
 
-  async getDashboard(req: any, res: Response, next: NextFunction): Promise<void> {
+  async getDashboard(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const dashboard = await service.getDashboard(this.getUserId(req as AuthenticatedRequest));
       sendSuccess(res, dashboard, 'Doctor dashboard retrieved successfully.');
@@ -66,7 +73,7 @@ export class DoctorController {
     }
   }
 
-  async getAppointments(req: any, res: Response, next: NextFunction): Promise<void> {
+  async getAppointments(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const filter = typeof req.query.filter === 'string' ? req.query.filter : 'all';
       const appointments = await service.getAppointments(
@@ -79,16 +86,18 @@ export class DoctorController {
     }
   }
 
-  async getPrescriptions(req: any, res: Response, next: NextFunction): Promise<void> {
+  async getPrescriptions(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const prescriptions = await service.getPrescriptions(this.getUserId(req as AuthenticatedRequest));
+      const prescriptions = await service.getPrescriptions(
+        this.getUserId(req as AuthenticatedRequest)
+      );
       sendSuccess(res, prescriptions, 'Prescriptions retrieved successfully.');
     } catch (error) {
       next(error);
     }
   }
 
-  async getEarnings(req: any, res: Response, next: NextFunction): Promise<void> {
+  async getEarnings(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const earnings = await service.getEarnings(this.getUserId(req as AuthenticatedRequest));
       sendSuccess(res, earnings, 'Earnings retrieved successfully.');
@@ -99,7 +108,19 @@ export class DoctorController {
 
   async searchNearby(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { latitude, longitude, radius, specialization, minExperience, maxFee, search, sortBy, availableOnly, page, limit } = req.query;
+      const {
+        latitude,
+        longitude,
+        radius,
+        specialization,
+        minExperience,
+        maxFee,
+        search,
+        sortBy,
+        availableOnly,
+        page,
+        limit,
+      } = req.query;
       const doctors = await service.searchNearby(
         typeof latitude === 'string' && latitude !== '' ? Number(latitude) : undefined,
         typeof longitude === 'string' && longitude !== '' ? Number(longitude) : undefined,
@@ -112,7 +133,7 @@ export class DoctorController {
           sortBy: typeof sortBy === 'string' ? sortBy : 'distance',
           availableOnly: typeof availableOnly === 'string' ? availableOnly === 'true' : false,
           page: typeof page === 'string' ? Number(page) : 1,
-          limit: typeof limit === 'string' ? Number(limit) : 50
+          limit: typeof limit === 'string' ? Number(limit) : 50,
         }
       );
       sendSuccess(res, { doctors }, 'Nearby doctors fetched');
@@ -130,33 +151,46 @@ export class DoctorController {
     }
   }
 
-  async updateAvailability(req: any, res: Response, next: NextFunction): Promise<void> {
+  async updateAvailability(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const profile = await service.updateAvailability(this.getUserId(req as AuthenticatedRequest), req.body);
+      const profile = await service.updateAvailability(
+        this.getUserId(req as AuthenticatedRequest),
+        req.body
+      );
       sendSuccess(res, profile, 'Availability updated');
     } catch (error) {
       next(error);
     }
   }
 
-  async uploadDocument(req: any, res: Response, next: NextFunction): Promise<void> {
+  async uploadDocument(
+    req: Request & { file?: { buffer: Buffer; originalname?: string; mimetype?: string } },
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const file = req.file;
       if (!file) {
         next(new Error('No file uploaded'));
         return;
       }
-      const result = await service.uploadDocument(this.getUserId(req as AuthenticatedRequest), { file, documentType: req.body.documentType });
+      const result = await service.uploadDocument(this.getUserId(req as AuthenticatedRequest), {
+        file,
+        documentType: req.body.documentType,
+      });
       sendSuccess(res, result, 'Document uploaded successfully');
     } catch (error) {
       next(error);
     }
   }
 
-  async removeDocument(req: any, res: Response, next: NextFunction): Promise<void> {
+  async removeDocument(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { documentType } = req.params;
-      const result = await service.removeDocument(this.getUserId(req as AuthenticatedRequest), documentType as 'profilePhoto' | 'governmentId' | 'medicalLicense');
+      const result = await service.removeDocument(
+        this.getUserId(req as AuthenticatedRequest),
+        documentType as 'profilePhoto' | 'governmentId' | 'medicalLicense'
+      );
       sendSuccess(res, result, 'Document removed successfully');
     } catch (error) {
       next(error);

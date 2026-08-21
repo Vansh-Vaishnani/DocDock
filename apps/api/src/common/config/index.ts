@@ -1,6 +1,8 @@
 import path from 'path';
+
 import dotenv from 'dotenv';
 import { createClient } from 'redis';
+
 import { validateEnv } from './envSchema';
 
 type RedisSocketOptions = NonNullable<Parameters<typeof createClient>[0]>['socket'];

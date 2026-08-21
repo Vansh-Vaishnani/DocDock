@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import Razorpay from 'razorpay';
 
-import { AppointmentModel } from '../appointment/appointment.repository';
 import { config } from '../../common/config';
 import { ApiError } from '../../common/errors/ApiError';
 import { isRazorpayEnabled } from '../../common/config/providers';
@@ -28,7 +27,11 @@ export class PaymentService {
 
   private ensureRazorpayEnabled(): void {
     if (!isRazorpayEnabled()) {
-      throw new ApiError('Razorpay integration is not configured.', 503, 'RAZORPAY_NOT_CONFIGURED');
+      throw new ApiError(
+        'Razorpay integration is not configured.',
+        503,
+        'RAZORPAY_NOT_CONFIGURED'
+      );
     }
   }
 
@@ -37,20 +40,24 @@ export class PaymentService {
       this.ensureRazorpayEnabled();
       this.razorpayInstance = new Razorpay({
         key_id: config.razorpayKeyId,
-        key_secret: config.razorpayKeySecret
+        key_secret: config.razorpayKeySecret,
       });
     }
     return this.razorpayInstance;
   }
 
-  async createOrder(amount: number, currency = 'INR', bookingPayload?: PaymentBookingPayload): Promise<RazorpayOrder> {
+  async createOrder(
+    amount: number,
+    currency = 'INR',
+    bookingPayload?: PaymentBookingPayload
+  ): Promise<RazorpayOrder> {
     const razorpay = this.getRazorpay();
     const amountInPaise = Math.round(amount * 100);
     const order = await razorpay.orders.create({
       amount: amountInPaise,
       currency,
       receipt: bookingPayload?.doctorId,
-      payment_capture: true
+      payment_capture: true,
     });
     return { ...order, amount: amountInPaise } as RazorpayOrder;
   }
@@ -58,18 +65,27 @@ export class PaymentService {
   async verifySignature(payload: string, signature: string): Promise<boolean> {
     this.ensureRazorpayEnabled();
     const crypto = await import('crypto');
-    const expected = crypto.createHmac('sha256', config.razorpayKeySecret).update(payload).digest('hex');
+    const expected = crypto
+      .createHmac('sha256', config.razorpayKeySecret)
+      .update(payload)
+      .digest('hex');
     return expected === signature;
   }
 
-  async createPaymentRecord(appointmentId: string, patientId: string, razorpayOrderId: string, amount: number, bookingPayload?: PaymentBookingPayload): Promise<IPaymentDocument> {
+  async createPaymentRecord(
+    appointmentId: string,
+    patientId: string,
+    razorpayOrderId: string,
+    amount: number,
+    bookingPayload?: PaymentBookingPayload
+  ): Promise<IPaymentDocument> {
     const payment = await PaymentModel.create({
       appointmentId: new mongoose.Types.ObjectId(appointmentId),
       patientId: new mongoose.Types.ObjectId(patientId),
       razorpayOrderId,
       amount,
       status: 'created',
-      bookingPayload
+      bookingPayload,
     });
     return payment;
   }
@@ -99,10 +115,20 @@ export class PaymentService {
     return payment;
   }
 
-  async initiateRefund(razorpayPaymentId: string, amount?: number): Promise<{ refundId?: string; refundStatus: 'initiated' | 'completed' | 'failed'; refund?: any }> {
+  async initiateRefund(
+    razorpayPaymentId: string,
+    amount?: number
+  ): Promise<{
+    refundId?: string;
+    refundStatus: 'initiated' | 'completed' | 'failed';
+    refund?: unknown;
+  }> {
     const razorpay = this.getRazorpay();
     try {
-      const refund = await razorpay.payments.refund(razorpayPaymentId, amount ? { amount: Math.round(amount * 100) } : {} as any);
+      const refund = await razorpay.payments.refund(
+        razorpayPaymentId,
+        amount ? { amount: Math.round(amount * 100) } : {}
+      );
       const stored = await PaymentModel.findOne({ razorpayPaymentId });
       if (stored) {
         stored.refundId = refund.id;
@@ -113,7 +139,9 @@ export class PaymentService {
           stored.status = 'refunded';
         }
         stored.refundAmount = refund.amount ?? undefined;
-        stored.refundCreatedAt = refund.created_at ? new Date(refund.created_at * 1000) : new Date();
+        stored.refundCreatedAt = refund.created_at
+          ? new Date(refund.created_at * 1000)
+          : new Date();
         await stored.save();
       }
       return { refundId: refund.id, refundStatus: stored?.refundStatus ?? 'initiated', refund };

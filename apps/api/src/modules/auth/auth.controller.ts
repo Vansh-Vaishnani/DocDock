@@ -54,7 +54,7 @@ export class AuthController {
     }
   }
 
-  async changePassword(req: any, res: Response, next: NextFunction): Promise<void> {
+  async changePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const authenticatedReq = req as AuthenticatedRequest;
       if (!authenticatedReq.user) {

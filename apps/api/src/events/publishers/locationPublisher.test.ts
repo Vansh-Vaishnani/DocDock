@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+import { publishEvent } from '../kafka/producer';
+import { KAFKA_TOPICS } from '../kafka/topics';
+
 import {
   publishDoctorOnTheWay,
   publishDoctorArrived,
   publishTripCancelled,
   publishTripCompleted,
 } from './locationPublisher';
-import { publishEvent } from '../kafka/producer';
-import { KAFKA_TOPICS } from '../kafka/topics';
 
 vi.mock('../kafka/producer', () => ({
   publishEvent: vi.fn().mockResolvedValue(undefined),

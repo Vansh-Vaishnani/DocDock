@@ -1,12 +1,14 @@
-import { createServer } from 'http';
+import { createServer, Server as HttpServer } from 'http';
+
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { io as Client, Socket as ClientSocket } from 'socket.io-client';
+
 import { initializeSocketServer } from './gateway';
 
 describe('Socket.IO Gateway Integration Suite', () => {
-  let httpServer: any;
+  let httpServer: HttpServer;
   let chatSocket: ClientSocket;
-  let notificationSocket: ClientSocket | undefined = undefined;
+  const notificationSocket: ClientSocket | undefined = undefined;
   const port = 5099;
 
   beforeAll(async () => {
@@ -56,8 +58,8 @@ describe('Socket.IO Gateway Integration Suite', () => {
 
     calleeSocket.emit('join', 'doc_user_99');
 
-    const incomingCallPromise = new Promise<any>((resolve) => {
-      calleeSocket.on('call:incoming', (data) => resolve(data));
+    const incomingCallPromise = new Promise<Record<string, unknown>>((resolve) => {
+      calleeSocket.on('call:incoming', (data) => resolve(data as Record<string, unknown>));
     });
 
     callerSocket.emit('call:initiate', {

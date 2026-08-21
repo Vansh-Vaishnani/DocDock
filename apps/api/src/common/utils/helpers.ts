@@ -58,7 +58,7 @@ export const formatDate = (date: Date | string): string => {
   return d.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
   });
 };
 
@@ -72,7 +72,7 @@ export const formatDateTime = (date: Date | string): string => {
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   });
 };
 
@@ -84,7 +84,7 @@ export const formatTime = (date: Date | string): string => {
   return d.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit'
+    second: '2-digit',
   });
 };
 
@@ -161,7 +161,11 @@ export const sortBy = <T extends Record<string, unknown>>(
 /**
  * Paginate array
  */
-export const paginate = <T>(array: T[], page = 1, pageSize = 10): { data: T[]; total: number; pages: number } => {
+export const paginate = <T>(
+  array: T[],
+  page = 1,
+  pageSize = 10
+): { data: T[]; total: number; pages: number } => {
   const total = array.length;
   const pages = Math.ceil(total / pageSize);
   const start = (page - 1) * pageSize;
@@ -170,7 +174,7 @@ export const paginate = <T>(array: T[], page = 1, pageSize = 10): { data: T[]; t
   return {
     data: array.slice(start, end),
     total,
-    pages
+    pages,
   };
 };
 
@@ -188,7 +192,7 @@ export const deepMerge = <T extends Record<string, unknown>>(target: T, source: 
   const result = { ...target };
 
   for (const key in source) {
-    if (source.hasOwnProperty(key)) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
       const sourceValue = source[key];
       const targetValue = result[key];
 
@@ -200,7 +204,10 @@ export const deepMerge = <T extends Record<string, unknown>>(target: T, source: 
         typeof targetValue === 'object' &&
         !Array.isArray(targetValue)
       ) {
-        result[key] = deepMerge(targetValue as Record<string, unknown>, sourceValue as Record<string, unknown>) as T[Extract<keyof T, string>];
+        result[key] = deepMerge(
+          targetValue as Record<string, unknown>,
+          sourceValue as Record<string, unknown>
+        ) as T[Extract<keyof T, string>];
       } else {
         result[key] = sourceValue as T[Extract<keyof T, string>];
       }

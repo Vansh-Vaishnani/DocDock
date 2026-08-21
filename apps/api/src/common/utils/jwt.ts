@@ -1,4 +1,5 @@
 import jwt, { SignOptions, VerifyOptions } from 'jsonwebtoken';
+
 import { config } from '../config';
 
 export interface JWTPayload {

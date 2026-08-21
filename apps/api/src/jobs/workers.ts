@@ -35,9 +35,6 @@ export const reminderWorker = new Worker(
     });
 
     try {
-      // Stub: In a real implementation this would send an email/SMS via the
-      // appropriate provider based on job.name and job.data.
-      // e.g. emailService.sendReminderEmail(job.data.patientEmail, job.data.scheduledAt)
       const result = { jobId: job.id, processed: true };
 
       logger.info('[BullMQ:reminder] Job completed', {
@@ -63,7 +60,6 @@ export const reminderWorker = new Worker(
   },
   {
     connection,
-    skipEvictionCheck: true,
     autorun: true,
     removeOnComplete: { count: 100 },
     removeOnFail: { count: 50 },
@@ -96,8 +92,6 @@ export const notificationWorker = new Worker(
     });
 
     try {
-      // Stub: In a real implementation this would deliver the notification via
-      // the channel specified in job.data.channel (email, sms, push).
       const result = { jobId: job.id, processed: true };
 
       logger.info('[BullMQ:notification] Job completed', {
@@ -123,7 +117,6 @@ export const notificationWorker = new Worker(
   },
   {
     connection,
-    skipEvictionCheck: true,
     autorun: true,
     removeOnComplete: { count: 100 },
     removeOnFail: { count: 50 },
@@ -155,10 +148,6 @@ export const cleanupWorker = new Worker(
     });
 
     try {
-      // Stub: In a real implementation this would:
-      // - Delete expired OTP records (AppointmentOtpModel.deleteMany({ expiresAt: { $lt: new Date() } }))
-      // - Clean up stale Redis sessions
-      // - Archive old notification records
       const result = { jobId: job.id, processed: true };
 
       logger.info('[BullMQ:cleanup] Job completed', {
@@ -182,7 +171,6 @@ export const cleanupWorker = new Worker(
   },
   {
     connection,
-    skipEvictionCheck: true,
     autorun: true,
     removeOnComplete: { count: 100 },
     removeOnFail: { count: 50 },

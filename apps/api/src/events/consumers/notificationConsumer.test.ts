@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { EachMessagePayload } from 'kafkajs';
-
 /**
  * Notification Consumer Tests
  *
@@ -71,10 +69,6 @@ describe('Notification Consumer — Message Handling', () => {
       razorpayOrderId: 'order_test',
       razorpayPaymentId: 'rpay_test',
     };
-
-    // Simulate what the consumer handler would do
-    // The handler should not throw for valid events
-    const mockPayload = {} as EachMessagePayload;
 
     // Import the module dynamically to get access to internal handler
     // In production code, we test the behavior at the startNotificationConsumer level

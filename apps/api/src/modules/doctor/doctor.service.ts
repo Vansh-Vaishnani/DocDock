@@ -1,17 +1,8 @@
 import bcrypt from 'bcryptjs';
-
 import mongoose from 'mongoose';
 
-
-
 import { ApiError } from '../../common/errors/ApiError';
-
-import { config } from '../../common/config';
-
 import { isCloudinaryEnabled, uploadBase64File, uploadFile } from '../../services/cloudinary.service';
-
-
-
 import { AuthService } from '../auth/auth.service';
 import { UserModel } from '../auth/auth.repository';
 import { AppointmentModel } from '../appointment/appointment.repository';
@@ -19,11 +10,9 @@ import { PaymentModel } from '../payment/payment.repository';
 import { PrescriptionModel } from '../prescription/prescription.repository';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationModel } from '../notification/notification.model';
-
-import { DoctorModel, IDoctorDocument, defaultAvailability } from './doctor.repository';
 import { ChatMessageModel } from '../chat/chat.model';
 
-
+import { DoctorModel, IDoctorDocument, IDaySchedule, defaultAvailability } from './doctor.repository';
 
 const notificationService = new NotificationService();
 
@@ -781,7 +770,7 @@ export class DoctorService {
 
 
 
-    const uniquePatients = new Set(completedAppointments.map((a: any) => a.patientId.toString())).size;
+    const uniquePatients = new Set(completedAppointments.map((a: { patientId: mongoose.Types.ObjectId }) => a.patientId.toString())).size;
 
 
 
@@ -898,7 +887,6 @@ export class DoctorService {
       const payment = paymentMap.get(appt._id.toString());
       const prescription = prescriptionMap.get(appt._id.toString());
       const rId = `${appt._id}:${appt.patientId}:${appt.doctorId}`;
-      const apptIdStr = appt._id.toString();
 
       return {
         _id: appt._id,
@@ -933,7 +921,7 @@ export class DoctorService {
     const endOfTodayForSort = new Date();
     endOfTodayForSort.setHours(23, 59, 59, 999);
 
-    const getPriority = (appt: any) => {
+    const getPriority = (appt: { scheduledAt: Date; status: string }) => {
       const scheduledDate = new Date(appt.scheduledAt);
       const isCompleted = appt.status === 'completed';
 
@@ -1077,7 +1065,7 @@ export class DoctorService {
       vacationMode?: boolean;
       maxAppointmentsPerDay?: number;
       slotDuration?: number;
-      perDaySchedule?: Record<string, any>;
+      perDaySchedule?: Record<string, IDaySchedule>;
     }
   ) {
     const doctor = await this.findDoctorByUserId(userId);

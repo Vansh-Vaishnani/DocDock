@@ -1,4 +1,4 @@
-import { NextFunction, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
@@ -9,7 +9,7 @@ import { PrescriptionService } from './prescription.service';
 const prescriptionService = new PrescriptionService();
 
 export class PrescriptionController {
-  async createPrescription(req: any, res: Response, next: NextFunction): Promise<void> {
+  async createPrescription(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = (req as AuthenticatedRequest).user;
       if (!user) {
@@ -24,7 +24,7 @@ export class PrescriptionController {
     }
   }
 
-  async getPrescription(req: any, res: Response, next: NextFunction): Promise<void> {
+  async getPrescription(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = (req as AuthenticatedRequest).user;
       if (!user) {
@@ -39,7 +39,7 @@ export class PrescriptionController {
     }
   }
 
-  async getPatientPrescriptions(req: any, res: Response, next: NextFunction): Promise<void> {
+  async getPatientPrescriptions(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = (req as AuthenticatedRequest).user;
       if (!user) {

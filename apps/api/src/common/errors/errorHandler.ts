@@ -1,8 +1,6 @@
-
+import { Request, Response, NextFunction } from 'express';
 
 import { ApiError } from './ApiError';
-
-import { Request, Response, NextFunction } from 'express';
 
 const normalizeError = (error: unknown): Error => {
   if (error instanceof Error) {
@@ -13,8 +11,13 @@ const normalizeError = (error: unknown): Error => {
     return new Error(error);
   }
 
-  if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
-    return new Error((error as any).message);
+  if (
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    return new Error((error as { message: string }).message);
   }
 
   return new Error('An unexpected error occurred.');
@@ -24,6 +27,7 @@ export const errorHandler = (
   err: unknown,
   req: Request,
   res: Response,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   next: NextFunction
 ): void => {
   const error = normalizeError(err);

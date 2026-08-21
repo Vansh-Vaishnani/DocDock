@@ -1,4 +1,5 @@
 import { Server as HttpServer } from 'http';
+
 import { Server as SocketIOServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
 
@@ -118,7 +119,7 @@ export const initializeSocketServer = (server: HttpServer): SocketIOServer => {
       }
     });
 
-    socket.on('message:send', (payload: { roomId: string; message: any }) => {
+    socket.on('message:send', (payload: { roomId: string; message: Record<string, unknown> }) => {
       if (payload.roomId) {
         io.of('/chat').to(payload.roomId).emit('message:receive', payload.message);
 
@@ -218,7 +219,7 @@ export const initializeSocketServer = (server: HttpServer): SocketIOServer => {
       }
     });
 
-    socket.on('webrtc:signal', (payload: { appointmentId: string; to: string; signalData: any }) => {
+    socket.on('webrtc:signal', (payload: { appointmentId: string; to: string; signalData: unknown }) => {
       socket.to(payload.to).emit('webrtc:signal', {
         appointmentId: payload.appointmentId,
         signalData: payload.signalData,

@@ -13,7 +13,7 @@ export const registerGlobalMiddleware = (app: express.Express): void => {
   app.use(express.json({
     limit: '10mb',
     type: 'application/json',
-    verify: (req: any, _res, buf) => {
+    verify: (req: express.Request & { rawBody?: string }, _res, buf) => {
       req.rawBody = buf.toString();
     }
   }));

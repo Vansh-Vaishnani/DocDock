@@ -1,9 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import crypto from 'crypto';
-import { PaymentService } from './payment.service';
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+
 import { ApiError } from '../../common/errors/ApiError';
 import * as providers from '../../common/config/providers';
 import { config } from '../../common/config';
+
+import { PaymentService } from './payment.service';
 
 describe('PaymentService Unit Tests', () => {
   let paymentService: PaymentService;

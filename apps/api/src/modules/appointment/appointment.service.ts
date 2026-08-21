@@ -1,22 +1,17 @@
+import crypto from 'crypto';
+
 import mongoose from 'mongoose';
 
 import { DoctorModel } from '../doctor/doctor.repository';
-import { config } from '../../common/config';
 import { ApiError } from '../../common/errors/ApiError';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationModel } from '../notification/notification.model';
 import { UserModel } from '../auth/auth.repository';
-import { PatientModel } from '../patient/patient.repository';
 import { PaymentModel } from '../payment/payment.repository';
 import { PaymentService } from '../payment/payment.service';
 import { PrescriptionModel } from '../prescription/prescription.repository';
 import { ReviewModel } from '../review/review.repository';
-
-import { AppointmentModel, AppointmentStatus, IAppointmentDocument } from './appointment.repository';
-import crypto from 'crypto';
 import { smsService } from '../../services/sms.service';
-import { AppointmentOtpModel } from './otp.model';
-import { CallLogModel } from './call.model';
 import { ChatMessageModel } from '../chat/chat.model';
 import { voiceService } from '../../services/voice.service';
 import { getIO } from '../../sockets/gateway';
@@ -35,6 +30,10 @@ import {
 import { TrackingRepository } from '../tracking/tracking.repository';
 import { logger } from '../../common/utils/logger';
 
+import { CallLogModel } from './call.model';
+import { AppointmentOtpModel } from './otp.model';
+import { AppointmentModel, AppointmentStatus, IAppointmentDocument } from './appointment.repository';
+
 const notificationService = new NotificationService();
 const paymentService = new PaymentService();
 
@@ -42,7 +41,7 @@ function hashOtp(otp: string): string {
   return crypto.createHash('sha256').update(otp).digest('hex');
 }
 
-function logOtpEvent(appointmentId: string, event: string, metadata?: any) {
+function logOtpEvent(appointmentId: string, event: string, metadata?: Record<string, unknown>) {
   // eslint-disable-next-line no-console
   console.log(`[OTP EVENT] [${new Date().toISOString()}] Appointment: ${appointmentId} - Event: ${event} - Metadata: ${JSON.stringify(metadata || {})}`);
 }
@@ -90,7 +89,7 @@ function minutesToTime(totalMinutes: number): string {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
-function generateSlotTimes(start: string, end: string, breakTime?: { start: string; end: string }): string[] {
+export function generateSlotTimes(start: string, end: string, breakTime?: { start: string; end: string }): string[] {
   const slots: string[] = [];
   const startMinutes = parseTimeToMinutes(start);
   const endMinutes = parseTimeToMinutes(end);
@@ -108,7 +107,7 @@ function generateSlotTimes(start: string, end: string, breakTime?: { start: stri
   return slots;
 }
 
-function buildScheduledAt(date: string, time: string): Date {
+export function buildScheduledAt(date: string, time: string): Date {
   return new Date(`${date}T${time}:00`);
 }
 
@@ -435,7 +434,6 @@ export class AppointmentService {
       const doctor = doctorMap.get(appt.doctorId.toString());
       const payment = paymentMap.get(appt._id.toString());
       const rId = `${appt._id}:${userId}:${appt.doctorId}`;
-      const apptIdStr = appt._id.toString();
       return {
         _id: appt._id,
         scheduledAt: appt.scheduledAt,
@@ -447,9 +445,9 @@ export class AppointmentService {
         doctorName: doctor?.doctorName ?? 'Doctor',
         specialization: doctor?.specialization ?? '',
         consultationFee: doctor?.consultationFee ?? 0,
-        rejectionReason: (appt as any).rejectionReason ?? null,
+        rejectionReason: (appt as unknown as Record<string, unknown>).rejectionReason ?? null,
         paymentStatus: payment?.status ?? null,
-        refundStatus: (payment as any)?.refundStatus ?? null,
+        refundStatus: (payment as unknown as Record<string, unknown>)?.refundStatus ?? null,
         consultationMode: appt.consultationMode,
         unreadMessageCount: countMap[rId] || 0,
         isEmergency: appt.isEmergency || false
@@ -509,7 +507,7 @@ export class AppointmentService {
                 scheduledAt: appointment.scheduledAt,
                 status: appointment.status,
                 statusLabel: STATUS_LABELS[appointment.status as AppointmentStatus] ?? appointment.status,
-                rejectionReason: (appointment as any).rejectionReason ?? null,
+                rejectionReason: (appointment as unknown as Record<string, unknown>).rejectionReason ?? null,
                 address: appointment.address,
                 notes: appointment.notes,
                 unreadMessageCount,
@@ -543,8 +541,8 @@ export class AppointmentService {
                     paidAt: payment.paidAt,
                     razorpayOrderId: payment.razorpayOrderId,
                     razorpayPaymentId: payment.razorpayPaymentId,
-                    refundId: (payment as any).refundId ?? null,
-                    refundStatus: (payment as any).refundStatus ?? null
+                    refundId: (payment as unknown as Record<string, unknown>).refundId ?? null,
+                    refundStatus: (payment as unknown as Record<string, unknown>).refundStatus ?? null
                   }
                 : null,
               prescription: prescription
@@ -584,8 +582,8 @@ export class AppointmentService {
                 paidAt: payment.paidAt,
                 razorpayOrderId: payment.razorpayOrderId,
                 razorpayPaymentId: payment.razorpayPaymentId,
-                refundId: (payment as any).refundId ?? null,
-                refundStatus: (payment as any).refundStatus ?? null
+                refundId: (payment as unknown as Record<string, unknown>).refundId ?? null,
+                refundStatus: (payment as unknown as Record<string, unknown>).refundStatus ?? null
               }
             : null;
 
@@ -615,7 +613,6 @@ export class AppointmentService {
             : null;
 
           // Timeline handling: if cancelled or rejected, show final cancelled/rejected step
-          const statusOrder: AppointmentStatus[] = ['pending', 'accepted', 'doctor_on_way', 'arrived', 'in_consultation', 'completed'];
           const statusStr = String(appointment.status);
           if (statusStr === 'rejected') {
             return {
@@ -624,7 +621,7 @@ export class AppointmentService {
                 scheduledAt: appointment.scheduledAt,
                 status: appointment.status,
                 statusLabel: STATUS_LABELS[appointment.status as AppointmentStatus] ?? appointment.status,
-                rejectionReason: (appointment as any).rejectionReason ?? null,
+                rejectionReason: (appointment as unknown as Record<string, unknown>).rejectionReason ?? null,
                 address: appointment.address,
                 notes: appointment.notes,
                 createdAt: ((appointment as { createdAt?: Date }).createdAt?.toISOString?.() ?? new Date().toISOString()),
@@ -671,7 +668,7 @@ export class AppointmentService {
                 scheduledAt: appointment.scheduledAt,
                 status: appointment.status,
                 statusLabel: cancelLabel,
-                cancellationReason: (appointment as any).cancellationReason ?? null,
+                cancellationReason: (appointment as unknown as Record<string, unknown>).cancellationReason ?? null,
                 address: appointment.address,
                 notes: appointment.notes,
                 unreadMessageCount,
@@ -710,7 +707,7 @@ export class AppointmentService {
           }
 
           // Normal flow
-          const mode = (appointment as any).consultationMode || 'clinic';
+          const mode = appointment.consultationMode || 'clinic';
           let steps: Array<{ key: string; label: string; completed: boolean; active: boolean }> = [];
 
           if (mode === 'home') {
@@ -977,7 +974,7 @@ export class AppointmentService {
       }
 
       appointment.status = 'rejected';
-      (appointment as any).rejectionReason = reason;
+      (appointment as unknown as Record<string, unknown>).rejectionReason = reason;
       await appointment.save();
 
       // If payment was captured, initiate refund
@@ -1022,7 +1019,7 @@ export class AppointmentService {
       }
 
       appointment.status = status;
-      (appointment as any).cancellationReason = reason ?? null;
+      (appointment as unknown as Record<string, unknown>).cancellationReason = reason ?? null;
       await appointment.save();
 
       // If payment was captured, initiate refund
@@ -1293,7 +1290,7 @@ export class AppointmentService {
     if (!doctorProfile) {
       throw new ApiError('Doctor profile not found', 404, 'DOCTOR_NOT_FOUND');
     }
-    const doctorUser = doctorProfile.userId as { _id: any; phone?: string } | undefined;
+    const doctorUser = doctorProfile.userId as { _id: mongoose.Types.ObjectId; phone?: string } | undefined;
 
     if (!patientUser?.phone || !doctorUser?.phone) {
       throw new ApiError('Phone numbers are missing for call routing', 400, 'PHONE_NUMBERS_MISSING');

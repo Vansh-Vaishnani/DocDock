@@ -200,7 +200,7 @@ export default function DoctorDashboardPage() {
           </div>
           <div className="flex flex-wrap gap-3">
             <Link href="/doctor/appointments" className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-400 transition">
-              Today's Appointments
+              Today&apos;s Appointments
             </Link>
             <Link href="/doctor/availability" className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/20 transition">
               Availability

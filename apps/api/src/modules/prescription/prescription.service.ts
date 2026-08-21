@@ -1,5 +1,6 @@
-import { ApiError } from '../../common/errors/ApiError';
 import mongoose from 'mongoose';
+
+import { ApiError } from '../../common/errors/ApiError';
 import { AppointmentModel } from '../appointment/appointment.repository';
 import { DoctorModel } from '../doctor/doctor.repository';
 import { UserModel } from '../auth/auth.repository';
@@ -24,24 +25,32 @@ interface PrescriptionListResult {
 }
 
 export class PrescriptionService {
-  async createPrescription(doctorId: string, payload: {
+  async createPrescription(
+    doctorId: string,
+    payload: {
+      appointmentId: string;
+      diagnosis: string;
+      chiefComplaints: string;
+      medications: IMedication[];
+      labTests?: string[];
+      advice?: string;
+      followUpDate?: string;
+    }
+  ): Promise<{
+    prescriptionId: string;
     appointmentId: string;
-    diagnosis: string;
-    chiefComplaints: string;
-    medications: IMedication[];
-    labTests?: string[];
-    advice?: string;
-    followUpDate?: string;
-  }): Promise<{ prescriptionId: string; appointmentId: string; prescriptionPdfUrl?: string; issuedAt: Date }> {
+    prescriptionPdfUrl?: string;
+    issuedAt: Date;
+  }> {
     const appointment = await AppointmentModel.findById(payload.appointmentId);
     if (!appointment) {
       throw new ApiError('Appointment not found', 404, 'APPOINTMENT_NOT_FOUND');
     }
 
-    // Resolve doctor document from provided user id (controller passes user.sub)
-    const doctor = await DoctorModel.findOne({ userId: appointment.doctorId }) || await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(doctorId) });
     // The controller passes the authenticated user's id; ensure it matches the appointment's assigned doctor
-    const actingDoctor = await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(doctorId) });
+    const actingDoctor = await DoctorModel.findOne({
+      userId: new mongoose.Types.ObjectId(doctorId),
+    });
     if (!actingDoctor) {
       throw new ApiError('Doctor profile not found for current user', 404, 'DOCTOR_NOT_FOUND');
     }
@@ -53,10 +62,16 @@ export class PrescriptionService {
     // Allow creation or editing of prescription when consultation started.
     // Editing is allowed until appointment is marked 'completed'.
     if (appointment.status !== 'in_consultation' && appointment.status !== 'completed') {
-      throw new ApiError('Appointment must be in in_consultation or completed state', 400, 'APPOINTMENT_NOT_IN_PROGRESS');
+      throw new ApiError(
+        'Appointment must be in in_consultation or completed state',
+        400,
+        'APPOINTMENT_NOT_IN_PROGRESS'
+      );
     }
 
-    const existingPrescription = await PrescriptionModel.findOne({ appointmentId: payload.appointmentId });
+    const existingPrescription = await PrescriptionModel.findOne({
+      appointmentId: payload.appointmentId,
+    });
 
     const prescription = existingPrescription
       ? await PrescriptionModel.findOneAndUpdate(
@@ -70,7 +85,9 @@ export class PrescriptionService {
             followUpDate: payload.followUpDate ? new Date(payload.followUpDate) : undefined,
             issuedAt: new Date(),
             isValid: true,
-            prescriptionPdfUrl: existingPrescription.prescriptionPdfUrl || `https://res.cloudinary.com/docdock/prescriptions/${appointment._id}.pdf`
+            prescriptionPdfUrl:
+              existingPrescription.prescriptionPdfUrl ||
+              `https://res.cloudinary.com/docdock/prescriptions/${appointment._id}.pdf`,
           },
           { new: true }
         )
@@ -86,7 +103,7 @@ export class PrescriptionService {
           followUpDate: payload.followUpDate ? new Date(payload.followUpDate) : undefined,
           issuedAt: new Date(),
           isValid: true,
-          prescriptionPdfUrl: `https://res.cloudinary.com/docdock/prescriptions/${appointment._id}.pdf`
+          prescriptionPdfUrl: `https://res.cloudinary.com/docdock/prescriptions/${appointment._id}.pdf`,
         });
 
     if (!prescription) {
@@ -100,11 +117,15 @@ export class PrescriptionService {
       prescriptionId: prescription._id.toString(),
       appointmentId: appointment._id.toString(),
       prescriptionPdfUrl: prescription.prescriptionPdfUrl,
-      issuedAt: prescription.issuedAt
+      issuedAt: prescription.issuedAt,
     };
   }
 
-  async getPrescription(prescriptionId: string, userId: string, role: 'patient' | 'doctor' | 'admin'): Promise<IPrescriptionDocument> {
+  async getPrescription(
+    prescriptionId: string,
+    userId: string,
+    role: 'patient' | 'doctor' | 'admin'
+  ): Promise<IPrescriptionDocument> {
     const prescription = await PrescriptionModel.findById(prescriptionId).lean();
     if (!prescription) {
       throw new ApiError('Prescription not found', 404, 'PRESCRIPTION_NOT_FOUND');
@@ -116,11 +137,13 @@ export class PrescriptionService {
 
     if (role === 'doctor') {
       // userId is the authenticated user's id (User._id). Resolve doctor's document and compare.
-      const actingDoctor = await DoctorModel.findOne({ userId: new mongoose.Types.ObjectId(userId) }).lean();
+      const actingDoctor = await DoctorModel.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+      }).lean();
       if (!actingDoctor) {
         throw new ApiError('Doctor profile not found for current user', 404, 'FORBIDDEN');
       }
-      if (prescription.doctorId.toString() !== (actingDoctor._id as any).toString()) {
+      if (prescription.doctorId.toString() !== actingDoctor._id.toString()) {
         throw new ApiError('Forbidden', 403, 'FORBIDDEN');
       }
     }
@@ -132,7 +155,11 @@ export class PrescriptionService {
     return prescription as IPrescriptionDocument;
   }
 
-  async getPatientPrescriptions(patientId: string, page = 1, limit = 10): Promise<PrescriptionListResult> {
+  async getPatientPrescriptions(
+    patientId: string,
+    page = 1,
+    limit = 10
+  ): Promise<PrescriptionListResult> {
     const total = await PrescriptionModel.countDocuments({ patientId });
     const prescriptions = await PrescriptionModel.find({ patientId })
       .sort({ issuedAt: -1 })
@@ -141,30 +168,42 @@ export class PrescriptionService {
       .lean();
 
     const doctorIds = Array.from(new Set(prescriptions.map((item) => item.doctorId.toString())));
-    const doctors = await DoctorModel.find({ _id: { $in: doctorIds } }).select('specialization userId').lean();
+    const doctors = await DoctorModel.find({ _id: { $in: doctorIds } })
+      .select('specialization userId')
+      .lean();
     const userIds = doctors.map((doctor) => doctor.userId.toString());
-    const users = await UserModel.find({ _id: { $in: userIds } }).select('fullName').lean();
+    const users = await UserModel.find({ _id: { $in: userIds } })
+      .select('fullName')
+      .lean();
     const userMap = new Map(users.map((user) => [user._id.toString(), user]));
-    const doctorMap = new Map(doctors.map((doctor) => [doctor._id.toString(), { specialization: doctor.specialization, fullName: userMap.get(doctor.userId.toString())?.fullName }]));
+    const doctorMap = new Map(
+      doctors.map((doctor) => [
+        doctor._id.toString(),
+        {
+          specialization: doctor.specialization,
+          fullName: userMap.get(doctor.userId.toString())?.fullName,
+        },
+      ])
+    );
 
     return {
       prescriptions: prescriptions.map((item) => ({
         prescriptionId: item._id.toString(),
         doctor: {
           fullName: doctorMap.get(item.doctorId.toString())?.fullName,
-          specialization: doctorMap.get(item.doctorId.toString())?.specialization
+          specialization: doctorMap.get(item.doctorId.toString())?.specialization,
         },
         diagnosis: item.diagnosis,
         medicationCount: item.medications.length,
         prescriptionPdfUrl: item.prescriptionPdfUrl,
-        issuedAt: item.issuedAt
+        issuedAt: item.issuedAt,
       })),
       meta: {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 }

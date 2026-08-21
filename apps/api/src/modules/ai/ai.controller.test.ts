@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
-import { AIController } from './ai.controller';
+
 import { ApiError } from '../../common/errors/ApiError';
+
+import { AIController } from './ai.controller';
 
 describe('AIController Unit Tests', () => {
   let aiController: AIController;
@@ -15,12 +17,12 @@ describe('AIController Unit Tests', () => {
     it('should throw validation ApiError if symptoms, duration, or severity are missing', async () => {
       const req = { body: { symptoms: 'fever' } } as Request;
       const res = {} as Response;
-      const next = vi.fn() as NextFunction;
+      const next = vi.fn() as unknown as NextFunction;
 
       await aiController.symptomCheck(req, res, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-      const err = (next as any).mock.calls[0][0];
+      const err = vi.mocked(next).mock.calls[0][0] as ApiError;
       expect(err.statusCode).toBe(400);
       expect(err.code).toBe('VALIDATION_ERROR');
     });
@@ -38,7 +40,7 @@ describe('AIController Unit Tests', () => {
         status: vi.fn().mockReturnThis(),
         json: vi.fn(),
       } as unknown as Response;
-      const next = vi.fn() as NextFunction;
+      const next = vi.fn() as unknown as NextFunction;
 
       await aiController.symptomCheck(req, res, next);
 

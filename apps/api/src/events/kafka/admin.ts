@@ -1,4 +1,5 @@
 import { logger } from '../../common/utils/logger';
+
 import { getKafkaClient } from './client';
 import { KAFKA_TOPICS } from './topics';
 

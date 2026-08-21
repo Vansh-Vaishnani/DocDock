@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { trackingParamsSchema, updateLocationSchema } from './tracking.validation';
 
 describe('Tracking Validation Schema (updateLocationSchema & trackingParamsSchema)', () => {
@@ -76,7 +77,7 @@ describe('Tracking Validation Schema (updateLocationSchema & trackingParamsSchem
     it('should reject non-numeric coordinates', () => {
       const result = updateLocationSchema.safeParse({
         params: validParams,
-        body: { coordinates: ['72.5714' as any, 23.0225] },
+        body: { coordinates: ['72.5714' as unknown as number, 23.0225] },
       });
       expect(result.success).toBe(false);
     });
@@ -84,13 +85,13 @@ describe('Tracking Validation Schema (updateLocationSchema & trackingParamsSchem
     it('should reject tuple with missing latitude or extra items', () => {
       const single = updateLocationSchema.safeParse({
         params: validParams,
-        body: { coordinates: [72.5714] as any },
+        body: { coordinates: [72.5714] as unknown as [number, number] },
       });
       expect(single.success).toBe(false);
 
       const triple = updateLocationSchema.safeParse({
         params: validParams,
-        body: { coordinates: [72.5714, 23.0225, 100] as any },
+        body: { coordinates: [72.5714, 23.0225, 100] as unknown as [number, number] },
       });
       expect(triple.success).toBe(false);
     });

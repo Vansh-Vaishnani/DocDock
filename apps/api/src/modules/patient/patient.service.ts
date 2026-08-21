@@ -2,14 +2,15 @@ import mongoose from 'mongoose';
 
 import { ApiError } from '../../common/errors/ApiError';
 import { UserModel } from '../auth/auth.repository';
-import { PatientModel, IPatientDocument } from './patient.repository';
 import { DoctorModel } from '../doctor/doctor.repository';
 import { AppointmentModel } from '../appointment/appointment.repository';
-import { EmergencyRequestModel } from './emergency.model';
 import { PaymentModel } from '../payment/payment.repository';
 import { NotificationService } from '../notification/notification.service';
 import { getIO } from '../../sockets/gateway';
 import { isCloudinaryEnabled, uploadBase64File } from '../../services/cloudinary.service';
+
+import { EmergencyRequestModel } from './emergency.model';
+import { PatientModel, IPatientDocument } from './patient.repository';
 
 const notificationService = new NotificationService();
 

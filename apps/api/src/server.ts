@@ -1,7 +1,6 @@
 import { createServer } from 'http';
 
 import express from 'express';
-import mongoose from 'mongoose';
 
 import { swaggerSpec } from './swagger/swagger';
 import authRoutes from './modules/auth/auth.routes';

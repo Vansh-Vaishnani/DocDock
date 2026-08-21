@@ -1,5 +1,7 @@
 import { Consumer, EachMessagePayload } from 'kafkajs';
+
 import { logger } from '../../common/utils/logger';
+
 import { DomainEvent } from './eventTypes';
 import { getKafkaClient } from './client';
 

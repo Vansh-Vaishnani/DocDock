@@ -1,21 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { authenticate, requireRole, AuthenticatedRequest } from './authMiddleware';
+
 import { ApiError } from '../errors/ApiError';
 import { config } from '../config';
+
+import { authenticate, requireRole, AuthenticatedRequest } from './authMiddleware';
 
 describe('Auth Middleware Unit Tests', () => {
   describe('authenticate', () => {
     it('should throw 401 ApiError if Authorization header is missing', () => {
       const req = { headers: {} } as Request;
       const res = {} as Response;
-      const next = vi.fn() as NextFunction;
+      const next = vi.fn() as unknown as NextFunction;
 
       authenticate(req, res, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-      const err = (next as any).mock.calls[0][0];
+      const err = vi.mocked(next).mock.calls[0][0] as ApiError;
       expect(err.statusCode).toBe(401);
       expect(err.code).toBe('AUTH_REQUIRED');
     });
@@ -23,12 +25,12 @@ describe('Auth Middleware Unit Tests', () => {
     it('should throw 401 ApiError if Authorization header is not Bearer format', () => {
       const req = { headers: { authorization: 'Basic token123' } } as Request;
       const res = {} as Response;
-      const next = vi.fn() as NextFunction;
+      const next = vi.fn() as unknown as NextFunction;
 
       authenticate(req, res, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-      const err = (next as any).mock.calls[0][0];
+      const err = vi.mocked(next).mock.calls[0][0] as ApiError;
       expect(err.statusCode).toBe(401);
       expect(err.code).toBe('AUTH_REQUIRED');
     });
@@ -36,12 +38,12 @@ describe('Auth Middleware Unit Tests', () => {
     it('should throw 401 ApiError if token signature is invalid', () => {
       const req = { headers: { authorization: 'Bearer invalid.jwt.token' } } as Request;
       const res = {} as Response;
-      const next = vi.fn() as NextFunction;
+      const next = vi.fn() as unknown as NextFunction;
 
       authenticate(req, res, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-      const err = (next as any).mock.calls[0][0];
+      const err = vi.mocked(next).mock.calls[0][0] as ApiError;
       expect(err.statusCode).toBe(401);
       expect(err.code).toBe('INVALID_TOKEN');
     });
@@ -52,7 +54,7 @@ describe('Auth Middleware Unit Tests', () => {
 
       const req = { headers: { authorization: `Bearer ${token}` } } as AuthenticatedRequest;
       const res = {} as Response;
-      const next = vi.fn() as NextFunction;
+      const next = vi.fn() as unknown as NextFunction;
 
       authenticate(req, res, next);
 
@@ -67,13 +69,13 @@ describe('Auth Middleware Unit Tests', () => {
     it('should return 403 ApiError if user is not attached to req', () => {
       const req = {} as Request;
       const res = {} as Response;
-      const next = vi.fn() as NextFunction;
+      const next = vi.fn() as unknown as NextFunction;
 
       const middleware = requireRole(['doctor', 'admin']);
       middleware(req, res, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-      const err = (next as any).mock.calls[0][0];
+      const err = vi.mocked(next).mock.calls[0][0] as ApiError;
       expect(err.statusCode).toBe(403);
       expect(err.code).toBe('FORBIDDEN');
     });
@@ -81,13 +83,13 @@ describe('Auth Middleware Unit Tests', () => {
     it('should return 403 ApiError if user role is not authorized', () => {
       const req = { user: { sub: 'user_1', role: 'patient' } } as AuthenticatedRequest;
       const res = {} as Response;
-      const next = vi.fn() as NextFunction;
+      const next = vi.fn() as unknown as NextFunction;
 
       const middleware = requireRole(['doctor', 'admin']);
       middleware(req, res, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-      const err = (next as any).mock.calls[0][0];
+      const err = vi.mocked(next).mock.calls[0][0] as ApiError;
       expect(err.statusCode).toBe(403);
       expect(err.code).toBe('FORBIDDEN');
     });
@@ -95,7 +97,7 @@ describe('Auth Middleware Unit Tests', () => {
     it('should call next() if user role is authorized', () => {
       const req = { user: { sub: 'user_1', role: 'doctor' } } as AuthenticatedRequest;
       const res = {} as Response;
-      const next = vi.fn() as NextFunction;
+      const next = vi.fn() as unknown as NextFunction;
 
       const middleware = requireRole(['doctor', 'admin']);
       middleware(req, res, next);

@@ -1,11 +1,13 @@
-import { EachMessagePayload } from 'kafkajs';
-import { DomainEvent, PaymentCompletedEvent, AppointmentCreatedEvent, AppointmentConfirmedEvent, AppointmentCancelledEvent } from '../kafka/eventTypes';
+import {
+  DomainEvent,
+  PaymentCompletedEvent,
+  AppointmentCreatedEvent,
+  AppointmentConfirmedEvent,
+  AppointmentCancelledEvent,
+} from '../kafka/eventTypes';
 import { KAFKA_TOPICS } from '../kafka/topics';
 import { createKafkaConsumer, ConsumerSubscription } from '../kafka/consumer';
 import { logger } from '../../common/utils/logger';
-import { NotificationService } from '../../modules/notification/notification.service';
-
-const notificationService = new NotificationService();
 
 /**
  * Handles PaymentCompleted events: creates in-app notifications for both
@@ -81,8 +83,7 @@ async function handleAppointmentCancelled(event: AppointmentCancelledEvent): Pro
  * Route incoming Kafka messages to specific handlers based on eventType.
  */
 async function notificationMessageHandler(
-  event: DomainEvent,
-  _payload: EachMessagePayload
+  event: DomainEvent
 ): Promise<void> {
   switch (event.eventType) {
     case 'PaymentCompleted':
@@ -99,7 +100,7 @@ async function notificationMessageHandler(
       break;
     default:
       logger.warn('[NotificationConsumer] Unhandled event type', {
-        eventType: (event as DomainEvent).eventType,
+        eventType: event.eventType,
         eventId: event.eventId,
       });
   }

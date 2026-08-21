@@ -3,12 +3,7 @@ import { DoctorModel } from '../doctor/doctor.repository';
 import { ApiError } from '../../common/errors/ApiError';
 import { getIO } from '../../sockets/gateway';
 import { logger } from '../../common/utils/logger';
-import {
-  publishDoctorOnTheWay,
-  publishDoctorArrived,
-  publishTripCancelled,
-  publishTripCompleted,
-} from '../../events/publishers/locationPublisher';
+import { publishDoctorOnTheWay } from '../../events/publishers/locationPublisher';
 
 import { TrackingRepository, EphemeralLocation } from './tracking.repository';
 

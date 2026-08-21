@@ -6,9 +6,9 @@ import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { sendCreated, sendSuccess } from '../../common/utils/http';
 import { logger } from '../../common/utils/logger';
 import { publishPaymentCompleted } from '../../events/publishers/paymentPublisher';
-
 import { AppointmentService } from '../appointment/appointment.service';
 import { PatientModel } from '../patient/patient.repository';
+
 import { PaymentService } from './payment.service';
 
 const service = new PaymentService();
@@ -133,7 +133,7 @@ export class PaymentController {
 
   async handleWebhook(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const rawBody = (req as any).rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+      const rawBody = (req as Request & { rawBody?: string }).rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
       const signature = req.headers['x-razorpay-signature'];
       const valid = await service.verifySignature(rawBody, typeof signature === 'string' ? signature : '');
       if (!valid) {

@@ -11,8 +11,7 @@ import {
   doctorProfileSchema,
   doctorRegisterSchema,
   updateDoctorProfileSchema,
-  doctorAppointmentsSchema,
-  uploadDocumentSchema
+  doctorAppointmentsSchema
 } from './doctor.validation';
 
 const router = express.Router();

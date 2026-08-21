@@ -1,6 +1,7 @@
 import { redisClient } from '../../common/config';
 import { DoctorModel } from '../doctor/doctor.repository';
 import { AppointmentModel } from '../appointment/appointment.repository';
+
 import { TrackingModel, ITrackingDocument } from './tracking.model';
 
 export interface EphemeralLocation {

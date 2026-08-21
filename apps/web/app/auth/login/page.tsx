@@ -259,7 +259,7 @@ function LoginPageContent() {
             </form>
 
             <p className="mt-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link href="/auth/register" className="font-semibold text-emerald-600 hover:text-emerald-700 transition-colors">
                 Create one free
               </Link>

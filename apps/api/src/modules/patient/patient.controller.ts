@@ -1,4 +1,4 @@
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
@@ -16,7 +16,7 @@ export class PatientController {
     return req.user.sub;
   }
 
-  async getProfile(req: any, res: Response, next: NextFunction): Promise<void> {
+  async getProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const profile = await service.getProfile(this.getUserId(req as AuthenticatedRequest));
       sendSuccess(res, profile, 'Patient profile retrieved successfully.');
@@ -25,16 +25,19 @@ export class PatientController {
     }
   }
 
-  async updateProfile(req: any, res: Response, next: NextFunction): Promise<void> {
+  async updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const profile = await service.updateProfile(this.getUserId(req as AuthenticatedRequest), req.body);
+      const profile = await service.updateProfile(
+        this.getUserId(req as AuthenticatedRequest),
+        req.body
+      );
       sendSuccess(res, profile, 'Profile updated successfully.');
     } catch (error) {
       next(error);
     }
   }
 
-  async listAddresses(req: any, res: Response, next: NextFunction): Promise<void> {
+  async listAddresses(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const addresses = await service.listAddresses(this.getUserId(req as AuthenticatedRequest));
       sendSuccess(res, addresses, 'Addresses retrieved successfully.');
@@ -43,49 +46,69 @@ export class PatientController {
     }
   }
 
-  async addAddress(req: any, res: Response, next: NextFunction): Promise<void> {
+  async addAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const profile = await service.addAddress(this.getUserId(req as AuthenticatedRequest), req.body);
+      const profile = await service.addAddress(
+        this.getUserId(req as AuthenticatedRequest),
+        req.body
+      );
       sendSuccess(res, profile, 'Address added successfully.');
     } catch (error) {
       next(error);
     }
   }
 
-  async updateAddress(req: any, res: Response, next: NextFunction): Promise<void> {
+  async updateAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const profile = await service.updateAddress(this.getUserId(req as AuthenticatedRequest), req.params.addressId, req.body);
+      const profile = await service.updateAddress(
+        this.getUserId(req as AuthenticatedRequest),
+        req.params.addressId,
+        req.body
+      );
       sendSuccess(res, profile, 'Address updated successfully.');
     } catch (error) {
       next(error);
     }
   }
 
-  async deleteAddress(req: any, res: Response, next: NextFunction): Promise<void> {
+  async deleteAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const profile = await service.deleteAddress(this.getUserId(req as AuthenticatedRequest), req.params.addressId);
+      const profile = await service.deleteAddress(
+        this.getUserId(req as AuthenticatedRequest),
+        req.params.addressId
+      );
       sendSuccess(res, profile, 'Address deleted successfully.');
     } catch (error) {
       next(error);
     }
   }
 
-  async setDefaultAddress(req: any, res: Response, next: NextFunction): Promise<void> {
+  async setDefaultAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const profile = await service.setDefaultAddress(this.getUserId(req as AuthenticatedRequest), req.params.addressId);
+      const profile = await service.setDefaultAddress(
+        this.getUserId(req as AuthenticatedRequest),
+        req.params.addressId
+      );
       sendSuccess(res, profile, 'Default address updated successfully.');
     } catch (error) {
       next(error);
     }
   }
 
-  async triggerSos(req: any, res: Response, next: NextFunction): Promise<void> {
+  async triggerSos(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { latitude, longitude } = req.body;
       if (latitude === undefined || longitude === undefined) {
-        throw new ApiError('Location coordinates (latitude and longitude) are required', 400, 'VALIDATION_ERROR');
+        throw new ApiError(
+          'Location coordinates (latitude and longitude) are required',
+          400,
+          'VALIDATION_ERROR'
+        );
       }
-      const result = await service.triggerSos(this.getUserId(req as AuthenticatedRequest), [longitude, latitude]);
+      const result = await service.triggerSos(this.getUserId(req as AuthenticatedRequest), [
+        longitude,
+        latitude,
+      ]);
       sendSuccess(res, result, 'Emergency SOS triggered successfully.');
     } catch (error) {
       next(error);

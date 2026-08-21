@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Kafka } from 'kafkajs';
+
 import { initializeKafkaTopics } from './admin';
 import { KAFKA_TOPICS } from './topics';
 import { getKafkaClient } from './client';
@@ -45,7 +47,7 @@ describe('Kafka Admin Topic Initializer Unit Suite', () => {
   });
 
   it('should list existing topics and create all missing topics from KAFKA_TOPICS constants', async () => {
-    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as any);
+    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as unknown as Kafka);
     mockConnect.mockResolvedValue(undefined);
     mockListTopics.mockResolvedValue([]); // No existing topics
     mockCreateTopics.mockResolvedValue(true);
@@ -68,7 +70,7 @@ describe('Kafka Admin Topic Initializer Unit Suite', () => {
   });
 
   it('should be idempotent and skip creation when all required topics already exist', async () => {
-    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as any);
+    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as unknown as Kafka);
     mockConnect.mockResolvedValue(undefined);
     mockListTopics.mockResolvedValue(Object.values(KAFKA_TOPICS)); // All topics exist
     mockDisconnect.mockResolvedValue(undefined);
@@ -81,7 +83,7 @@ describe('Kafka Admin Topic Initializer Unit Suite', () => {
   });
 
   it('should only create topics that are missing', async () => {
-    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as any);
+    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as unknown as Kafka);
     mockConnect.mockResolvedValue(undefined);
     // Only payment.completed exists
     mockListTopics.mockResolvedValue(['docdock.payment.completed']);
@@ -91,7 +93,7 @@ describe('Kafka Admin Topic Initializer Unit Suite', () => {
 
     expect(result).toBe(true);
     const createTopicsArg = mockCreateTopics.mock.calls[0][0];
-    const createdTopicNames = createTopicsArg.topics.map((t: any) => t.topic);
+    const createdTopicNames = createTopicsArg.topics.map((t: { topic: string }) => t.topic);
 
     expect(createdTopicNames).not.toContain('docdock.payment.completed');
     expect(createdTopicNames).toContain('docdock.appointment.created');
@@ -100,7 +102,7 @@ describe('Kafka Admin Topic Initializer Unit Suite', () => {
   });
 
   it('should support custom numPartitions and replicationFactor options', async () => {
-    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as any);
+    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as unknown as Kafka);
     mockConnect.mockResolvedValue(undefined);
     mockListTopics.mockResolvedValue([]);
     mockCreateTopics.mockResolvedValue(true);
@@ -119,7 +121,7 @@ describe('Kafka Admin Topic Initializer Unit Suite', () => {
   });
 
   it('should handle admin error gracefully and return false without crashing', async () => {
-    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as any);
+    vi.mocked(getKafkaClient).mockReturnValue(mockKafka as unknown as Kafka);
     mockConnect.mockRejectedValue(new Error('Broker unreachable'));
 
     const result = await initializeKafkaTopics();

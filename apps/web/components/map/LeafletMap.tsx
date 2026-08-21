@@ -17,7 +17,7 @@ export function createSvgIcon(color: string, size = 28) {
     </svg>
   `;
 
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line
   const leaflet = require('leaflet');
   return leaflet.divIcon({
     html: svg,

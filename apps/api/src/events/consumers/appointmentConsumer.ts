@@ -1,4 +1,3 @@
-import { EachMessagePayload } from 'kafkajs';
 import { DomainEvent, PaymentCompletedEvent, AppointmentCancelledEvent } from '../kafka/eventTypes';
 import { KAFKA_TOPICS } from '../kafka/topics';
 import { createKafkaConsumer, ConsumerSubscription } from '../kafka/consumer';
@@ -55,8 +54,7 @@ async function handleAppointmentCancelled(event: AppointmentCancelledEvent): Pro
  * Route incoming Kafka messages to specific handlers based on eventType.
  */
 async function appointmentMessageHandler(
-  event: DomainEvent,
-  _payload: EachMessagePayload
+  event: DomainEvent
 ): Promise<void> {
   switch (event.eventType) {
     case 'PaymentCompleted':
@@ -67,7 +65,7 @@ async function appointmentMessageHandler(
       break;
     default:
       logger.warn('[AppointmentConsumer] Unhandled event type', {
-        eventType: (event as DomainEvent).eventType,
+        eventType: event.eventType,
         eventId: event.eventId,
       });
   }

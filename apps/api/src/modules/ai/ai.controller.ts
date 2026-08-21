@@ -1,18 +1,29 @@
 import { Request, Response, NextFunction } from 'express';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
 import { sendSuccess } from '../../common/utils/http';
 import { ApiError } from '../../common/errors/ApiError';
 import { AuthenticatedRequest } from '../../common/middleware/authMiddleware';
 import { DoctorModel } from '../doctor/doctor.repository';
-import { UserModel } from '../auth/auth.repository';
 import { PatientModel } from '../patient/patient.repository';
 import { DoctorService } from '../doctor/doctor.service';
-import mongoose from 'mongoose';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+
+interface GeminiModel {
+  generateContent: (prompt: string) => Promise<{ response: { text: () => string } }>;
+  generateContentStream: (
+    prompt: string
+  ) => Promise<{ stream: AsyncIterable<{ text: () => string }> }>;
+}
 
 // --- Lazy Gemini model factory (reads env vars at request time, not module load time) ---
-function getGeminiModel(): any | null {
+function getGeminiModel(): GeminiModel | null {
   const apiKey = process.env.GEMINI_API_KEY;
-  console.log('[AI] GEMINI_API_KEY present:', !!apiKey, '| placeholder:', apiKey === 'your_api_key_here');
+  console.log(
+    '[AI] GEMINI_API_KEY present:',
+    !!apiKey,
+    '| placeholder:',
+    apiKey === 'your_api_key_here'
+  );
   if (!apiKey || apiKey === 'your_api_key_here') {
     return null;
   }
@@ -20,9 +31,9 @@ function getGeminiModel(): any | null {
     const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
     console.log('[AI] Initializing Gemini model:', modelName);
     const genAI = new GoogleGenerativeAI(apiKey);
-    return genAI.getGenerativeModel({ model: modelName });
-  } catch (e: any) {
-    console.error('[AI] Failed to initialize Gemini model:', e?.message);
+    return genAI.getGenerativeModel({ model: modelName }) as unknown as GeminiModel;
+  } catch (e: unknown) {
+    console.error('[AI] Failed to initialize Gemini model:', (e as Error)?.message);
     return null;
   }
 }
@@ -32,7 +43,11 @@ export class AIController {
     try {
       const { symptoms, age, gender, duration, severity, existingDiseases } = req.body;
       if (!symptoms || !duration || !severity) {
-        throw new ApiError('Symptoms, duration, and severity are required.', 400, 'VALIDATION_ERROR');
+        throw new ApiError(
+          'Symptoms, duration, and severity are required.',
+          400,
+          'VALIDATION_ERROR'
+        );
       }
 
       const disclaimer = 'This is AI-generated guidance and not a medical diagnosis.';
@@ -55,18 +70,21 @@ Provide a JSON response with:
 - emergencyCareAdvised: boolean
 
 Do not output code blocks or markdowns, output pure valid JSON only. Keep responses medically cautious. Include the warning: "${disclaimer}"`;
-        
+
         try {
           console.log('[AI] Calling Gemini for symptom check...');
           const result = await geminiModel.generateContent(prompt);
           const responseText = result.response.text().trim();
-          console.log('[AI] Gemini symptom-check response received, length:', responseText.length);
+          console.log(
+            '[AI] Gemini symptom-check response received, length:',
+            responseText.length
+          );
           const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
           const parsed = JSON.parse(cleanJson);
           sendSuccess(res, { ...parsed, disclaimer }, 'Symptom check complete.');
           return;
-        } catch (err: any) {
-          console.error('[AI] Gemini symptom-check failed:', err?.message);
+        } catch (err: unknown) {
+          console.error('[AI] Gemini symptom-check failed:', (err as Error)?.message);
           // Fall back to rule-based analysis if Gemini fails
         }
       }
@@ -76,20 +94,28 @@ Do not output code blocks or markdowns, output pure valid JSON only. Keep respon
       const sev = severity.toLowerCase();
       let urgencyLevel: 'low' | 'medium' | 'high' = 'low';
       let recommendedSpecialist = 'General Physician';
-      let possibleConditions: string[] = [];
+      const possibleConditions: string[] = [];
       let homeCareSuggestions: string[] = [
         'Stay hydrated and monitor your temperature.',
         'Ensure proper rest and avoid strenuous physical activity.',
-        'Keep a log of symptoms and temperature changes.'
+        'Keep a log of symptoms and temperature changes.',
       ];
       let emergencyCareAdvised = false;
 
       // Urgency
-      if (sev.includes('severe') || sev.includes('high') || sym.includes('chest pain') || sym.includes('breathing') || sym.includes('loss of consciousness')) {
+      if (
+        sev.includes('severe') ||
+        sev.includes('high') ||
+        sym.includes('chest pain') ||
+        sym.includes('breathing') ||
+        sym.includes('loss of consciousness')
+      ) {
         urgencyLevel = 'high';
         emergencyCareAdvised = true;
         possibleConditions.push('Acute Respiratory/Cardiovascular distress');
-        homeCareSuggestions = ['Do not wait. Seek immediate medical attention or visit nearest hospital emergency.'];
+        homeCareSuggestions = [
+          'Do not wait. Seek immediate medical attention or visit nearest hospital emergency.',
+        ];
       } else if (sev.includes('moderate') || sym.includes('fever') || sym.includes('cough')) {
         urgencyLevel = 'medium';
       }
@@ -104,21 +130,30 @@ Do not output code blocks or markdowns, output pure valid JSON only. Keep respon
       } else if (sym.includes('skin') || sym.includes('rash') || sym.includes('itching')) {
         recommendedSpecialist = 'Dermatologist';
         possibleConditions.push('Allergic Dermatitis / Skin Rash');
-      } else if (sym.includes('ear') || sym.includes('nose') || sym.includes('throat') || sym.includes('sinus')) {
+      } else if (
+        sym.includes('ear') ||
+        sym.includes('nose') ||
+        sym.includes('throat') ||
+        sym.includes('sinus')
+      ) {
         recommendedSpecialist = 'ENT Specialist';
         possibleConditions.push('Acute Upper Respiratory Tract/Sinus Infection');
       } else {
         possibleConditions.push('Viral Fever / Inflammatory Response');
       }
 
-      sendSuccess(res, {
-        possibleConditions,
-        urgencyLevel,
-        recommendedSpecialist,
-        homeCareSuggestions,
-        emergencyCareAdvised,
-        disclaimer
-      }, 'Symptom check complete.');
+      sendSuccess(
+        res,
+        {
+          possibleConditions,
+          urgencyLevel,
+          recommendedSpecialist,
+          homeCareSuggestions,
+          emergencyCareAdvised,
+          disclaimer,
+        },
+        'Symptom check complete.'
+      );
     } catch (error) {
       next(error);
     }
@@ -126,43 +161,59 @@ Do not output code blocks or markdowns, output pure valid JSON only. Keep respon
 
   async recommendDoctors(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { symptoms, specialization, location, preferOnline } = req.body;
+      const { symptoms, specialization, preferOnline } = req.body;
       let querySpecialization = specialization;
 
       if (!querySpecialization && symptoms) {
         const sym = symptoms.toLowerCase();
         if (sym.includes('heart') || sym.includes('chest')) querySpecialization = 'Cardiologist';
-        else if (sym.includes('child') || sym.includes('baby')) querySpecialization = 'Pediatrician';
-        else if (sym.includes('skin') || sym.includes('rash')) querySpecialization = 'Dermatologist';
-        else if (sym.includes('ear') || sym.includes('nose') || sym.includes('throat') || sym.includes('sinus')) querySpecialization = 'ENT Specialist';
+        else if (sym.includes('child') || sym.includes('baby'))
+          querySpecialization = 'Pediatrician';
+        else if (sym.includes('skin') || sym.includes('rash'))
+          querySpecialization = 'Dermatologist';
+        else if (
+          sym.includes('ear') ||
+          sym.includes('nose') ||
+          sym.includes('throat') ||
+          sym.includes('sinus')
+        )
+          querySpecialization = 'ENT Specialist';
         else querySpecialization = 'General Physician';
       }
 
       // Search matching doctors
-      const filter: any = { verificationStatus: 'approved' };
+      const filter: Record<string, unknown> = { verificationStatus: 'approved' };
       if (querySpecialization) {
         filter.specialization = { $regex: new RegExp(querySpecialization, 'i') };
       }
 
       const doctors = await DoctorModel.find(filter).populate('userId', 'fullName avatar').lean();
-      
+
       // Map and rank doctors
-      const recommendations = doctors.map((doc: any) => {
-        let score = doc.averageRating * 10 + (doc.experience || 0) * 2;
-        if (preferOnline && (doc.consultationModes || []).includes('online')) score += 15;
-        
-        return {
-          _id: doc._id,
-          fullName: doc.userId?.fullName || 'Doctor',
-          avatar: doc.userId?.avatar || null,
-          specialization: doc.specialization,
-          experience: doc.experience,
-          consultationFee: doc.consultationFee,
-          averageRating: doc.averageRating,
-          consultationModes: doc.consultationModes || ['clinic'],
-          matchScore: Math.min(Math.round(score), 100)
-        };
-      }).sort((a, b) => b.matchScore - a.matchScore);
+      const recommendations = doctors
+        .map((doc: Record<string, unknown>) => {
+          const userObj = doc.userId as { fullName?: string; avatar?: string } | undefined;
+          let score =
+            (doc.averageRating as number) * 10 + ((doc.experience as number) || 0) * 2;
+          if (
+            preferOnline &&
+            ((doc.consultationModes as string[]) || []).includes('online')
+          )
+            score += 15;
+
+          return {
+            _id: doc._id,
+            fullName: userObj?.fullName || 'Doctor',
+            avatar: userObj?.avatar || null,
+            specialization: doc.specialization,
+            experience: doc.experience,
+            consultationFee: doc.consultationFee,
+            averageRating: doc.averageRating,
+            consultationModes: doc.consultationModes || ['clinic'],
+            matchScore: Math.min(Math.round(score), 100),
+          };
+        })
+        .sort((a, b) => b.matchScore - a.matchScore);
 
       sendSuccess(res, { recommendations }, 'Doctor recommendations fetched.');
     } catch (error) {
@@ -200,8 +251,9 @@ Rules:
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       // Ensure response is not buffered (critical for Render/proxied environments)
-      if (typeof (res as any).flush === 'function') {
-        (res as any).flush();
+      const resWithFlush = res as unknown as { flush?: () => void };
+      if (typeof resWithFlush.flush === 'function') {
+        resWithFlush.flush();
       }
 
       let recommendedSpecialization = '';
@@ -213,7 +265,12 @@ Rules:
       console.log('[AI Chat] Gemini model available:', !!geminiModel);
 
       if (geminiModel) {
-        const historyPrompt = (conversationHistory || []).map((h: any) => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join('\n');
+        const historyPrompt = (conversationHistory || [])
+          .map(
+            (h: { role: string; content: string }) =>
+              `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`
+          )
+          .join('\n');
         const finalPrompt = `${systemPrompt}\n\nConversation history:\n${historyPrompt}\nUser: ${message}\nAssistant:`;
 
         try {
@@ -228,7 +285,9 @@ Rules:
               chunkCount++;
             }
           }
-          console.log(`[AI Chat] Gemini stream complete. Chunks: ${chunkCount}, Total chars: ${accumulatedText.length}`);
+          console.log(
+            `[AI Chat] Gemini stream complete. Chunks: ${chunkCount}, Total chars: ${accumulatedText.length}`
+          );
 
           if (accumulatedText.length > 0) {
             geminiSucceeded = true;
@@ -236,15 +295,22 @@ Rules:
             const match = accumulatedText.match(/\[RECOMMEND_DOCTORS:\s*([^\]]+)\]/i);
             if (match && match[1]) {
               recommendedSpecialization = match[1].trim();
-              console.log('[AI Chat] Doctor recommendation triggered for:', recommendedSpecialization);
+              console.log(
+                '[AI Chat] Doctor recommendation triggered for:',
+                recommendedSpecialization
+              );
             }
           } else {
-            console.warn('[AI Chat] Gemini returned empty stream — falling back to simulated response.');
+            console.warn(
+              '[AI Chat] Gemini returned empty stream — falling back to simulated response.'
+            );
           }
-        } catch (e: any) {
-          console.error('[AI Chat] Gemini streaming error:', e?.message || e);
+        } catch (e: unknown) {
+          console.error('[AI Chat] Gemini streaming error:', (e as Error)?.message || e);
           // Send error chunk so the frontend knows what happened (does not expose key)
-          res.write(`data: ${JSON.stringify({ text: '\n\n*[Note: AI response encountered an issue. Using offline guidance.]*\n\n' })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ text: '\n\n*[Note: AI response encountered an issue. Using offline guidance.]*\n\n' })}\n\n`
+          );
         }
       }
 
@@ -254,23 +320,63 @@ Rules:
         console.log('[AI Chat] Using simulated stream fallback.');
         let fallbackResponse = '';
         const msg = message.toLowerCase();
-        if (msg.includes('fever') || msg.includes('headache') || msg.includes('cold') || msg.includes('flu') || msg.includes('cough')) {
-          fallbackResponse = 'Based on your symptoms of fever, headache, or respiratory irritation, it appears you may be dealing with a common viral illness or respiratory infection. I recommend tracking your body temperature, getting ample rest, and drinking warm fluids. For a definitive diagnosis and treatment plan, consulting a **General Physician** is highly recommended.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: General Physician]';
+        if (
+          msg.includes('fever') ||
+          msg.includes('headache') ||
+          msg.includes('cold') ||
+          msg.includes('flu') ||
+          msg.includes('cough')
+        ) {
+          fallbackResponse =
+            'Based on your symptoms of fever, headache, or respiratory irritation, it appears you may be dealing with a common viral illness or respiratory infection. I recommend tracking your body temperature, getting ample rest, and drinking warm fluids. For a definitive diagnosis and treatment plan, consulting a **General Physician** is highly recommended.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: General Physician]';
           recommendedSpecialization = 'General Physician';
-        } else if (msg.includes('skin') || msg.includes('rash') || msg.includes('acne') || msg.includes('itch') || msg.includes('dermatologist')) {
-          fallbackResponse = 'For skin concerns, dermatological rashes, acne outbreaks, or localized allergic reactions, a **Dermatologist** is the specialist best equipped to diagnose and suggest targeted treatments.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: Dermatologist]';
+        } else if (
+          msg.includes('skin') ||
+          msg.includes('rash') ||
+          msg.includes('acne') ||
+          msg.includes('itch') ||
+          msg.includes('dermatologist')
+        ) {
+          fallbackResponse =
+            'For skin concerns, dermatological rashes, acne outbreaks, or localized allergic reactions, a **Dermatologist** is the specialist best equipped to diagnose and suggest targeted treatments.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: Dermatologist]';
           recommendedSpecialization = 'Dermatologist';
-        } else if (msg.includes('child') || msg.includes('baby') || msg.includes('pediatric') || msg.includes('kid')) {
-          fallbackResponse = 'For health concerns relating to infants, children, or adolescents, you should seek guidance from a **Pediatrician** who specializes in early development and childhood illnesses.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: Pediatrician]';
+        } else if (
+          msg.includes('child') ||
+          msg.includes('baby') ||
+          msg.includes('pediatric') ||
+          msg.includes('kid')
+        ) {
+          fallbackResponse =
+            'For health concerns relating to infants, children, or adolescents, you should seek guidance from a **Pediatrician** who specializes in early development and childhood illnesses.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: Pediatrician]';
           recommendedSpecialization = 'Pediatrician';
-        } else if (msg.includes('heart') || msg.includes('chest') || msg.includes('bp') || msg.includes('cardio')) {
-          fallbackResponse = 'For symptoms like chest tightness, breathing difficulties, high blood pressure, or heart rate irregularities, it is critical to consult a **Cardiologist** immediately.\n\n*Disclaimer: This is general guidance. If you are experiencing a medical emergency, go to the nearest ER.*\n\n[RECOMMEND_DOCTORS: Cardiologist]';
+        } else if (
+          msg.includes('heart') ||
+          msg.includes('chest') ||
+          msg.includes('bp') ||
+          msg.includes('cardio')
+        ) {
+          fallbackResponse =
+            'For symptoms like chest tightness, breathing difficulties, high blood pressure, or heart rate irregularities, it is critical to consult a **Cardiologist** immediately.\n\n*Disclaimer: This is general guidance. If you are experiencing a medical emergency, go to the nearest ER.*\n\n[RECOMMEND_DOCTORS: Cardiologist]';
           recommendedSpecialization = 'Cardiologist';
-        } else if (msg.includes('ear') || msg.includes('nose') || msg.includes('throat') || msg.includes('ent') || msg.includes('sinus')) {
-          fallbackResponse = 'For issues involving earaches, nasal congestion, throat pain, sinus infections, or hearing disturbances, an **ENT Specialist** (Otolaryngologist) is the most suitable medical expert.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: ENT Specialist]';
+        } else if (
+          msg.includes('ear') ||
+          msg.includes('nose') ||
+          msg.includes('throat') ||
+          msg.includes('ent') ||
+          msg.includes('sinus')
+        ) {
+          fallbackResponse =
+            'For issues involving earaches, nasal congestion, throat pain, sinus infections, or hearing disturbances, an **ENT Specialist** (Otolaryngologist) is the most suitable medical expert.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: ENT Specialist]';
           recommendedSpecialization = 'ENT Specialist';
-        } else if (msg.includes('stomach') || msg.includes('pain') || msg.includes('digestion') || msg.includes('diarrhea') || msg.includes('vomit')) {
-          fallbackResponse = 'Abdominal pain, digestion issues, persistent acid reflux, or gastrointestinal disturbances are best evaluated by a **Gastroenterologist** or a **General Physician**.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: General Physician]';
+        } else if (
+          msg.includes('stomach') ||
+          msg.includes('pain') ||
+          msg.includes('digestion') ||
+          msg.includes('diarrhea') ||
+          msg.includes('vomit')
+        ) {
+          fallbackResponse =
+            'Abdominal pain, digestion issues, persistent acid reflux, or gastrointestinal disturbances are best evaluated by a **Gastroenterologist** or a **General Physician**.\n\n*Disclaimer: This is general guidance. Please seek a professional medical opinion on DocDock.*\n\n[RECOMMEND_DOCTORS: General Physician]';
           recommendedSpecialization = 'General Physician';
         } else {
           fallbackResponse = `Hello! I am Antigravity, your DocDock AI Healthcare Assistant. I am here to help guide you on symptoms, medications, or connect you with clinical specialists.\n\nCould you please describe what symptoms you are experiencing? E.g., "I have a skin rash" or "My child has a fever". I will analyze it and suggest the right specialist nearby.\n\n*Disclaimer: I provide information, not medical diagnoses.*`;
@@ -279,40 +385,56 @@ Rules:
         const words = fallbackResponse.split(' ');
         for (const word of words) {
           res.write(`data: ${JSON.stringify({ text: word + ' ' })}\n\n`);
-          await new Promise(r => setTimeout(r, 20));
+          await new Promise((r) => setTimeout(r, 20));
         }
       }
 
       // If doctor recommendation is triggered, fetch actual doctors and append to stream
       if (recommendedSpecialization) {
-        // Strip out the bracket tag in UI if we want, but since we outputted it,
-        // let's fetch the doctors and append the GFM Markdown table.
         let lat: number | undefined;
         let lng: number | undefined;
         try {
-          const patient = await PatientModel.findOne({ userId: (req as AuthenticatedRequest).user?.sub });
-          const defaultAddress = patient?.addresses?.find(a => a.isDefault) || patient?.addresses?.[0];
+          const patient = await PatientModel.findOne({
+            userId: (req as AuthenticatedRequest).user?.sub,
+          });
+          const defaultAddress =
+            patient?.addresses?.find((a) => a.isDefault) || patient?.addresses?.[0];
           if (defaultAddress?.location?.coordinates) {
             lng = defaultAddress.location.coordinates[0];
             lat = defaultAddress.location.coordinates[1];
           }
-        } catch (err) {
+        } catch {
           // Ignore location fetch errors
         }
 
         try {
           const doctorService = new DoctorService();
-          const doctors = await doctorService.searchNearby(lat, lng, 25000, recommendedSpecialization, { limit: 3 });
+          const doctors = await doctorService.searchNearby(
+            lat,
+            lng,
+            25000,
+            recommendedSpecialization,
+            { limit: 3 }
+          );
 
           if (doctors && doctors.length > 0) {
-            let doctorMd = '\n\n### Recommended Doctors\n\n| Doctor Name | Rating | Distance | Consultation | Availability | Action |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n';
+            let doctorMd =
+              '\n\n### Recommended Doctors\n\n| Doctor Name | Rating | Distance | Consultation | Availability | Action |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n';
             for (const doc of doctors) {
-              const d = doc as any;
-              const name = d.fullName || `Dr. ${d.specialization || recommendedSpecialization}`;
-              const rating = typeof d.averageRating === 'number' ? d.averageRating.toFixed(1) : '0.0';
+              const d = doc as Record<string, unknown>;
+              const name =
+                (d.fullName as string) || `Dr. ${(d.specialization as string) || recommendedSpecialization}`;
+              const rating =
+                typeof d.averageRating === 'number' ? d.averageRating.toFixed(1) : '0.0';
               const dist = typeof d.distance === 'number' ? `${(d.distance / 1000).toFixed(1)} km` : '—';
-              const type = Array.isArray(d.consultationModes) ? d.consultationModes.map((m: string) => m.charAt(0).toUpperCase() + m.slice(1)).join(' • ') : 'Clinic';
-              const avail = d.availability?.isAvailable ? 'Available Today' : 'On Request';
+              const type = Array.isArray(d.consultationModes)
+                ? (d.consultationModes as string[])
+                    .map((m: string) => m.charAt(0).toUpperCase() + m.slice(1))
+                    .join(' • ')
+                : 'Clinic';
+              const avail = (d.availability as { isAvailable?: boolean })?.isAvailable
+                ? 'Available Today'
+                : 'On Request';
               const bookingLink = `[Book Now](/find-doctors/${d._id})`;
 
               doctorMd += `| **${name}** | ⭐ ${rating} | 📍 ${dist} | ${type} | 🟢 ${avail} | ${bookingLink} |\n`;
@@ -320,10 +442,14 @@ Rules:
 
             res.write(`data: ${JSON.stringify({ text: doctorMd })}\n\n`);
           } else {
-            res.write(`data: ${JSON.stringify({ text: `\n\n*No available ${recommendedSpecialization}s found nearby at the moment.*` })}\n\n`);
+            res.write(
+              `data: ${JSON.stringify({ text: `\n\n*No available ${recommendedSpecialization}s found nearby at the moment.*` })}\n\n`
+            );
           }
-        } catch (err) {
-          res.write(`data: ${JSON.stringify({ text: `\n\n*Unable to retrieve recommended doctors right now.*` })}\n\n`);
+        } catch {
+          res.write(
+            `data: ${JSON.stringify({ text: `\n\n*Unable to retrieve recommended doctors right now.*` })}\n\n`
+          );
         }
       }
 
@@ -369,26 +495,45 @@ Do not output code blocks or markdowns, output pure valid JSON only.`;
           const parsed = JSON.parse(cleanJson);
           sendSuccess(res, parsed, 'Prescription summary generated.');
           return;
-        } catch (e: any) {
-          console.error('[AI] Gemini prescription summary failed:', e?.message);
+        } catch (e: unknown) {
+          console.error('[AI] Gemini prescription summary failed:', (e as Error)?.message);
           // fallback
         }
       }
 
       // Rule-based Fallback
       summary = `Prescribed medications target the diagnosed condition (${diagnosis || 'general wellness'}).`;
-      dosageExplanation = (medications || []).map((m: any) => `${m.name}: ${m.dosage || 'As directed'} (${m.frequency || 'once daily'}) for ${m.duration || 'specified duration'}.`).join('\n');
-      precautions = 'Finish the full course of prescribed medicines. If you experience adverse side effects, consult your doctor immediately.';
-      foodRecommendations = 'Take medicines with water. Avoid heavy or oily foods unless taking medications that require high fat absorption.';
-      followUpReminder = 'Please schedule a follow-up consultation in 7 days or as advised by your doctor.';
+      dosageExplanation = (
+        (medications as Array<{
+          name: string;
+          dosage?: string;
+          frequency?: string;
+          duration?: string;
+        }>) || []
+      )
+        .map(
+          (m) =>
+            `${m.name}: ${m.dosage || 'As directed'} (${m.frequency || 'once daily'}) for ${m.duration || 'specified duration'}.`
+        )
+        .join('\n');
+      precautions =
+        'Finish the full course of prescribed medicines. If you experience adverse side effects, consult your doctor immediately.';
+      foodRecommendations =
+        'Take medicines with water. Avoid heavy or oily foods unless taking medications that require high fat absorption.';
+      followUpReminder =
+        'Please schedule a follow-up consultation in 7 days or as advised by your doctor.';
 
-      sendSuccess(res, {
-        summary,
-        dosageExplanation,
-        precautions,
-        foodRecommendations,
-        followUpReminder
-      }, 'Prescription summary generated.');
+      sendSuccess(
+        res,
+        {
+          summary,
+          dosageExplanation,
+          precautions,
+          foodRecommendations,
+          followUpReminder,
+        },
+        'Prescription summary generated.'
+      );
     } catch (error) {
       next(error);
     }

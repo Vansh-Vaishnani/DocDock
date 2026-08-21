@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodSchema } from 'zod';
+
 import { ApiError } from '../errors/ApiError';
 
 export interface ValidationSchema {
@@ -20,7 +21,7 @@ export const validateRequestWithZod = (schema: ValidationSchema) => {
         if (!bodyResult.success) {
           const details = bodyResult.error.errors.map((error) => ({
             field: error.path.join('.'),
-            message: error.message
+            message: error.message,
           }));
           throw new ApiError('Validation failed', 400, 'VALIDATION_ERROR', details);
         }
@@ -33,12 +34,11 @@ export const validateRequestWithZod = (schema: ValidationSchema) => {
         if (!queryResult.success) {
           const details = queryResult.error.errors.map((error) => ({
             field: error.path.join('.'),
-            message: error.message
+            message: error.message,
           }));
           throw new ApiError('Validation failed', 400, 'VALIDATION_ERROR', details);
         }
-        // Cast to any to avoid Express type mismatch
-        (req.query as any) = queryResult.data;
+        (req.query as unknown) = queryResult.data;
       }
 
       // Validate params
@@ -47,7 +47,7 @@ export const validateRequestWithZod = (schema: ValidationSchema) => {
         if (!paramsResult.success) {
           const details = paramsResult.error.errors.map((error) => ({
             field: error.path.join('.'),
-            message: error.message
+            message: error.message,
           }));
           throw new ApiError('Validation failed', 400, 'VALIDATION_ERROR', details);
         }
@@ -69,7 +69,7 @@ export const validateData = async <T>(data: unknown, schema: ZodSchema): Promise
   if (!result.success) {
     const details = result.error.errors.map((error) => ({
       field: error.path.join('.'),
-      message: error.message
+      message: error.message,
     }));
     throw new ApiError('Validation failed', 400, 'VALIDATION_ERROR', details);
   }

@@ -391,7 +391,7 @@ export class AdminService {
     }
 
     const skip = (page - 1) * limit;
-    let appointments = await AppointmentModel.find(filter).sort({ scheduledAt: -1 }).skip(skip).limit(limit).lean();
+    const appointments = await AppointmentModel.find(filter).sort({ scheduledAt: -1 }).skip(skip).limit(limit).lean();
     const total = await AppointmentModel.countDocuments(filter);
 
     const patientIds = [...new Set(appointments.map((a) => a.patientId.toString()))];

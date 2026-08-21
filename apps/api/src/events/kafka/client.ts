@@ -1,7 +1,5 @@
 import { Kafka, KafkaConfig } from 'kafkajs';
 
-let kafkaInstance: Kafka | null = null;
-
 /**
  * Builds or returns a singleton Kafka client from environment variables.
  * Returns null if KAFKA_BROKERS is missing or empty.

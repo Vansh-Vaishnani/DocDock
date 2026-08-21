@@ -1,11 +1,11 @@
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 import { config } from '../../common/config';
 import { ApiError } from '../../common/errors/ApiError';
 import { sendPasswordResetEmail, isEmailServiceEnabled } from '../../services/email.service';
-
 import { DoctorModel } from '../doctor/doctor.repository';
 import { PatientModel } from '../patient/patient.repository';
 import { NotificationService } from '../notification/notification.service';

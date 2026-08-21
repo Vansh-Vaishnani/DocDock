@@ -16,7 +16,12 @@ interface ReviewListResult {
 }
 
 export class ReviewService {
-  async submitReview(patientId: string, appointmentId: string, rating: number, comment: string): Promise<IReviewDocument> {
+  async submitReview(
+    patientId: string,
+    appointmentId: string,
+    rating: number,
+    comment: string
+  ): Promise<IReviewDocument> {
     const appointment = await AppointmentModel.findById(appointmentId);
     if (!appointment) {
       throw new ApiError('Appointment not found', 404, 'APPOINTMENT_NOT_FOUND');
@@ -27,7 +32,11 @@ export class ReviewService {
     }
 
     if (appointment.status !== 'completed') {
-      throw new ApiError('Appointment must be completed before review submission', 400, 'APPOINTMENT_NOT_COMPLETED');
+      throw new ApiError(
+        'Appointment must be completed before review submission',
+        400,
+        'APPOINTMENT_NOT_COMPLETED'
+      );
     }
 
     const existingReview = await ReviewModel.findOne({ appointmentId });
@@ -41,13 +50,13 @@ export class ReviewService {
       appointmentId: appointment._id,
       rating,
       comment: comment.trim(),
-      isHidden: false
+      isHidden: false,
     });
 
     const doctor = await DoctorModel.findById(appointment.doctorId);
     if (doctor) {
       const totalReviews = doctor.reviewCount + 1;
-      const averageRating = ((doctor.averageRating * doctor.reviewCount) + rating) / totalReviews;
+      const averageRating = (doctor.averageRating * doctor.reviewCount + rating) / totalReviews;
       doctor.reviewCount = totalReviews;
       doctor.averageRating = Number(averageRating.toFixed(2));
       await doctor.save();
@@ -56,7 +65,13 @@ export class ReviewService {
     return review;
   }
 
-  async listDoctorReviews(doctorId: string, page = 1, limit = 10, sort = 'createdAt', order: 'asc' | 'desc' = 'desc'): Promise<ReviewListResult> {
+  async listDoctorReviews(
+    doctorId: string,
+    page = 1,
+    limit = 10,
+    sort = 'createdAt',
+    order: 'asc' | 'desc' = 'desc'
+  ): Promise<ReviewListResult> {
     const query = { doctorId, isHidden: false };
     const total = await ReviewModel.countDocuments(query);
     const reviews = await ReviewModel.find(query)
@@ -69,41 +84,49 @@ export class ReviewService {
     const enrichedReviews = await Promise.all(
       reviews.map(async (review) => {
         const reviewObj = review.toObject();
-        const patient = reviewObj.patientId as any;
-        const appointment = reviewObj.appointmentId as any;
-        
+        const patient = reviewObj.patientId as { userId?: string } | null;
+        const appointment = reviewObj.appointmentId as { scheduledAt?: Date } | null;
+
         let patientName = 'Patient';
         let patientPhoto = null;
-        
+
         if (patient && patient.userId) {
-          const user = await UserModel.findById(patient.userId).select('fullName avatar').lean();
+          const user = await UserModel.findById(patient.userId)
+            .select('fullName avatar')
+            .lean();
           if (user) {
             patientName = user.fullName;
             patientPhoto = user.avatar || null;
           }
         }
-        
+
         return {
           ...reviewObj,
           patientName,
           patientPhoto,
-          appointmentDate: appointment?.scheduledAt || reviewObj.createdAt
+          appointmentDate: appointment?.scheduledAt || reviewObj.createdAt,
         };
       })
     );
 
     return {
-      reviews: enrichedReviews as any,
+      reviews: enrichedReviews as unknown as IReviewDocument[],
       meta: {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
-  async listMyReviews(userId: string, page = 1, limit = 10, sort = 'createdAt', order: 'asc' | 'desc' = 'desc'): Promise<ReviewListResult> {
+  async listMyReviews(
+    userId: string,
+    page = 1,
+    limit = 10,
+    sort = 'createdAt',
+    order: 'asc' | 'desc' = 'desc'
+  ): Promise<ReviewListResult> {
     const doctor = await DoctorModel.findOne({ userId });
     if (!doctor) {
       throw new ApiError('Doctor profile not found', 404, 'DOCTOR_NOT_FOUND');
@@ -111,7 +134,11 @@ export class ReviewService {
     return this.listDoctorReviews(doctor._id.toString(), page, limit, sort, order);
   }
 
-  async replyToReview(doctorId: string, reviewId: string, reply: string): Promise<IReviewDocument> {
+  async replyToReview(
+    doctorId: string,
+    reviewId: string,
+    reply: string
+  ): Promise<IReviewDocument> {
     const review = await ReviewModel.findById(reviewId);
     if (!review) {
       throw new ApiError('Review not found', 404, 'REVIEW_NOT_FOUND');

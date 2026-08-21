@@ -50,36 +50,21 @@ const STAR_LABELS = ['Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
 
 
 function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
-
   const patientCoords = detail.appointment?.address?.location?.coordinates;
 
-  if (!patientCoords) return null;
+  const patientLatLng = useMemo(() => (patientCoords ? { lat: patientCoords[1], lng: patientCoords[0] } : { lat: 0, lng: 0 }), [patientCoords]);
 
-  const patientLatLng = useMemo(() => ({ lat: patientCoords[1], lng: patientCoords[0] }), [patientCoords]);
-
-
-
-  const clinicLocation = (detail.doctor as any)?.clinicLocation || (detail.doctor as any)?.location;
-
-  const startDoctorCoords = clinicLocation?.coordinates;
-
+  const clinicLocation = (detail.doctor as Record<string, unknown>)?.clinicLocation || (detail.doctor as Record<string, unknown>)?.location;
+  const startDoctorCoords = (clinicLocation as { coordinates?: [number, number] })?.coordinates;
   const initialDoctorCoords = startDoctorCoords ? { lat: startDoctorCoords[1], lng: startDoctorCoords[0] } : null;
 
   const [doctorPos, setDoctorPos] = useState<{ lat: number; lng: number }>(initialDoctorCoords || { lat: patientLatLng.lat + 0.005, lng: patientLatLng.lng - 0.005 });
-
   const [routePath, setRoutePath] = useState<[number, number][]>([]);
-
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
-
   const [remainingDistanceKm, setRemainingDistanceKm] = useState<number | null>(null);
-
   const [isRouteLoading, setIsRouteLoading] = useState(false);
-
   const [routeError, setRouteError] = useState(false);
-
   const [trackingError, setTrackingError] = useState(false);
-
-
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
@@ -271,6 +256,8 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
     : 'Doctor has arrived';
 
 
+
+  if (!patientCoords) return null;
 
   return (
 

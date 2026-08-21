@@ -1,9 +1,9 @@
 import { Queue } from 'bullmq';
+
 import { config } from '../common/config';
 
 const queueOptions = {
   connection: { url: config.redisUrl },
-  skipEvictionCheck: true,
 };
 
 export const reminderQueue = new Queue('reminder', queueOptions);
