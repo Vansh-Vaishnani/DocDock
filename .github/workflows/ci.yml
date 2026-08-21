@@ -68,8 +68,7 @@ jobs:
         run: npm run build --workspace=packages/shared
 
       - name: Run API Tests with Coverage
-        run: npx vitest run --project=apps/api --coverage
-        working-directory: apps/api
+        run: npm run test --workspace docdock-api -- --coverage
 
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
