@@ -61,7 +61,7 @@ export const verifyAccessToken = (token: string): JWTPayload => {
       algorithms: ['HS256']
     } as VerifyOptions) as JWTPayload;
   } catch (error) {
-    const message = error instanceof jwt.JsonWebTokenError ? error.message : 'Token verification failed';
+    const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Access token verification failed: ${message}`);
   }
 };
@@ -75,7 +75,7 @@ export const verifyRefreshToken = (token: string): JWTPayload => {
       algorithms: ['HS256']
     } as VerifyOptions) as JWTPayload;
   } catch (error) {
-    const message = error instanceof jwt.JsonWebTokenError ? error.message : 'Token verification failed';
+    const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Refresh token verification failed: ${message}`);
   }
 };
