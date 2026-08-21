@@ -121,7 +121,7 @@ jobs:
           cache: npm
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: Build All Workspaces
         run: npm run build
