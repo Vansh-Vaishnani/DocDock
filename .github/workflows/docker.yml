@@ -25,6 +25,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      # Pass the exact image tag used so the scan job doesn't re-derive it
+      image: ${{ steps.meta-api.outputs.tags && 'ghcr.io/' || '' }}${{ env.API_IMAGE_NAME }}:latest
 
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +72,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}:latest
 
     steps:
       - uses: actions/checkout@v4
@@ -110,6 +115,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Trivy vulnerability scan on pushed images
+  # Must authenticate to GHCR to pull private images before scanning.
   # ---------------------------------------------------------------------------
   trivy-scan:
     name: 🔒 Trivy Vulnerability Scan
@@ -117,10 +123,20 @@ jobs:
     needs: [build-and-push-api, build-and-push-web]
     permissions:
       contents: read
+      packages: read
       security-events: write
 
     steps:
       - uses: actions/checkout@v4
+
+      # GHCR login is required — without it Trivy cannot pull private images
+      # and fails with "failed to parse the image name / image reference"
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan API Image
         uses: aquasecurity/trivy-action@master
@@ -133,7 +149,24 @@ jobs:
 
       - name: Upload API Scan Results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        # Only upload if the SARIF file was actually produced (Trivy succeeded)
+        if: always() && hashFiles('trivy-results-api.sarif') != ''
         with:
           sarif_file: trivy-results-api.sarif
           category: trivy-api
+
+      - name: Scan Web Image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}:latest
+          format: sarif
+          output: trivy-results-web.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Upload Web Scan Results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-results-web.sarif') != ''
+        with:
+          sarif_file: trivy-results-web.sarif
+          category: trivy-web
