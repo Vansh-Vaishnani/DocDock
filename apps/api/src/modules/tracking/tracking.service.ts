@@ -7,6 +7,21 @@ import { publishDoctorOnTheWay } from '../../events/publishers/locationPublisher
 
 import { TrackingRepository, EphemeralLocation } from './tracking.repository';
 
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // in meters
+}
+
 export class TrackingService {
   constructor(private readonly repository = new TrackingRepository()) {}
 
@@ -42,6 +57,8 @@ export class TrackingService {
       doctorCurrentLocation: session.doctorCurrentLocation,
       patientLocation: session.patientLocation,
       lastHeartbeatAt: session.lastHeartbeatAt,
+      startedAt: (session as any).startedAt || (session as any).createdAt,
+      arrivedAt: (session as any).arrivedAt || null,
     };
   }
 
@@ -65,6 +82,15 @@ export class TrackingService {
 
     appointment.status = 'doctor_on_way';
     await appointment.save();
+
+    // Set startedAt on the tracking session
+    try {
+      const session = await this.repository.getOrCreateSession(appointmentId, doctor._id.toString(), appointment.patientId.toString());
+      session.startedAt = new Date();
+      await session.save();
+    } catch (err) {
+      logger.warn('[TrackingService] Failed to set startedAt on tracking session', { error: String(err) });
+    }
 
     let locationPayload: EphemeralLocation | null = null;
     if (initialCoordinates) {
@@ -140,6 +166,30 @@ export class TrackingService {
       coordinates,
       timestamp
     );
+
+    // Update persistent database location
+    try {
+      await this.repository.updateLocation(appointmentId, coordinates);
+    } catch (err) {
+      logger.warn('[TrackingService] Failed to update persistent DB location', { error: String(err) });
+    }
+
+    // Proximity trigger check for automatic arrival
+    if (appointment.address?.location?.coordinates && appointment.address.location.coordinates.length === 2) {
+      const patientCoords = appointment.address.location.coordinates;
+      const distance = getDistance(coordinates[1], coordinates[0], patientCoords[1], patientCoords[0]);
+      const threshold = Number(process.env.ARRIVAL_THRESHOLD_METERS) || 100;
+      if (distance <= threshold) {
+        try {
+          const { AppointmentService } = require('../appointment/appointment.service');
+          const appointmentService = new AppointmentService();
+          await appointmentService.updateStatus(appointmentId, 'arrived', userId, 'doctor');
+          logger.info(`[TrackingService] Automatically marked appointment ${appointmentId} as ARRIVED (distance: ${distance.toFixed(1)}m)`);
+        } catch (err) {
+          logger.warn(`[TrackingService] Failed to automatically mark arrived for appointment ${appointmentId}`, { error: String(err) });
+        }
+      }
+    }
 
     // 2. Broadcast live coordinates via Socket.IO to room `appointment:{id}`
     try {

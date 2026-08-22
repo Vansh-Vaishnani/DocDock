@@ -147,6 +147,11 @@ export default function DoctorAppointmentsPage() {
       showToast('Unable to find patient contact info.', 'error');
       return;
     }
+    const isInvalidPhone = (p?: string) => !p || p.trim() === '' || p.startsWith('google-');
+    if (isInvalidPhone(appointment?.patientPhone)) {
+      showToast('Patient has not configured a valid phone number. Calls cannot be placed.', 'error');
+      return;
+    }
     window.dispatchEvent(new CustomEvent('docdock:initiate-call', {
       detail: {
         appointmentId,
@@ -161,6 +166,11 @@ export default function DoctorAppointmentsPage() {
     const patientName = appointment?.patient?.fullName || appointment?.patientName || 'Patient';
     if (!patientUserId) {
       showToast('Unable to find patient contact info.', 'error');
+      return;
+    }
+    const isInvalidPhone = (p?: string) => !p || p.trim() === '' || p.startsWith('google-');
+    if (isInvalidPhone(appointment?.patientPhone)) {
+      showToast('Patient has not configured a valid phone number. Calls cannot be placed.', 'error');
       return;
     }
     window.dispatchEvent(new CustomEvent('docdock:initiate-video-call', {
@@ -333,8 +343,8 @@ export default function DoctorAppointmentsPage() {
             });
             coordsToSend = [pos.coords.longitude, pos.coords.latitude];
           } catch (err) {
-            console.error('Failed to get real GPS location:', err);
-            return;
+            console.warn('Failed to get real GPS location, falling back to clinic/start coordinates:', err);
+            coordsToSend = [startLng, startLat];
           }
         }
 

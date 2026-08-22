@@ -49,6 +49,8 @@ export default function VideoConsultation({
   const localStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const [isRemoteVideoOff, setIsRemoteVideoOff] = useState(true);
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Stable refs
@@ -88,6 +90,8 @@ export default function VideoConsultation({
       try { pcRef.current.close(); } catch {}
       pcRef.current = null;
     }
+    remoteStreamRef.current = null;
+    setIsRemoteVideoOff(true);
     candidatesQueueRef.current = [];
     pendingSignalsRef.current = [];
   }, []);
@@ -193,10 +197,22 @@ export default function VideoConsultation({
 
         stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
+        if (!remoteStreamRef.current) {
+          remoteStreamRef.current = new MediaStream();
+        }
         pc.ontrack = (event) => {
-          const stream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
+          if (event.track) {
+            remoteStreamRef.current?.addTrack(event.track);
+            if (event.track.kind === 'video') {
+              setIsRemoteVideoOff(false);
+              event.track.onmute = () => setIsRemoteVideoOff(true);
+              event.track.onunmute = () => setIsRemoteVideoOff(false);
+            }
+          }
+          if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+            remoteVideoRef.current.srcObject = remoteStreamRef.current;
+          }
           if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = stream;
             remoteVideoRef.current.play().catch(() => {});
           }
           setStatus('connected');
@@ -335,9 +351,29 @@ export default function VideoConsultation({
           playsInline
           style={{
             width: '100%', height: '100%', objectFit: 'cover',
-            display: status === 'connected' ? 'block' : 'none'
+            display: status === 'connected' && !isRemoteVideoOff ? 'block' : 'none'
           }}
         />
+
+        {status === 'connected' && isRemoteVideoOff && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex',
+            flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20,
+            background: '#111'
+          }}>
+            <div style={{
+              width: 100, height: 100, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 38, color: '#fff', fontWeight: 700,
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              {peerName.charAt(0).toUpperCase()}
+            </div>
+            <div style={{ color: '#fff', fontSize: 18, fontWeight: 600 }}>{peerName}</div>
+            <div style={{ color: '#9ca3af', fontSize: 14, fontWeight: 500 }}>Camera unavailable</div>
+          </div>
+        )}
 
         {/* Connecting / ended overlay */}
         {status !== 'connected' && (

@@ -8,7 +8,7 @@
     "packages/shared"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev --workspace docdock-api\" \"npm run dev --workspace docdock-web\"",
+    "dev": "node scripts/start-dev.js",
     "dev:api": "npm run dev --workspace docdock-api",
     "dev:web": "npm run dev --workspace docdock-web",
     "build": "npm run build --workspace @docdock/shared && npm run build --workspace docdock-api && npm run build --workspace docdock-web",

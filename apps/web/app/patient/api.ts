@@ -234,6 +234,7 @@ export type AppointmentDetail = {
   };
   doctor: {
     _id?: string;
+    userId?: string;
     fullName: string;
     specialization?: string;
     consultationFee?: number;

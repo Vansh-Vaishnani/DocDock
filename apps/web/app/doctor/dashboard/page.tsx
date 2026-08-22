@@ -74,6 +74,7 @@ export default function DoctorDashboardPage() {
   const [dashboard, setDashboard] = useState<DoctorDashboard | null>(null);
   const [reviews, setReviews] = useState<Array<{ _id: string; rating: number; comment: string; createdAt: string; patientName?: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [liveAppointment, setLiveAppointment] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [emergencyAppts, setEmergencyAppts] = useState<any[]>([]);
 
@@ -89,6 +90,9 @@ export default function DoctorDashboardPage() {
       setReviews(reviewData.reviews || []);
       const activeEmergencies = appts.filter((a: any) => a.isEmergency && ['pending', 'accepted', 'doctor_on_way', 'arrived', 'in_consultation'].includes(a.status));
       setEmergencyAppts(activeEmergencies);
+
+      const live = appts.find((a: any) => ['accepted', 'doctor_on_way', 'arrived', 'in_consultation'].includes(a.status));
+      setLiveAppointment(live || null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unable to load dashboard.');
     } finally {
@@ -166,6 +170,40 @@ export default function DoctorDashboardPage() {
           </Link>
         </div>
       ))}
+
+      {liveAppointment && (
+        <div className="rounded-3xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-teal-50 p-6 dark:from-emerald-950/40 dark:to-teal-950/40 dark:border-emerald-900/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-emerald-sm animate-slide-up">
+          <div className="flex items-center gap-4">
+            <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-emerald">
+              <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-4 w-4 bg-rose-500 border border-white text-[8px] font-extrabold text-white items-center justify-center">🔴</span>
+              </span>
+              <Icon path="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" size={24} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Live Consultation Active</span>
+                <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                  {liveAppointment.status === 'accepted' ? 'Preparing' : liveAppointment.status === 'doctor_on_way' ? 'Travelling' : liveAppointment.status === 'arrived' ? 'Arrived' : 'In Consultation'}
+                </span>
+              </div>
+              <h3 className="mt-1 text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                Active Patient: {liveAppointment.patientName}
+              </h3>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                Scheduled for {new Date(liveAppointment.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Mode: {liveAppointment.consultationMode || 'Home visit'}
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/doctor/appointments"
+            className="w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-6 py-3 shadow-emerald transition-all duration-200 hover:-translate-y-0.5"
+          >
+            Open Active Consultation →
+          </Link>
+        </div>
+      )}
 
       {/* ── Welcome Hero ──────────────────────────── */}
       <div

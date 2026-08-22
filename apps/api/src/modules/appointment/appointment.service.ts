@@ -516,6 +516,7 @@ export class AppointmentService {
               },
               doctor: {
                 _id: doctorProfile?._id?.toString(),
+                userId: (doctorProfile?.userId as { _id?: mongoose.Types.ObjectId } | undefined)?._id?.toString() || null,
                 fullName: (doctorProfile?.userId as { fullName?: string } | undefined)?.fullName ?? 'Doctor',
                 specialization: doctorProfile?.specialization,
                 consultationFee: doctorProfile?.consultationFee,
@@ -590,6 +591,7 @@ export class AppointmentService {
           const doctorObj = doctorProfile
             ? {
                 _id: doctorProfile._id?.toString(),
+                userId: (doctorProfile.userId as { _id?: mongoose.Types.ObjectId } | undefined)?._id?.toString() || null,
                 fullName: (doctorProfile.userId as { fullName?: string } | undefined)?.fullName ?? 'Doctor',
                 specialization: doctorProfile.specialization,
                 consultationFee: doctorProfile.consultationFee,
@@ -1062,6 +1064,17 @@ export class AppointmentService {
         appointment.status = 'arrived';
         await appointment.save();
 
+        // Update tracking session with arrivedAt timestamp
+        try {
+          const TrackingModel = mongoose.model('Tracking');
+          await TrackingModel.findOneAndUpdate(
+            { appointmentId: appointment._id },
+            { $set: { arrivedAt: new Date() } }
+          );
+        } catch (err) {
+          logger.warn('[AppointmentService] Failed to set arrivedAt on tracking session:', { error: String(err) });
+        }
+
         // Generate, hash and send OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -1292,8 +1305,9 @@ export class AppointmentService {
     }
     const doctorUser = doctorProfile.userId as { _id: mongoose.Types.ObjectId; phone?: string } | undefined;
 
-    if (!patientUser?.phone || !doctorUser?.phone) {
-      throw new ApiError('Phone numbers are missing for call routing', 400, 'PHONE_NUMBERS_MISSING');
+    const isInvalidPhone = (p?: string) => !p || p.trim() === '' || p.startsWith('google-');
+    if (isInvalidPhone(patientUser?.phone) || isInvalidPhone(doctorUser?.phone)) {
+      throw new ApiError('Real phone numbers are missing for call routing. Please ensure both doctor and patient profiles have valid contact numbers.', 400, 'PHONE_NUMBERS_MISSING');
     }
 
     let callerPhone = '';
@@ -1305,15 +1319,15 @@ export class AppointmentService {
       if (!doctor || appointment.doctorId.toString() !== doctor._id.toString()) {
         throw new ApiError('Forbidden', 403, 'FORBIDDEN');
       }
-      callerPhone = doctorUser.phone;
-      receiverPhone = patientUser.phone;
+      callerPhone = doctorUser?.phone || '';
+      receiverPhone = patientUser?.phone || '';
       receiverUserId = appointment.patientId.toString();
     } else {
       if (appointment.patientId.toString() !== callerUserId) {
         throw new ApiError('Forbidden', 403, 'FORBIDDEN');
       }
-      callerPhone = patientUser.phone;
-      receiverPhone = doctorUser.phone;
+      callerPhone = patientUser?.phone || '';
+      receiverPhone = doctorUser?.phone || '';
       receiverUserId = doctorUser?._id?.toString() || '';
     }
 

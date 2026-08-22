@@ -15,6 +15,8 @@ export interface ITrackingDocument extends mongoose.Document {
     coordinates: [number, number];
   };
   lastHeartbeatAt?: Date;
+  startedAt?: Date;
+  arrivedAt?: Date;
 }
 
 const trackingSchema = new Schema<ITrackingDocument>(
@@ -40,7 +42,9 @@ const trackingSchema = new Schema<ITrackingDocument>(
       },
       coordinates: { type: [Number] }
     },
-    lastHeartbeatAt: { type: Date }
+    lastHeartbeatAt: { type: Date },
+    startedAt: { type: Date },
+    arrivedAt: { type: Date }
   },
   { timestamps: true }
 );

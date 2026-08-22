@@ -58,6 +58,7 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
   const startDoctorCoords = (clinicLocation as { coordinates?: [number, number] })?.coordinates;
   const initialDoctorCoords = startDoctorCoords ? { lat: startDoctorCoords[1], lng: startDoctorCoords[0] } : null;
 
+  const [arrivalDuration, setArrivalDuration] = useState<number | null>(null);
   const [doctorPos, setDoctorPos] = useState<{ lat: number; lng: number }>(initialDoctorCoords || { lat: patientLatLng.lat + 0.005, lng: patientLatLng.lng - 0.005 });
   const [routePath, setRoutePath] = useState<[number, number][]>([]);
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
@@ -68,11 +69,9 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
-
-
   // Poll for real doctor location from backend
   useEffect(() => {
-    if (detail.appointment?.status !== 'doctor_on_way') {
+    if (detail.appointment?.status !== 'doctor_on_way' && detail.appointment?.status !== 'arrived') {
       setRoutePath([]);
       setEtaMinutes(null);
       setRemainingDistanceKm(null);
@@ -89,10 +88,23 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
         });
         if (response.ok) {
           const data = await response.json();
-          const doctorCoords = data.data?.doctorCurrentLocation?.coordinates;
-          if (Array.isArray(doctorCoords) && doctorCoords.length === 2) {
-            setDoctorPos({ lat: doctorCoords[1], lng: doctorCoords[0] });
+          const liveLoc = data.data?.liveLocation;
+          const docLoc = data.data?.doctorCurrentLocation?.coordinates;
+          if (liveLoc && typeof liveLoc.latitude === 'number' && typeof liveLoc.longitude === 'number') {
+            setDoctorPos({ lat: liveLoc.latitude, lng: liveLoc.longitude });
             setTrackingError(false);
+          } else if (Array.isArray(docLoc) && docLoc.length === 2) {
+            setDoctorPos({ lat: docLoc[1], lng: docLoc[0] });
+            setTrackingError(false);
+          }
+
+          const startedAt = data.data?.startedAt;
+          const arrivedAt = data.data?.arrivedAt;
+          if (startedAt && arrivedAt) {
+            const startMs = new Date(startedAt).getTime();
+            const arrivedMs = new Date(arrivedAt).getTime();
+            const minutes = Math.max(1, Math.round((arrivedMs - startMs) / 60000));
+            setArrivalDuration(minutes);
           }
         }
       } catch (error) {
@@ -103,6 +115,10 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
 
     // 1. Initial snapshot fetch from backend
     void fetchLocation();
+
+    if (detail.appointment?.status !== 'doctor_on_way') {
+      return;
+    }
 
     // 2. Real-time low-latency WebSocket connection to /tracking namespace room
     const token = getStoredAccessToken();
@@ -238,22 +254,16 @@ function LiveTrackingMap({ detail }: { detail: AppointmentDetail }) {
   const poly = routePath.length > 0 ? routePath.map(([lat, lng]) => [lat, lng]) : [];
 
   const statusText = detail.appointment?.status === 'doctor_on_way'
-
     ? isRouteLoading
-
       ? 'Calculating route...'
-
       : routeError
-
         ? 'Unable to calculate route'
-
         : trackingError
-
           ? 'Unable to get doctor location'
-
           : `Doctor is on the way • ETA: ${etaMinutes === null ? 'calculating...' : etaMinutes === 0 ? 'Arriving now' : `${etaMinutes} min`}${remainingDistanceKm !== null ? ` • ${remainingDistanceKm.toFixed(1)} km left` : ''}`
-
-    : 'Doctor has arrived';
+    : detail.appointment?.status === 'arrived'
+      ? `Doctor arrived ${arrivalDuration !== null ? `in ${arrivalDuration} minutes` : ''}`
+      : 'Doctor has arrived';
 
 
 
@@ -337,10 +347,15 @@ export default function AppointmentDetailsPage() {
 
   const handleVideoCall = () => {
     if (!appointmentId || !detail) return;
-    const doctorUserId = (detail.doctor as any)?.userId?._id || (detail.doctor as any)?.userId;
-    const doctorName = (detail.doctor as any)?.userId?.fullName || detail.doctor?.fullName || 'Doctor';
+    const doctorUserId = detail.doctor?.userId || (detail.doctor as any)?.userId?._id || (detail.doctor as any)?.userId;
+    const doctorName = detail.doctor?.fullName || 'Doctor';
     if (!doctorUserId) {
       showToast('Unable to find doctor contact info.', 'error');
+      return;
+    }
+    const isInvalidPhone = (p?: string) => !p || p.trim() === '' || p.startsWith('google-');
+    if (isInvalidPhone(detail.doctor?.phone)) {
+      showToast('Doctor has not configured a valid phone number. Calls cannot be placed.', 'error');
       return;
     }
     // Dispatch via CallOverlay so signaling uses the shared socket
@@ -355,10 +370,15 @@ export default function AppointmentDetailsPage() {
 
   const handleCall = () => {
     if (!appointmentId || !detail) return;
-    const doctorUserId = (detail.doctor as any)?.userId?._id || (detail.doctor as any)?.userId;
-    const doctorName = (detail.doctor as any)?.userId?.fullName || 'Doctor';
+    const doctorUserId = detail.doctor?.userId || (detail.doctor as any)?.userId?._id || (detail.doctor as any)?.userId;
+    const doctorName = detail.doctor?.fullName || 'Doctor';
     if (!doctorUserId) {
       showToast('Unable to find doctor contact info.', 'error');
+      return;
+    }
+    const isInvalidPhone = (p?: string) => !p || p.trim() === '' || p.startsWith('google-');
+    if (isInvalidPhone(detail.doctor?.phone)) {
+      showToast('Doctor has not configured a valid phone number. Calls cannot be placed.', 'error');
       return;
     }
     window.dispatchEvent(new CustomEvent('docdock:initiate-call', {
