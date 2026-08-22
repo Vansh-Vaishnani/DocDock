@@ -16,13 +16,15 @@ COPY apps/api/package.json ./apps/api/
 # Install all dependencies (including dev) needed for compilation
 RUN npm ci --ignore-scripts
 
+# Copy root tsconfig (required by packages/shared/tsconfig.json and apps/api/tsconfig.json)
+COPY tsconfig.base.json ./
+
 # Copy shared package source and build it first
 COPY packages/shared/ ./packages/shared/
 RUN npm run build --workspace=packages/shared
 
 # Copy API source
 COPY apps/api/ ./apps/api/
-COPY tsconfig.base.json ./
 
 # Compile TypeScript
 RUN npm run build --workspace=apps/api
